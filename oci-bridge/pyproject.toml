@@ -1,0 +1,12 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "nimbus-oci-bridge"
+version = "0.1.0"
+requires-python = ">=3.10"
+dependencies = ["oci>=2,<3"]
+
+[tool.setuptools.package-data]
+oci_bridge = ["py.typed"]

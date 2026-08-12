@@ -27,6 +27,7 @@ psysh_history
 .psql_history
 _ide_helper.php
 .gitignore
+!/oci-bridge/.gitignore
 .phpstorm.meta.php
 _ide_helper_models.php
 .rnd

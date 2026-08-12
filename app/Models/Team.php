@@ -15,6 +15,7 @@ use App\Traits\HasSafeStringAttribute;
 use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Notifications\Notifiable;
 use OpenApi\Attributes as OA;
 
@@ -318,6 +319,11 @@ class Team extends Model implements SendsDiscord, SendsEmail, SendsPushover, Sen
     public function cloudProviderTokens()
     {
         return $this->hasMany(CloudProviderToken::class);
+    }
+
+    public function ociConnections(): HasMany
+    {
+        return $this->hasMany(OciConnection::class);
     }
 
     public function sources()
