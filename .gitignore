@@ -53,3 +53,5 @@ ref
 
 # Multi-instance local Coolify env files (scripts/dev-instances)
 .dev-instances/
+.claude-flow/
+.claude/
