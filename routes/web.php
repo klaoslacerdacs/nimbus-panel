@@ -46,6 +46,7 @@ use App\Livewire\Security\CloudInitScript\Show as SecurityCloudInitScriptShow;
 use App\Livewire\Security\CloudInitScripts;
 use App\Livewire\Security\CloudProviderToken\Show as SecurityCloudProviderTokenShow;
 use App\Livewire\Security\CloudTokens;
+use App\Livewire\Security\OciConnectionForm;
 use App\Livewire\Security\PrivateKey\Index as SecurityPrivateKeyIndex;
 use App\Livewire\Security\PrivateKey\Show as SecurityPrivateKeyShow;
 use App\Livewire\Server\Advanced as ServerAdvanced;
@@ -380,6 +381,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
     Route::get('/security/cloud-tokens', CloudTokens::class)->name('security.cloud-tokens');
     Route::get('/security/cloud-tokens/{cloud_token_uuid}', SecurityCloudProviderTokenShow::class)->name('security.cloud-tokens.show');
+    Route::get('/security/oci-connections', OciConnectionForm::class)->name('security.oci-connections');
     Route::get('/security/cloud-init-scripts', CloudInitScripts::class)->name('security.cloud-init-scripts');
     Route::get('/security/cloud-init-scripts/{cloud_init_script_uuid}', SecurityCloudInitScriptShow::class)->name('security.cloud-init-scripts.show');
     Route::get('/security/api-tokens', ApiTokens::class)->name('security.api-tokens');

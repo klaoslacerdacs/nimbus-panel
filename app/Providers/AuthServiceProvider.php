@@ -15,6 +15,7 @@ use App\Models\EnvironmentVariable;
 use App\Models\GithubApp;
 use App\Models\GitlabApp;
 use App\Models\InstanceSettings;
+use App\Models\OciConnection;
 use App\Models\PrivateKey;
 use App\Models\Project;
 use App\Models\PushoverNotificationSettings;
@@ -56,6 +57,7 @@ use App\Policies\GithubAppPolicy;
 use App\Policies\GitlabAppPolicy;
 use App\Policies\InstanceSettingsPolicy;
 use App\Policies\NotificationPolicy;
+use App\Policies\OciConnectionPolicy;
 use App\Policies\PrivateKeyPolicy;
 use App\Policies\ProjectPolicy;
 use App\Policies\ResourceCreatePolicy;
@@ -136,6 +138,7 @@ class AuthServiceProvider extends ServiceProvider
         // Cloud provider policies
         CloudProviderToken::class => CloudProviderTokenPolicy::class,
         CloudInitScript::class => CloudInitScriptPolicy::class,
+        OciConnection::class => OciConnectionPolicy::class,
         Tag::class => TagPolicy::class,
 
         // V5 policies - scoped to the current team resolved from the request
