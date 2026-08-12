@@ -50,4 +50,9 @@ class OciConnection extends BaseModel
     {
         return self::query()->where('team_id', $teamId);
     }
+
+    public static function ownedByCurrentTeam(array $select = ['*']): Builder
+    {
+        return self::ownedByTeam(currentTeam()->id)->select($select);
+    }
 }
