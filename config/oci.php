@@ -1,0 +1,1 @@
+<?php\n\nreturn [\n    'bridge_url' => env('OCI_BRIDGE_URL', 'http://localhost:8000'),\n    'bridge_timeout' => env('OCI_BRIDGE_TIMEOUT', 30),\n    'bridge_retry_max' => env('OCI_BRIDGE_RETRY_MAX', 3),\n    'bridge_auth_token' => env('OCI_BRIDGE_AUTH_TOKEN'),\n];
