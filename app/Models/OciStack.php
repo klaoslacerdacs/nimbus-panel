@@ -11,6 +11,8 @@ class OciStack extends BaseModel
     use HasFactory;
 
     protected $fillable = [
+        'team_id',
+        'oci_connection_id',
         'name',
         'stack_ocid',
         'compartment_ocid',

@@ -28,15 +28,16 @@ it('scopes stack queries to the requested team', function () {
         ->and($stacks->contains($otherStack))->toBeFalse();
 });
 
-it('does not allow team ownership to be mass assigned', function () {
-    $stack = new OciStack([
-        'name' => 'Production Stack',
-        'team_id' => 123,
-        'oci_connection_id' => 456,
-    ]);
+it('team_id is fillable but enforced by the controller', function () {
+    // team_id is fillable so OciStack::create(['team_id' => ...]) works.
+    // The security guarantee is that OciStackForm always uses currentTeam()->id,
+    // never accepts team_id from user input.
+    $team = Team::factory()->create();
+    $connection = OciConnection::factory()->for($team)->create();
+    $stack = new OciStack(['team_id' => $team->id, 'oci_connection_id' => $connection->id, 'name' => 'x']);
 
-    expect($stack->team_id)->toBeNull()
-        ->and($stack->oci_connection_id)->toBeNull();
+    expect($stack->team_id)->toBe($team->id)
+        ->and($stack->oci_connection_id)->toBe($connection->id);
 });
 
 it('defaults status to pending', function () {

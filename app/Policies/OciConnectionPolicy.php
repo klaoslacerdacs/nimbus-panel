@@ -29,7 +29,7 @@ class OciConnectionPolicy
      */
     public function create(User $user): bool
     {
-        return $user->isAdmin();
+        return $user->isAdminOfTeam((int) data_get(session('currentTeam'), 'id'));
     }
 
     /**
