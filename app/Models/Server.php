@@ -288,6 +288,11 @@ class Server extends BaseModel
         'description',
         'private_key_id',
         'cloud_provider_token_id',
+        'oci_connection_id',
+        'oci_instance_id',
+        'oci_instance_status',
+        'oci_region',
+        'oci_compartment_id',
         'team_id',
         'hetzner_server_id',
         'hetzner_server_status',
@@ -1240,6 +1245,11 @@ $schema://$host {
     public function cloudProviderToken()
     {
         return $this->belongsTo(CloudProviderToken::class);
+    }
+
+    public function ociConnection()
+    {
+        return $this->belongsTo(OciConnection::class);
     }
 
     public function sslCertificates()
