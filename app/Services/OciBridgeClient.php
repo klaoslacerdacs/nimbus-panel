@@ -44,6 +44,26 @@ class OciBridgeClient
         return $this->request('GET', "/v1/compute/instances?compartment_id={$compartmentId}&region={$region}");
     }
 
+    public function listAvailabilityDomains(string $compartmentId, string $region): array
+    {
+        return $this->request('GET', "/v1/compute/availability-domains?compartment_id={$compartmentId}&region={$region}");
+    }
+
+    public function listShapes(string $compartmentId, string $region): array
+    {
+        return $this->request('GET', "/v1/compute/shapes?compartment_id={$compartmentId}&region={$region}");
+    }
+
+    public function listImages(string $compartmentId, string $region): array
+    {
+        return $this->request('GET', "/v1/compute/images?compartment_id={$compartmentId}&region={$region}");
+    }
+
+    public function listSubnets(string $vcnId, string $compartmentId, string $region): array
+    {
+        return $this->request('GET', "/v1/compute/subnets?vcn_id={$vcnId}&compartment_id={$compartmentId}&region={$region}");
+    }
+
     private function request(string $method, string $endpoint, array $data = []): array
     {
         $headers = ['Accept' => 'application/json'];
