@@ -41,6 +41,23 @@ class OciConnection extends BaseModel
         ];
     }
 
+    public function toBridgeConfig(): array
+    {
+        if ($this->authentication_method === OciAuthenticationMethod::INSTANCE_PRINCIPAL) {
+            return ['auth_mode' => 'instance_principal', 'region' => $this->region];
+        }
+
+        return [
+            'auth_mode' => 'api_key',
+            'tenancy_ocid' => $this->tenancy_ocid,
+            'user_ocid' => $this->user_ocid,
+            'fingerprint' => $this->fingerprint,
+            'private_key' => $this->private_key,
+            'passphrase' => $this->passphrase,
+            'region' => $this->region,
+        ];
+    }
+
     public function team(): BelongsTo
     {
         return $this->belongsTo(Team::class);

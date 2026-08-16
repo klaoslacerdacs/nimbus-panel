@@ -1,11 +1,13 @@
 <?php
 
+use App\Jobs\OciStackProvisionJob;
 use App\Livewire\Server\New\ByOracleCloud;
 use App\Models\OciConnection;
 use App\Models\PrivateKey;
 use App\Models\Team;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Queue;
 use Livewire\Livewire;
 
 uses(RefreshDatabase::class);
@@ -35,6 +37,8 @@ it('can advance to step 2 by selecting connection', function () {
 });
 
 it('createServer creates Server and OciStack records', function () {
+    Queue::fake();
+
     $connection = OciConnection::factory()->create(['team_id' => $this->team->id]);
     $privateKey = PrivateKey::factory()->create(['team_id' => $this->team->id]);
 
@@ -50,6 +54,8 @@ it('createServer creates Server and OciStack records', function () {
         ->set('private_key_id', $privateKey->id)
         ->set('ssh_username', 'ubuntu')
         ->call('createServer');
+
+    Queue::assertPushed(OciStackProvisionJob::class);
 
     $this->assertDatabaseHas('servers', [
         'name' => 'test-server',

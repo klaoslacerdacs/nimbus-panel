@@ -2,6 +2,7 @@
 
 namespace App\Livewire\Server\New;
 
+use App\Jobs\OciStackProvisionJob;
 use App\Models\OciConnection;
 use App\Models\OciStack;
 use App\Models\PrivateKey;
@@ -183,7 +184,7 @@ class ByOracleCloud extends Component
 
             $connection = OciConnection::ownedByCurrentTeam()->findOrFail($this->selected_connection_id);
 
-            $server = DB::transaction(function () {
+            [$server, $ociStack] = DB::transaction(function () {
                 $server = Server::create([
                     'name' => strtolower(trim($this->server_name)),
                     'ip' => '', // ponytail: OCI IP assigned after Terraform apply; polled later
@@ -197,7 +198,7 @@ class ByOracleCloud extends Component
                     'is_build_server' => false,
                 ]);
 
-                OciStack::create([
+                $ociStack = OciStack::create([
                     'server_id' => $server->id,
                     'team_id' => currentTeam()->id,
                     'oci_connection_id' => $this->selected_connection_id,
@@ -208,10 +209,12 @@ class ByOracleCloud extends Component
                     'status' => 'pending',
                 ]);
 
-                return $server;
+                return [$server, $ociStack];
             });
 
             auditLog('server_created', $server->only(['uuid', 'name', 'team_id', 'oci_region', 'oci_compartment_id']));
+
+            OciStackProvisionJob::dispatch($ociStack);
 
             $this->dispatch('serverCreated', $server->uuid);
 
