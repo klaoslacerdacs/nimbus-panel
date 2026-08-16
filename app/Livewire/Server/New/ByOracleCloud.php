@@ -474,7 +474,7 @@ class ByOracleCloud extends Component
                 refreshSession();
             }
 
-            return redirectRoute($this, 'server.show', [$server->uuid]);
+            return redirectRoute($this, 'server.oci', [$server->uuid]);
         } catch (\Throwable $e) {
             return handleError($e, $this);
         }

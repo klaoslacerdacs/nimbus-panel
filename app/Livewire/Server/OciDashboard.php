@@ -27,13 +27,40 @@ class OciDashboard extends Component
 
     public array $newRule = ['protocol' => 'TCP', 'port_min' => '', 'port_max' => '', 'source' => '0.0.0.0/0', 'description' => ''];
 
+    public ?string $stackStatus = null;
+
+    public ?string $stackMessage = null;
+
+    public bool $isProvisioning = false;
+
     public function mount(Server $server): void
     {
         $this->authorize('view', $server);
         $this->server = $server;
-        $this->loadStatus();
-        $this->loadMetrics();
-        $this->loadNsgRules();
+        $this->loadProvisioningStatus();
+        if (! $this->isProvisioning) {
+            $this->loadStatus();
+            $this->loadMetrics();
+            $this->loadNsgRules();
+        }
+    }
+
+    public function loadProvisioningStatus(): void
+    {
+        $ociStack = $this->server->ociStack()->first();
+        if (! $ociStack) {
+            return;
+        }
+
+        $this->stackStatus = $ociStack->status;
+        $this->stackMessage = $ociStack->last_plan_summary;
+        $this->isProvisioning = $ociStack->isActive();
+
+        if (! $this->isProvisioning && $ociStack->status === 'provisioned' && ! $this->instanceStatus) {
+            $this->loadStatus();
+            $this->loadMetrics();
+            $this->loadNsgRules();
+        }
     }
 
     public function getListeners(): array

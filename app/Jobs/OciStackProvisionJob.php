@@ -54,7 +54,7 @@ class OciStackProvisionJob implements ShouldQueue
                 return;
             }
 
-            $stack->update(['stack_ocid' => $result['stack_id'], 'status' => 'planning']);
+            $stack->update(['stack_ocid' => $result['stack_id'], 'status' => 'planning', 'last_plan_summary' => 'Running Terraform plan...']);
         }
 
         $plan = $bridge->runStackJob($config, $stack->stack_ocid, 'PLAN');
@@ -70,7 +70,7 @@ class OciStackProvisionJob implements ShouldQueue
             return;
         }
 
-        $stack->update(['status' => 'applying']);
+        $stack->update(['status' => 'applying', 'last_plan_summary' => 'Applying Terraform — creating OCI resources (this can take up to 30 min)...']);
 
         $apply = $bridge->runStackJob($config, $stack->stack_ocid, 'APPLY');
         if (! isset($apply['job_id'])) {
@@ -90,7 +90,7 @@ class OciStackProvisionJob implements ShouldQueue
             $stack->server?->update(['ip' => $outputs['public_ip']]);
         }
 
-        $stackUpdate = ['status' => 'provisioned', 'oci_instance_id' => $outputs['instance_id'] ?? null];
+        $stackUpdate = ['status' => 'provisioned', 'last_plan_summary' => null, 'oci_instance_id' => $outputs['instance_id'] ?? null];
         if (! empty($outputs['vcn_id'])) {
             $stackUpdate['vcn_ocid'] = $outputs['vcn_id'];
         }
