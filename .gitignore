@@ -27,6 +27,7 @@ psysh_history
 .psql_history
 _ide_helper.php
 .gitignore
+!/oci-bridge/.gitignore
 .phpstorm.meta.php
 _ide_helper_models.php
 .rnd
@@ -52,3 +53,9 @@ ref
 
 # Multi-instance local Coolify env files (scripts/dev-instances)
 .dev-instances/
+.claude-flow/
+.claude/
+
+# Terraform
+terraform/**/.terraform/
+terraform/**/.terraform.lock.hcl

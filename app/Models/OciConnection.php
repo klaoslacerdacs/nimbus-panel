@@ -1,0 +1,75 @@
+<?php
+
+namespace App\Models;
+
+use App\Enums\OciAuthenticationMethod;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+
+class OciConnection extends BaseModel
+{
+    use HasFactory;
+
+    protected $fillable = [
+        'name',
+        'authentication_method',
+        'region',
+        'compartment_ocid',
+        'tenancy_ocid',
+        'user_ocid',
+        'fingerprint',
+        'private_key',
+        'passphrase',
+    ];
+
+    protected $hidden = [
+        'private_key',
+        'passphrase',
+    ];
+
+    protected $attributes = [
+        'authentication_method' => OciAuthenticationMethod::API_KEY->value,
+    ];
+
+    protected function casts(): array
+    {
+        return [
+            'authentication_method' => OciAuthenticationMethod::class,
+            'private_key' => 'encrypted',
+            'passphrase' => 'encrypted',
+        ];
+    }
+
+    public function toBridgeConfig(): array
+    {
+        if ($this->authentication_method === OciAuthenticationMethod::INSTANCE_PRINCIPAL) {
+            return ['auth_mode' => 'instance_principal', 'region' => $this->region];
+        }
+
+        return [
+            'auth_mode' => 'api_key',
+            'tenancy_ocid' => $this->tenancy_ocid,
+            'user_ocid' => $this->user_ocid,
+            'fingerprint' => $this->fingerprint,
+            'private_key' => $this->private_key,
+            'passphrase' => $this->passphrase,
+            'region' => $this->region,
+        ];
+    }
+
+    public function team(): BelongsTo
+    {
+        return $this->belongsTo(Team::class);
+    }
+
+    public static function ownedByTeam(int $teamId): Builder
+    {
+        return self::query()->where('team_id', $teamId);
+    }
+
+    public static function ownedByCurrentTeam(array $select = ['*']): Builder
+    {
+        return self::ownedByTeam(currentTeam()->id)->select($select);
+    }
+}

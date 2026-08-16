@@ -46,6 +46,10 @@ use App\Livewire\Security\CloudInitScript\Show as SecurityCloudInitScriptShow;
 use App\Livewire\Security\CloudInitScripts;
 use App\Livewire\Security\CloudProviderToken\Show as SecurityCloudProviderTokenShow;
 use App\Livewire\Security\CloudTokens;
+use App\Livewire\Security\OciConnectionForm;
+use App\Livewire\Security\OciConnections;
+use App\Livewire\Security\OciStackForm;
+use App\Livewire\Security\OciStacks;
 use App\Livewire\Security\PrivateKey\Index as SecurityPrivateKeyIndex;
 use App\Livewire\Security\PrivateKey\Show as SecurityPrivateKeyShow;
 use App\Livewire\Server\Advanced as ServerAdvanced;
@@ -59,6 +63,7 @@ use App\Livewire\Server\Destinations as ServerDestinations;
 use App\Livewire\Server\DockerCleanup;
 use App\Livewire\Server\Index as ServerIndex;
 use App\Livewire\Server\LogDrains;
+use App\Livewire\Server\New\ByOracleCloud;
 use App\Livewire\Server\PrivateKey\Show as PrivateKeyShow;
 use App\Livewire\Server\Proxy\DynamicConfigurations as ProxyDynamicConfigurations;
 use App\Livewire\Server\Proxy\Logs as ProxyLogs;
@@ -341,7 +346,8 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('/servers/import', ServerTransferImport::class)->name('server.transfer.import')->middleware('can:create,'.Server::class);
     Route::get('/servers/new', ServerCreatePage::class)->name('server.create')->middleware('can:create,'.Server::class);
     Route::get('/servers/new/{type}/{token_uuid}', ServerCreatePage::class)->name('server.create.token')->middleware('can:create,'.Server::class)->whereIn('type', ['hetzner', 'vultr', 'digital-ocean']);
-    Route::get('/servers/new/{type}', ServerCreatePage::class)->name('server.create.type')->middleware('can:create,'.Server::class)->whereIn('type', ['hetzner', 'vultr', 'digital-ocean', 'manual']);
+    Route::get('/servers/new/oracle-cloud', ByOracleCloud::class)->name('server.new.oracle-cloud')->middleware('can:create,'.Server::class);
+    Route::get('/servers/new/{type}', ServerCreatePage::class)->name('server.create.type')->middleware('can:create,'.Server::class)->whereIn('type', ['hetzner', 'vultr', 'digital-ocean', 'manual', 'oracle-cloud']);
 
     Route::prefix('server/{server_uuid}')->group(function () {
         Route::get('/', ServerShow::class)->name('server.show');
@@ -380,8 +386,12 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
     Route::get('/security/cloud-tokens', CloudTokens::class)->name('security.cloud-tokens');
     Route::get('/security/cloud-tokens/{cloud_token_uuid}', SecurityCloudProviderTokenShow::class)->name('security.cloud-tokens.show');
+    Route::get('/security/oci-connections', OciConnections::class)->name('security.oci-connections');
+    Route::get('/security/oci-connections/new', OciConnectionForm::class)->name('security.oci-connections.new');
     Route::get('/security/cloud-init-scripts', CloudInitScripts::class)->name('security.cloud-init-scripts');
     Route::get('/security/cloud-init-scripts/{cloud_init_script_uuid}', SecurityCloudInitScriptShow::class)->name('security.cloud-init-scripts.show');
+    Route::get('/security/oci-stacks', OciStacks::class)->name('security.oci-stacks');
+    Route::get('/security/oci-stacks/new', OciStackForm::class)->name('security.oci-stacks.new');
     Route::get('/security/api-tokens', ApiTokens::class)->name('security.api-tokens');
 });
 
