@@ -24,7 +24,15 @@ class OciStackDestroyJob implements ShouldQueue
     public function handle(OciBridgeClient $bridge): void
     {
         $stack = $this->ociStack->loadMissing('ociConnection');
+
+        if (! $stack->ociConnection) {
+            $stack->update(['status' => 'destroy_failed', 'last_plan_summary' => 'OCI connection not found']);
+
+            return;
+        }
+
         $config = $stack->ociConnection->toBridgeConfig();
+        $stack->update(['status' => 'destroying', 'last_plan_summary' => 'Running Terraform destroy...']);
 
         $destroy = $bridge->runStackJob($config, $stack->stack_ocid, 'DESTROY', confirmDestroy: true);
 

@@ -9,6 +9,7 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
+use Illuminate\Support\Facades\Log;
 
 class OciStackProvisionJob implements ShouldQueue
 {
@@ -103,6 +104,11 @@ class OciStackProvisionJob implements ShouldQueue
         if ($nsgId && $stack->firewall_rules) {
             $stack->update(['nsg_ocid' => $nsgId]);
             $bridge->addNsgRules($config, $nsgId, $stack->firewall_rules);
+        }
+
+        if ($stack->server && isset($outputs['public_ip'])) {
+            ValidateAndInstallServerJob::dispatch($stack->server);
+            Log::info('OciStackProvisionJob: dispatched SSH validation', ['server_id' => $stack->server->id]);
         }
     }
 

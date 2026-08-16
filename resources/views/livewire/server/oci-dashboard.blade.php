@@ -1,56 +1,62 @@
 <div class="flex flex-col gap-6" wire:poll.30000ms="loadStatus">
 
-    {{-- Provisioning Progress --}}
-    @if ($isProvisioning || in_array($stackStatus, ['failed']))
+    {{-- Provisioning / Destroy Progress --}}
+    @php
+        $isTerminalError = in_array($stackStatus, ['failed', 'destroy_failed']);
+        $isDestroying = $stackStatus === 'destroying';
+        $showProgress = $isProvisioning || $isDestroying || $isTerminalError;
+        $isFailed = $isTerminalError;
+    @endphp
+    @if ($showProgress)
         @php
             $steps = [
-                'pending'     => ['label' => 'Queued',    'idx' => 0],
-                'planning'    => ['label' => 'Planning',  'idx' => 1],
-                'applying'    => ['label' => 'Applying',  'idx' => 2],
-                'provisioned' => ['label' => 'Done',      'idx' => 3],
-                'failed'      => ['label' => 'Failed',    'idx' => 3],
+                'pending'  => 0,
+                'planning' => 1,
+                'applying' => 2,
+                'failed'   => 3,
             ];
-            $currentIdx = $steps[$stackStatus]['idx'] ?? 0;
-            $isFailed = $stackStatus === 'failed';
+            $currentIdx = $steps[$stackStatus] ?? ($isDestroying ? 1 : 0);
         @endphp
         <div wire:poll.5000ms="loadProvisioningStatus"
-            class="rounded-lg border {{ $isFailed ? 'border-red-300 dark:border-red-700' : 'border-blue-200 dark:border-blue-700' }} p-4">
+            class="rounded-lg border {{ $isFailed ? 'border-red-300 dark:border-red-700' : ($isDestroying ? 'border-orange-200 dark:border-orange-700' : 'border-blue-200 dark:border-blue-700') }} p-4">
             <div class="mb-3 flex items-center justify-between">
                 <h3 class="text-sm font-semibold">
-                    {{ $isFailed ? 'Provisioning Failed' : 'Provisioning in Progress' }}
+                    @if ($isDestroying) Destroying Resources
+                    @elseif ($isFailed) Operation Failed
+                    @else Provisioning in Progress
+                    @endif
                 </h3>
                 @if (! $isFailed)
-                    <svg class="h-4 w-4 animate-spin text-blue-500" fill="none" viewBox="0 0 24 24">
+                    <svg class="h-4 w-4 animate-spin {{ $isDestroying ? 'text-orange-500' : 'text-blue-500' }}" fill="none" viewBox="0 0 24 24">
                         <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
                         <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
                     </svg>
                 @endif
             </div>
 
-            <div class="mb-4 flex items-center gap-1">
-                @foreach (['Queued', 'Planning', 'Applying', $isFailed ? 'Failed' : 'Done'] as $stepIdx => $stepLabel)
-                    @php
-                        $done = $stepIdx < $currentIdx;
-                        $active = $stepIdx === $currentIdx;
-                    @endphp
-                    <div class="flex items-center">
-                        <div class="flex h-6 w-6 items-center justify-center rounded-full text-xs font-medium
-                            {{ $done ? 'bg-green-500 text-white' : ($active ? ($isFailed ? 'bg-red-500 text-white' : 'bg-blue-500 text-white') : 'bg-neutral-200 text-neutral-500 dark:bg-neutral-700') }}">
-                            @if ($done)
-                                ✓
-                            @elseif ($active && $isFailed)
-                                ✕
-                            @else
-                                {{ $stepIdx + 1 }}
+            @if (! $isDestroying)
+                <div class="mb-4 flex items-center gap-1">
+                    @foreach (['Queued', 'Planning', 'Applying', $isFailed ? 'Failed' : 'Done'] as $stepIdx => $stepLabel)
+                        @php
+                            $done = $stepIdx < $currentIdx;
+                            $active = $stepIdx === $currentIdx;
+                        @endphp
+                        <div class="flex items-center">
+                            <div class="flex h-6 w-6 items-center justify-center rounded-full text-xs font-medium
+                                {{ $done ? 'bg-green-500 text-white' : ($active ? ($isFailed ? 'bg-red-500 text-white' : 'bg-blue-500 text-white') : 'bg-neutral-200 text-neutral-500 dark:bg-neutral-700') }}">
+                                @if ($done) ✓
+                                @elseif ($active && $isFailed) ✕
+                                @else {{ $stepIdx + 1 }}
+                                @endif
+                            </div>
+                            <span class="ml-1 text-xs {{ $active ? 'font-semibold' : 'text-neutral-500' }}">{{ $stepLabel }}</span>
+                            @if ($stepIdx < 3)
+                                <div class="mx-2 h-px w-6 {{ $done ? 'bg-green-400' : 'bg-neutral-200 dark:bg-neutral-700' }}"></div>
                             @endif
                         </div>
-                        <span class="ml-1 text-xs {{ $active ? 'font-semibold' : 'text-neutral-500' }}">{{ $stepLabel }}</span>
-                        @if ($stepIdx < 3)
-                            <div class="mx-2 h-px w-6 {{ $done ? 'bg-green-400' : 'bg-neutral-200 dark:bg-neutral-700' }}"></div>
-                        @endif
-                    </div>
-                @endforeach
-            </div>
+                    @endforeach
+                </div>
+            @endif
 
             @if ($stackMessage)
                 <p class="text-xs {{ $isFailed ? 'text-red-600 dark:text-red-400' : 'text-neutral-500' }}">{{ $stackMessage }}</p>

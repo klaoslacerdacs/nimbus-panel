@@ -56,7 +56,7 @@ class OciDashboard extends Component
         $this->stackMessage = $ociStack->last_plan_summary;
         $this->isProvisioning = $ociStack->isActive();
 
-        if (! $this->isProvisioning && $ociStack->status === 'provisioned' && ! $this->instanceStatus) {
+        if ($ociStack->status === 'provisioned' && ! $this->instanceStatus) {
             $this->loadStatus();
             $this->loadMetrics();
             $this->loadNsgRules();
