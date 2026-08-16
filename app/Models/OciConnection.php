@@ -49,10 +49,10 @@ class OciConnection extends BaseModel
 
         return [
             'auth_mode' => 'api_key',
-            'tenancy_ocid' => $this->tenancy_ocid,
-            'user_ocid' => $this->user_ocid,
+            'tenancy_id' => $this->tenancy_ocid,
+            'user_id' => $this->user_ocid,
             'fingerprint' => $this->fingerprint,
-            'private_key' => $this->private_key,
+            'key_content' => $this->private_key,
             'passphrase' => $this->passphrase,
             'region' => $this->region,
         ];

@@ -139,6 +139,79 @@ def list_subnets_by_compartment(body: ComputeWithLocationBody, _: None = Depends
     return _respond(compute.list_subnets_by_compartment(_parse_config(body.config), body.compartment_id, body.region))
 
 
+@app.post("/v1/compute/vcns")
+def list_vcns(body: ComputeWithLocationBody, _: None = Depends(_verify_token)):
+    return _respond(compute.list_vcns(_parse_config(body.config), body.compartment_id, body.region))
+
+
+class NsgBody(BaseModel):
+    config: Dict[str, Any]
+    nsg_id: str
+    region: str
+
+
+class AddNsgRulesBody(BaseModel):
+    config: Dict[str, Any]
+    nsg_id: str
+    rules: list
+
+
+class RemoveNsgRulesBody(BaseModel):
+    config: Dict[str, Any]
+    nsg_id: str
+    rule_ids: list
+
+
+@app.post("/v1/compute/nsg/rules")
+def list_nsg_rules(body: NsgBody, _: None = Depends(_verify_token)):
+    return _respond(compute.list_nsg_rules(_parse_config(body.config), body.nsg_id, body.region))
+
+
+@app.post("/v1/compute/nsg/rules/add")
+def add_nsg_rules(body: AddNsgRulesBody, _: None = Depends(_verify_token)):
+    return _respond(compute.add_nsg_rules(_parse_config(body.config), body.nsg_id, body.rules))
+
+
+@app.post("/v1/compute/nsg/rules/remove")
+def remove_nsg_rules(body: RemoveNsgRulesBody, _: None = Depends(_verify_token)):
+    return _respond(compute.remove_nsg_rules(_parse_config(body.config), body.nsg_id, body.rule_ids))
+
+
+class InstanceStatusBody(BaseModel):
+    config: Dict[str, Any]
+    instance_id: str
+    region: str
+
+
+class InstanceMetricsBody(BaseModel):
+    config: Dict[str, Any]
+    instance_id: str
+    compartment_id: str
+    region: str
+
+
+class InstanceActionBody(BaseModel):
+    config: Dict[str, Any]
+    instance_id: str
+    region: str
+    action: str
+
+
+@app.post("/v1/compute/instances/{instance_id}/status")
+def get_instance_status(instance_id: str, body: InstanceStatusBody, _: None = Depends(_verify_token)):
+    return _respond(compute.get_instance_status(_parse_config(body.config), instance_id, body.region))
+
+
+@app.post("/v1/compute/instances/{instance_id}/metrics")
+def get_instance_metrics(instance_id: str, body: InstanceMetricsBody, _: None = Depends(_verify_token)):
+    return _respond(compute.get_instance_metrics(_parse_config(body.config), instance_id, body.compartment_id, body.region))
+
+
+@app.post("/v1/compute/instances/{instance_id}/action")
+def instance_action(instance_id: str, body: InstanceActionBody, _: None = Depends(_verify_token)):
+    return _respond(compute.instance_action(_parse_config(body.config), instance_id, body.region, body.action))
+
+
 # ── resource manager ─────────────────────────────────────────────────────────
 
 class CreateStackBody(BaseModel):

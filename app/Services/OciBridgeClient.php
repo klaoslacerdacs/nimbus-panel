@@ -69,6 +69,26 @@ class OciBridgeClient
         return $this->request('POST', '/v1/compute/subnets-by-compartment', ['config' => $config, 'compartment_id' => $compartmentId, 'region' => $region]);
     }
 
+    public function listVcns(array $config, string $compartmentId, string $region): array
+    {
+        return $this->request('POST', '/v1/compute/vcns', ['config' => $config, 'compartment_id' => $compartmentId, 'region' => $region]);
+    }
+
+    public function listNsgRules(array $config, string $nsgId, string $region): array
+    {
+        return $this->request('POST', '/v1/compute/nsg/rules', ['config' => $config, 'nsg_id' => $nsgId, 'region' => $region]);
+    }
+
+    public function addNsgRules(array $config, string $nsgId, array $rules): array
+    {
+        return $this->request('POST', '/v1/compute/nsg/rules/add', ['config' => $config, 'nsg_id' => $nsgId, 'rules' => $rules]);
+    }
+
+    public function removeNsgRules(array $config, string $nsgId, array $ruleIds): array
+    {
+        return $this->request('POST', '/v1/compute/nsg/rules/remove', ['config' => $config, 'nsg_id' => $nsgId, 'rule_ids' => $ruleIds]);
+    }
+
     public function createStack(array $config, string $name, string $compartmentId, string $configSourceType, array $configSourceParams, array $variables = []): array
     {
         return $this->request('POST', '/v1/stacks', [
@@ -99,6 +119,21 @@ class OciBridgeClient
     public function getStackOutputs(array $config, string $jobId): array
     {
         return $this->request('POST', "/v1/stacks/jobs/{$jobId}/outputs", compact('config'));
+    }
+
+    public function getInstanceStatus(array $config, string $instanceId, string $region): array
+    {
+        return $this->request('POST', "/v1/compute/instances/{$instanceId}/status", ['config' => $config, 'instance_id' => $instanceId, 'region' => $region]);
+    }
+
+    public function getInstanceMetrics(array $config, string $instanceId, string $compartmentId, string $region): array
+    {
+        return $this->request('POST', "/v1/compute/instances/{$instanceId}/metrics", ['config' => $config, 'instance_id' => $instanceId, 'compartment_id' => $compartmentId, 'region' => $region]);
+    }
+
+    public function instanceAction(array $config, string $instanceId, string $region, string $action): array
+    {
+        return $this->request('POST', "/v1/compute/instances/{$instanceId}/action", ['config' => $config, 'instance_id' => $instanceId, 'region' => $region, 'action' => $action]);
     }
 
     private function request(string $method, string $endpoint, array $data = []): array

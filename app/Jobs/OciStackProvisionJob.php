@@ -24,13 +24,25 @@ class OciStackProvisionJob implements ShouldQueue
     public function handle(OciBridgeClient $bridge): void
     {
         $stack = $this->ociStack->loadMissing('ociConnection');
+
+        if (! $stack->ociConnection) {
+            $this->markFailed($stack, 'OCI connection not found');
+
+            return;
+        }
+
         $config = $stack->ociConnection->toBridgeConfig();
+
+        // When creating a new compartment, the RM stack itself lives in parent/tenancy root
+        $stackCompartmentId = $stack->compartment_ocid
+            ?: ($stack->tf_vars['parent_compartment_ocid'] ?? null)
+            ?: $stack->ociConnection->tenancy_ocid;
 
         if (! $stack->stack_ocid) {
             $result = $bridge->createStack(
                 $config,
                 $stack->name,
-                $stack->compartment_ocid,
+                $stackCompartmentId,
                 'ZIP_UPLOAD',
                 ['zip_file_base64_encoded' => $this->getTemplateZipBase64()],
                 $stack->tf_vars ?? []
@@ -76,12 +88,21 @@ class OciStackProvisionJob implements ShouldQueue
         $outputs = $bridge->getStackOutputs($config, $apply['job_id']);
         if (isset($outputs['public_ip'])) {
             $stack->server?->update(['ip' => $outputs['public_ip']]);
-            $stack->update([
-                'status' => 'provisioned',
-                'oci_instance_id' => $outputs['instance_id'] ?? null,
-            ]);
-        } else {
-            $stack->update(['status' => 'provisioned']);
+        }
+
+        $stackUpdate = ['status' => 'provisioned', 'oci_instance_id' => $outputs['instance_id'] ?? null];
+        if (! empty($outputs['vcn_id'])) {
+            $stackUpdate['vcn_ocid'] = $outputs['vcn_id'];
+        }
+        if (! empty($outputs['compartment_id']) && ! $stack->compartment_ocid) {
+            $stackUpdate['compartment_ocid'] = $outputs['compartment_id'];
+        }
+        $stack->update($stackUpdate);
+
+        $nsgId = $outputs['nsg_id'] ?? null;
+        if ($nsgId && $stack->firewall_rules) {
+            $stack->update(['nsg_ocid' => $nsgId]);
+            $bridge->addNsgRules($config, $nsgId, $stack->firewall_rules);
         }
     }
 

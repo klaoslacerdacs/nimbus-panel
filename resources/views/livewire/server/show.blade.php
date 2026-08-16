@@ -287,6 +287,25 @@
                         @endif
                     </x-application.settings-section>
 
+                    @if ($server->oci_connection_id)
+                        <x-application.settings-section title="OCI Metrics Source"
+                            helper="Choose how metrics are collected for this OCI instance.">
+                            <div class="flex flex-col gap-3">
+                                <div class="flex flex-wrap gap-4">
+                                    <label class="flex cursor-pointer items-center gap-2 text-sm">
+                                        <input type="radio" wire:model="oci_metrics_source" value="oci_monitoring">
+                                        <span>OCI Monitoring <span class="block text-xs text-neutral-500">No agent needed for CPU</span></span>
+                                    </label>
+                                    <label class="flex cursor-pointer items-center gap-2 text-sm">
+                                        <input type="radio" wire:model="oci_metrics_source" value="sentinel">
+                                        <span>SSH / Sentinel <span class="block text-xs text-neutral-500">Requires Sentinel on VM</span></span>
+                                    </label>
+                                </div>
+                                <x-forms.button wire:click="saveOciMetricsSource" class="w-fit">Save</x-forms.button>
+                            </div>
+                        </x-application.settings-section>
+                    @endif
+
                     @if ($server->validation_logs)
                         <x-application.settings-section title="Previous validation output"
                             helper="The latest output produced while checking this server.">

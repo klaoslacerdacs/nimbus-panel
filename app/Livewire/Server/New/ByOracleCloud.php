@@ -27,21 +27,56 @@ class ByOracleCloud extends Component
     #[Locked]
     public $limit_reached;
 
+    // Step 1 — Connection
     public ?int $selected_connection_id = null;
 
     public ?string $selectedConnectionUuid = null;
 
-    public string $region = 'us-ashburn-1';
+    public bool $from_onboarding = false;
+
+    // Step 2 — Region + Compartment
+    public string $region = 'sa-saopaulo-1';
+
+    public bool $create_compartment = false;
 
     public string $compartment_ocid = '';
 
-    public array $availability_domains = [];
+    public string $compartment_name = '';
 
-    public string $availability_domain = '';
+    public string $parent_compartment_ocid = '';
+
+    public array $compartments = [];
+
+    // Step 3 — Network
+    public bool $create_network = false;
+
+    public string $vcn_ocid = '';
+
+    public array $vcns = [];
+
+    public string $subnet_ocid = '';
 
     public array $subnets = [];
 
-    public string $subnet_ocid = '';
+    public string $vcn_display_name = '';
+
+    public string $vcn_dns_label = '';
+
+    public string $vcn_cidr = '10.0.0.0/16';
+
+    public string $subnet_cidr = '';
+
+    // Firewall rules (ingress, applied to NSG post-provision)
+    public array $firewall_rules = [
+        ['protocol' => 'TCP', 'port_min' => 22, 'port_max' => 22, 'source' => '0.0.0.0/0', 'description' => 'SSH'],
+        ['protocol' => 'TCP', 'port_min' => 80, 'port_max' => 80, 'source' => '0.0.0.0/0', 'description' => 'HTTP'],
+        ['protocol' => 'TCP', 'port_min' => 443, 'port_max' => 443, 'source' => '0.0.0.0/0', 'description' => 'HTTPS'],
+    ];
+
+    // Step 4 — Compute
+    public array $availability_domains = [];
+
+    public string $availability_domain = '';
 
     public string $shape = 'VM.Standard.A1.Flex';
 
@@ -53,7 +88,13 @@ class ByOracleCloud extends Component
 
     public string $ssh_username = 'ubuntu';
 
-    public bool $from_onboarding = false;
+    public int $ocpus = 1;
+
+    public int $memory_in_gbs = 6;
+
+    public int $boot_volume_size_in_gbs = 50;
+
+    public string $oci_metrics_source = 'oci_monitoring';
 
     public function mount(?string $selectedConnectionUuid = null): void
     {
@@ -68,6 +109,7 @@ class ByOracleCloud extends Component
 
         if ($this->selectedConnectionUuid) {
             $this->current_step = 2;
+            $this->loadCompartments();
         }
 
         $this->limit_reached = Team::serverLimitReached();
@@ -90,38 +132,138 @@ class ByOracleCloud extends Component
 
     public function updatedRegion(): void
     {
-        $this->loadDropdowns();
+        $this->compartments = [];
+        $this->compartment_ocid = '';
+        $this->vcns = [];
+        $this->vcn_ocid = '';
+        $this->subnets = [];
+        $this->subnet_ocid = '';
+        $this->loadCompartments();
     }
 
     public function updatedCompartmentOcid(): void
     {
-        $this->loadDropdowns();
+        $this->vcns = [];
+        $this->vcn_ocid = '';
+        $this->subnets = [];
+        $this->subnet_ocid = '';
+        $this->loadVcns();
     }
 
-    private function loadDropdowns(): void
+    public function updatedVcnOcid(): void
     {
-        if (! $this->selected_connection_id || ! $this->compartment_ocid || ! $this->region) {
+        $this->subnets = [];
+        $this->subnet_ocid = '';
+        if ($this->vcn_ocid) {
+            $this->loadSubnets();
+        }
+    }
+
+    public function updatedCreateCompartment(): void
+    {
+        $this->compartment_ocid = '';
+        $this->compartment_name = '';
+    }
+
+    public function updatedCreateNetwork(): void
+    {
+        $this->vcn_ocid = '';
+        $this->subnet_ocid = '';
+        $this->vcn_display_name = '';
+        $this->vcn_cidr = '10.0.0.0/16';
+        $this->subnet_cidr = '';
+    }
+
+    public function addFirewallRule(): void
+    {
+        $this->firewall_rules[] = ['protocol' => 'TCP', 'port_min' => 80, 'port_max' => 80, 'source' => '0.0.0.0/0', 'description' => ''];
+    }
+
+    public function removeFirewallRule(int $index): void
+    {
+        array_splice($this->firewall_rules, $index, 1);
+        $this->firewall_rules = array_values($this->firewall_rules);
+    }
+
+    private function getConnection(): ?OciConnection
+    {
+        if (! $this->selected_connection_id) {
+            return null;
+        }
+
+        return OciConnection::ownedByCurrentTeam()->find($this->selected_connection_id);
+    }
+
+    private function loadCompartments(): void
+    {
+        $connection = $this->getConnection();
+        if (! $connection || ! $this->region) {
             return;
         }
 
-        $connection = OciConnection::ownedByCurrentTeam()->find($this->selected_connection_id);
+        $client = new OciBridgeClient;
+        $result = $client->listCompartments($connection->toBridgeConfig(), $this->region);
+        $this->compartments = $result['data'] ?? [];
+    }
+
+    private function loadVcns(): void
+    {
+        if ($this->create_compartment || ! $this->compartment_ocid) {
+            return;
+        }
+
+        $connection = $this->getConnection();
         if (! $connection) {
             return;
         }
 
         $client = new OciBridgeClient;
-        $bridgeConfig = $connection->toBridgeConfig();
+        $result = $client->listVcns($connection->toBridgeConfig(), $this->compartment_ocid, $this->region);
+        $this->vcns = $result['data'] ?? [];
+    }
 
-        $adResult = $client->listAvailabilityDomains($bridgeConfig, $this->compartment_ocid, $this->region);
+    private function loadSubnets(): void
+    {
+        if ($this->create_network || ! $this->vcn_ocid || ! $this->compartment_ocid) {
+            return;
+        }
+
+        $connection = $this->getConnection();
+        if (! $connection) {
+            return;
+        }
+
+        $client = new OciBridgeClient;
+        $result = $client->listSubnets($connection->toBridgeConfig(), $this->vcn_ocid, $this->compartment_ocid, $this->region);
+        $this->subnets = $result['data'] ?? [];
+        if ($this->subnets && ! $this->subnet_ocid) {
+            $this->subnet_ocid = $this->subnets[0]['id'] ?? '';
+        }
+    }
+
+    private function loadComputeDropdowns(): void
+    {
+        $connection = $this->getConnection();
+        if (! $connection) {
+            return;
+        }
+
+        // ADs are tenancy-wide; any valid compartment works — fall back to parent or tenancy root
+        $compartmentId = $this->create_compartment
+            ? ($this->parent_compartment_ocid ?: $connection->tenancy_ocid)
+            : $this->compartment_ocid;
+
+        if (! $compartmentId) {
+            return;
+        }
+
+        $client = new OciBridgeClient;
+        $config = $connection->toBridgeConfig();
+
+        $adResult = $client->listAvailabilityDomains($config, $compartmentId, $this->region);
         $this->availability_domains = $adResult['data'] ?? [];
         if ($this->availability_domains && ! $this->availability_domain) {
             $this->availability_domain = $this->availability_domains[0]['name'] ?? '';
-        }
-
-        $subnetResult = $client->listSubnetsByCompartment($bridgeConfig, $this->compartment_ocid, $this->region);
-        $this->subnets = $subnetResult['data'] ?? [];
-        if ($this->subnets && ! $this->subnet_ocid) {
-            $this->subnet_ocid = $this->subnets[0]['id'] ?? '';
         }
     }
 
@@ -138,27 +280,40 @@ class ByOracleCloud extends Component
         $this->resetErrorBag('private_key_id');
     }
 
-    protected function rules(): array
+    protected function stepRules(): array
     {
-        $rules = [
-            'selected_connection_id' => 'required|integer|exists:oci_connections,id,team_id,'.currentTeam()->id,
-        ];
+        $connectionRule = 'required|integer|exists:oci_connections,id,team_id,'.currentTeam()->id;
 
-        if ($this->current_step === 2) {
-            $rules = array_merge($rules, [
-                'server_name' => ['required', 'string', 'max:253', new ValidHostname],
+        return [
+            1 => ['selected_connection_id' => $connectionRule],
+            2 => [
+                'selected_connection_id' => $connectionRule,
                 'region' => 'required|string',
-                'compartment_ocid' => 'required|string',
+                'compartment_ocid' => $this->create_compartment ? 'nullable' : 'required|string',
+                'compartment_name' => $this->create_compartment ? 'required|string|max:100' : 'nullable',
+            ],
+            3 => [
+                'create_network' => 'boolean',
+                'vcn_ocid' => $this->create_network ? 'nullable' : 'required|string',
+                'subnet_ocid' => $this->create_network ? 'nullable' : 'required|string',
+                'vcn_display_name' => $this->create_network ? 'required|string|max:255' : 'nullable',
+                'vcn_cidr' => $this->create_network ? ['required', 'regex:/^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\/\d{1,2}$/'] : 'nullable',
+                'firewall_rules' => 'array',
+                'firewall_rules.*.protocol' => 'required|in:TCP,UDP,ICMP,ALL',
+                'firewall_rules.*.port_min' => 'nullable|integer|min:1|max:65535',
+                'firewall_rules.*.port_max' => 'nullable|integer|min:1|max:65535',
+                'firewall_rules.*.source' => 'required|string',
+            ],
+            4 => [
+                'server_name' => ['required', 'string', 'max:253', new ValidHostname],
                 'availability_domain' => 'required|string',
-                'subnet_ocid' => 'required|string',
                 'shape' => 'required|string',
                 'image_id' => 'required|string',
                 'private_key_id' => 'required|integer|exists:private_keys,id,team_id,'.currentTeam()->id,
                 'ssh_username' => 'required|string|max:255',
-            ]);
-        }
-
-        return $rules;
+                'oci_metrics_source' => 'required|in:oci_monitoring,sentinel',
+            ],
+        ];
     }
 
     protected function messages(): array
@@ -166,14 +321,13 @@ class ByOracleCloud extends Component
         return [
             'selected_connection_id.required' => 'Please select an OCI connection.',
             'selected_connection_id.exists' => 'Selected connection not found.',
+            'compartment_ocid.required' => 'Select a compartment or enable "Create new".',
+            'compartment_name.required' => 'Enter a name for the new compartment.',
+            'vcn_ocid.required' => 'Select a VCN or enable "Create new network".',
+            'subnet_ocid.required' => 'Select a subnet or enable "Create new network".',
+            'vcn_display_name.required' => 'Enter a VCN name.',
+            'vcn_cidr.regex' => 'Enter a valid CIDR block (e.g. 10.0.0.0/16).',
         ];
-    }
-
-    public function selectConnection(int $connectionId): mixed
-    {
-        $this->selected_connection_id = $connectionId;
-
-        return $this->nextStep();
     }
 
     private function selectConnectionFromUrl(?string $selectedConnectionUuid): void
@@ -192,14 +346,28 @@ class ByOracleCloud extends Component
         $this->selected_connection_id = $connection->id;
     }
 
+    public function selectConnection(int $connectionId): mixed
+    {
+        $this->selected_connection_id = $connectionId;
+
+        return $this->nextStep();
+    }
+
     public function nextStep(): mixed
     {
-        $this->validate([
-            'selected_connection_id' => 'required|integer|exists:oci_connections,id,team_id,'.currentTeam()->id,
-        ]);
+        $rules = $this->stepRules()[$this->current_step] ?? [];
+        $this->validate($rules, $this->messages());
 
         try {
-            $this->current_step = 2;
+            if ($this->current_step === 2) {
+                $this->loadVcns();
+            }
+
+            if ($this->current_step === 3) {
+                $this->loadComputeDropdowns();
+            }
+
+            $this->current_step++;
         } catch (\Throwable $e) {
             return handleError($e, $this);
         }
@@ -209,19 +377,23 @@ class ByOracleCloud extends Component
 
     public function previousStep(): mixed
     {
-        if ($this->selectedConnectionUuid) {
-            return $this->redirectRoute('server.create.type', ['type' => 'oracle-cloud'], navigate: true);
+        if ($this->current_step <= 1) {
+            if ($this->selectedConnectionUuid) {
+                return $this->redirectRoute('server.create.type', ['type' => 'oracle-cloud'], navigate: true);
+            }
+
+            return null;
         }
 
-        $this->current_step = 1;
+        $this->current_step--;
 
         return null;
     }
 
     public function createServer(): mixed
     {
-        $this->current_step = 2;
-        $this->validate();
+        $allRules = array_merge(...array_values($this->stepRules()));
+        $this->validate($allRules, $this->messages());
 
         try {
             $this->authorize('create', Server::class);
@@ -231,43 +403,61 @@ class ByOracleCloud extends Component
             }
 
             $connection = OciConnection::ownedByCurrentTeam()->findOrFail($this->selected_connection_id);
+            $privateKey = PrivateKey::find($this->private_key_id);
 
-            [$server, $ociStack] = DB::transaction(function () {
+            $compartmentOcid = $this->create_compartment ? '' : $this->compartment_ocid;
+
+            $tfVars = array_filter([
+                'region' => $this->region,
+                'create_compartment' => $this->create_compartment ? 'true' : 'false',
+                'compartment_ocid' => $this->create_compartment ? '' : $this->compartment_ocid,
+                'compartment_name' => $this->compartment_name,
+                'parent_compartment_ocid' => $this->parent_compartment_ocid,
+                'create_network' => $this->create_network ? 'true' : 'false',
+                'vcn_ocid' => $this->create_network ? '' : $this->vcn_ocid,
+                'subnet_ocid' => $this->create_network ? '' : $this->subnet_ocid,
+                'vcn_display_name' => $this->vcn_display_name,
+                'vcn_dns_label' => $this->vcn_dns_label,
+                'vcn_cidr' => $this->vcn_cidr,
+                'subnet_cidr' => $this->subnet_cidr,
+                'availability_domain' => $this->availability_domain,
+                'shape' => $this->shape,
+                'image_id' => $this->image_id,
+                'instance_display_name' => $this->server_name,
+                'ssh_authorized_keys' => $privateKey?->public_key ?? '',
+                'ocpus' => (string) $this->ocpus,
+                'memory_in_gbs' => (string) $this->memory_in_gbs,
+                'boot_volume_size_in_gbs' => (string) $this->boot_volume_size_in_gbs,
+                'project_tag' => currentTeam()->name,
+                'environment_tag' => 'production',
+            ], fn ($v) => $v !== '');
+
+            [$server, $ociStack] = DB::transaction(function () use ($compartmentOcid, $tfVars) {
                 $server = Server::create([
                     'name' => strtolower(trim($this->server_name)),
-                    'ip' => '', // ponytail: OCI IP assigned after Terraform apply; polled later
+                    'ip' => '', // ponytail: filled after Terraform apply
                     'port' => 22,
                     'user' => $this->ssh_username,
                     'team_id' => currentTeam()->id,
                     'oci_connection_id' => $this->selected_connection_id,
                     'oci_region' => $this->region,
-                    'oci_compartment_id' => $this->compartment_ocid,
+                    'oci_compartment_id' => $compartmentOcid,
+                    'oci_metrics_source' => $this->oci_metrics_source,
                     'private_key_id' => $this->private_key_id,
                     'is_build_server' => false,
                 ]);
 
-                $privateKey = PrivateKey::find($this->private_key_id);
                 $ociStack = OciStack::create([
                     'server_id' => $server->id,
                     'team_id' => currentTeam()->id,
                     'oci_connection_id' => $this->selected_connection_id,
                     'name' => $this->server_name,
-                    'compartment_ocid' => $this->compartment_ocid,
+                    'compartment_ocid' => $compartmentOcid,
                     'region' => $this->region,
                     'config_source' => 'template_zip',
                     'status' => 'pending',
-                    'tf_vars' => [
-                        'compartment_ocid' => $this->compartment_ocid,
-                        'region' => $this->region,
-                        'availability_domain' => $this->availability_domain,
-                        'subnet_ocid' => $this->subnet_ocid,
-                        'shape' => $this->shape,
-                        'image_id' => $this->image_id,
-                        'instance_name' => $this->server_name,
-                        'ssh_authorized_keys' => $privateKey?->public_key ?? '',
-                        'project_tag' => currentTeam()->name,
-                        'environment_tag' => 'production',
-                    ],
+                    'tf_vars' => $tfVars,
+                    'firewall_rules' => $this->firewall_rules,
                 ]);
 
                 return [$server, $ociStack];
@@ -280,9 +470,7 @@ class ByOracleCloud extends Component
             $this->dispatch('serverCreated', $server->uuid);
 
             if ($this->from_onboarding) {
-                currentTeam()->update([
-                    'show_boarding' => false,
-                ]);
+                currentTeam()->update(['show_boarding' => false]);
                 refreshSession();
             }
 

@@ -15,7 +15,14 @@ from oci_bridge.compute import (
     list_shapes,
     list_images,
     list_subnets,
-    list_instances
+    list_vcns,
+    list_instances,
+    list_nsg_rules,
+    add_nsg_rules,
+    remove_nsg_rules,
+    get_instance_status,
+    get_instance_metrics,
+    instance_action,
 )
 
 def _fake_rsa_key():
@@ -216,6 +223,118 @@ class TestCompute(unittest.TestCase):
         self.assertEqual(result['data'][0]['region'], 'us-ashburn-1')
         self.mock_compute_client.list_instances.assert_called_once()
 
+    def test_list_vcns_happy_path(self):
+        resp = MagicMock()
+        vcn1 = MagicMock()
+        vcn1.id = 'ocid1.vcn.oc1..vcn1'
+        vcn1.display_name = 'my-vcn'
+        vcn1.cidr_blocks = ['10.0.0.0/16']
+        vcn1.lifecycle_state = 'AVAILABLE'
+        resp.data = [vcn1]
+        self.mock_vnet_client.list_vcns.return_value = resp
+
+        result = list_vcns(self._cfg(), 'comp_id', 'us-ashburn-1')
+
+        self.assertTrue(result['success'])
+        self.assertEqual(len(result['data']), 1)
+        self.assertEqual(result['data'][0]['id'], 'ocid1.vcn.oc1..vcn1')
+        self.assertEqual(result['data'][0]['cidr_blocks'], ['10.0.0.0/16'])
+        self.assertEqual(result['data'][0]['lifecycle_state'], 'AVAILABLE')
+        self.mock_vnet_client.list_vcns.assert_called_once()
+
+    def test_list_nsg_rules_happy_path(self):
+        resp = MagicMock()
+        rule1 = MagicMock()
+        rule1.id = 'rule-001'
+        rule1.protocol = '6'
+        rule1.source = '0.0.0.0/0'
+        rule1.source_type = 'CIDR_BLOCK'
+        rule1.description = 'SSH'
+        rule1.tcp_options = MagicMock()
+        rule1.tcp_options.destination_port_range = MagicMock(min=22, max=22)
+        rule1.udp_options = None
+        resp.data = [rule1]
+        self.mock_vnet_client.list_network_security_group_security_rules.return_value = resp
+
+        result = list_nsg_rules(self._cfg(), 'nsg-id', 'us-ashburn-1')
+
+        self.assertTrue(result['success'])
+        self.assertEqual(len(result['data']), 1)
+        self.assertEqual(result['data'][0]['id'], 'rule-001')
+        self.assertEqual(result['data'][0]['port_min'], 22)
+        self.assertEqual(result['data'][0]['port_max'], 22)
+
+    def test_add_nsg_rules_happy_path(self):
+        resp = MagicMock()
+        added = MagicMock()
+        added.id = 'rule-new'
+        added.description = 'HTTP'
+        resp.data = MagicMock()
+        resp.data.security_rules = [added]
+        self.mock_vnet_client.add_network_security_group_security_rules.return_value = resp
+
+        result = add_nsg_rules(self._cfg(), 'nsg-id', [{'protocol': 'TCP', 'port_min': 80, 'port_max': 80, 'source': '0.0.0.0/0', 'description': 'HTTP'}])
+
+        self.assertTrue(result['success'])
+        self.assertEqual(result['data'][0]['id'], 'rule-new')
+        self.mock_vnet_client.add_network_security_group_security_rules.assert_called_once()
+
+    def test_remove_nsg_rules_happy_path(self):
+        self.mock_vnet_client.remove_network_security_group_security_rules.return_value = MagicMock()
+
+        result = remove_nsg_rules(self._cfg(), 'nsg-id', ['rule-001', 'rule-002'])
+
+        self.assertTrue(result['success'])
+        self.assertEqual(result['data']['removed'], 2)
+        self.mock_vnet_client.remove_network_security_group_security_rules.assert_called_once()
+
+    def test_get_instance_status_happy_path(self):
+        resp = MagicMock()
+        resp.data.id = 'ocid1.instance.oc1..inst1'
+        resp.data.display_name = 'my-vm'
+        resp.data.lifecycle_state = 'RUNNING'
+        resp.data.shape = 'VM.Standard.E2.1'
+        resp.data.time_created = None
+        self.mock_compute_client.get_instance.return_value = resp
+
+        result = get_instance_status(self._cfg(), 'ocid1.instance.oc1..inst1', 'us-ashburn-1')
+
+        self.assertTrue(result['success'])
+        self.assertEqual(result['data']['lifecycle_state'], 'RUNNING')
+        self.mock_compute_client.get_instance.assert_called_once_with(instance_id='ocid1.instance.oc1..inst1', retry_strategy=unittest.mock.ANY)
+
+    def test_instance_action_happy_path(self):
+        resp = MagicMock()
+        resp.data.lifecycle_state = 'STOPPING'
+        self.mock_compute_client.instance_action.return_value = resp
+
+        result = instance_action(self._cfg(), 'ocid1.instance.oc1..inst1', 'us-ashburn-1', 'SOFTSTOP')
+
+        self.assertTrue(result['success'])
+        self.assertEqual(result['data']['lifecycle_state'], 'STOPPING')
+
+    def test_instance_action_invalid_action(self):
+        result = instance_action(self._cfg(), 'ocid1.instance.oc1..inst1', 'us-ashburn-1', 'DELETE')
+
+        self.assertFalse(result['success'])
+        self.assertEqual(result['error']['category'], 'validation')
+
+    def test_get_instance_metrics_happy_path(self):
+        with patch('oci.monitoring.MonitoringClient') as mock_monitoring_cls:
+            mock_client = mock_monitoring_cls.return_value
+            pt = MagicMock()
+            pt.value = 45.5
+            metric_resp = MagicMock()
+            metric_resp.data = [MagicMock(aggregated_datapoints=[pt])]
+            mock_client.summarize_metrics_data.return_value = metric_resp
+
+            result = get_instance_metrics(self._cfg(), 'inst-id', 'comp-id', 'us-ashburn-1')
+
+        self.assertTrue(result['success'])
+        # cpu_percent comes from oci_compute namespace; may be None in mock if not wired
+        self.assertIn('cpu_percent', result['data'])
+        self.assertIn('memory_percent', result['data'])
+
     def test_service_error_returns_failure(self):
         err = ServiceError(status=404, code='NotAuthorizedOrNotFound', headers={}, message='test')
         cases = [
@@ -224,7 +343,11 @@ class TestCompute(unittest.TestCase):
             (self.mock_compute_client.list_shapes, list_shapes, (self._cfg(), 'comp_id', 'us-ashburn-1')),
             (self.mock_compute_client.list_images, list_images, (self._cfg(), 'comp_id', 'us-ashburn-1')),
             (self.mock_vnet_client.list_subnets, list_subnets, (self._cfg(), 'vcn_id', 'comp_id', 'us-ashburn-1')),
+            (self.mock_vnet_client.list_vcns, list_vcns, (self._cfg(), 'comp_id', 'us-ashburn-1')),
             (self.mock_compute_client.list_instances, list_instances, (self._cfg(), 'comp_id', 'us-ashburn-1')),
+            (self.mock_vnet_client.list_network_security_group_security_rules, list_nsg_rules, (self._cfg(), 'nsg-id', 'us-ashburn-1')),
+            (self.mock_compute_client.get_instance, get_instance_status, (self._cfg(), 'inst-id', 'us-ashburn-1')),
+            (self.mock_compute_client.instance_action, instance_action, (self._cfg(), 'inst-id', 'us-ashburn-1', 'START')),
         ]
         for mock_method, fn, args in cases:
             with self.subTest(fn=fn.__name__):

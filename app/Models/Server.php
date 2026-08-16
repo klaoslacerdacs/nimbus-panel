@@ -27,6 +27,7 @@ use App\Traits\HasSafeStringAttribute;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
@@ -293,6 +294,7 @@ class Server extends BaseModel
         'oci_instance_status',
         'oci_region',
         'oci_compartment_id',
+        'oci_metrics_source',
         'team_id',
         'hetzner_server_id',
         'hetzner_server_status',
@@ -1250,6 +1252,11 @@ $schema://$host {
     public function ociConnection()
     {
         return $this->belongsTo(OciConnection::class);
+    }
+
+    public function ociStack(): HasOne
+    {
+        return $this->hasOne(OciStack::class);
     }
 
     public function sslCertificates()

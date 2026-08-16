@@ -22,3 +22,23 @@ output "availability_domain" {
   value       = oci_core_instance.server.availability_domain
   description = "Availability domain where the instance was placed"
 }
+
+output "compartment_id" {
+  value       = local.compartment_id
+  description = "Compartment OCID (created or existing)"
+}
+
+output "vcn_id" {
+  value       = local.vcn_id
+  description = "VCN OCID (created or existing)"
+}
+
+output "subnet_id" {
+  value       = local.subnet_id
+  description = "Subnet OCID (created or existing)"
+}
+
+output "nsg_id" {
+  value       = var.create_network ? oci_core_network_security_group.new[0].id : var.existing_nsg_ocid
+  description = "NSG OCID attached to the instance (empty if no NSG)"
+}

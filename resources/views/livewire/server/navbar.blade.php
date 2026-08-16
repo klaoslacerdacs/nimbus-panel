@@ -56,6 +56,12 @@
                 'warning' => $server->isSentinelEnabled() && ! $server->isSentinelLive(),
             ],
             [
+                'label' => 'OCI',
+                'route' => 'server.oci',
+                'active' => request()->routeIs('server.oci'),
+                'visible' => (bool) $server->oci_connection_id,
+            ],
+            [
                 'label' => 'Resources',
                 'route' => 'server.resources',
                 'active' => request()->routeIs('server.resources'),

@@ -11,11 +11,15 @@ class OciStack extends BaseModel
     use HasFactory;
 
     protected $fillable = [
+        'server_id',
         'team_id',
         'oci_connection_id',
         'name',
         'stack_ocid',
         'compartment_ocid',
+        'vcn_ocid',
+        'nsg_ocid',
+        'firewall_rules',
         'region',
         'config_source',
         'config_url',
@@ -35,6 +39,7 @@ class OciStack extends BaseModel
     {
         return [
             'tf_vars' => 'array',
+            'firewall_rules' => 'array',
         ];
     }
 

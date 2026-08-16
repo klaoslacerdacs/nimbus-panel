@@ -126,6 +126,8 @@ class Show extends Component
 
     public bool $digitalOceanNoMatchFound = false;
 
+    public string $oci_metrics_source = 'oci_monitoring';
+
     public function getListeners()
     {
         $teamId = $this->server->team_id ?? auth()->user()->currentTeam()->id;
@@ -215,6 +217,8 @@ class Show extends Component
             $this->loadHetznerTokens();
             $this->loadVultrTokens();
             $this->loadDigitalOceanTokens();
+
+            $this->oci_metrics_source = $this->server->oci_metrics_source ?? 'oci_monitoring';
 
         } catch (\Throwable $e) {
             return handleError($e, $this);
@@ -309,6 +313,13 @@ class Show extends Component
     public function refresh()
     {
         $this->syncData();
+    }
+
+    public function saveOciMetricsSource(): void
+    {
+        $this->validate(['oci_metrics_source' => 'required|in:oci_monitoring,sentinel']);
+        $this->server->update(['oci_metrics_source' => $this->oci_metrics_source]);
+        $this->dispatch('success', 'Metrics source updated.');
     }
 
     public function handleSentinelRestarted($event)

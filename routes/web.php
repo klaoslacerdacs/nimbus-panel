@@ -64,6 +64,7 @@ use App\Livewire\Server\DockerCleanup;
 use App\Livewire\Server\Index as ServerIndex;
 use App\Livewire\Server\LogDrains;
 use App\Livewire\Server\New\ByOracleCloud;
+use App\Livewire\Server\OciDashboard;
 use App\Livewire\Server\PrivateKey\Show as PrivateKeyShow;
 use App\Livewire\Server\Proxy\DynamicConfigurations as ProxyDynamicConfigurations;
 use App\Livewire\Server\Proxy\Logs as ProxyLogs;
@@ -363,6 +364,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::get('/destinations', ServerDestinations::class)->name('server.destinations');
         Route::get('/log-drains', LogDrains::class)->name('server.log-drains');
         Route::get('/metrics', ServerCharts::class)->name('server.metrics');
+        Route::get('/oci', OciDashboard::class)->name('server.oci');
         Route::get('/danger', DeleteServer::class)->name('server.delete');
         Route::get('/transfer', ServerTransfer::class)->name('server.transfer');
         Route::get('/proxy', ProxyShow::class)->name('server.proxy');
