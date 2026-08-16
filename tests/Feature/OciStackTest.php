@@ -52,3 +52,15 @@ it('casts tf_vars to array', function () {
 
     expect($stack->fresh()->tf_vars)->toBe(['shape' => 'VM.Standard.A1.Flex']);
 });
+
+it('isActive returns true for in-flight statuses including destroying', function () {
+    foreach (['pending', 'planning', 'applying', 'destroying'] as $status) {
+        $stack = new OciStack(['status' => $status]);
+        expect($stack->isActive())->toBeTrue("expected isActive for status={$status}");
+    }
+
+    foreach (['provisioned', 'failed', 'destroy_failed'] as $status) {
+        $stack = new OciStack(['status' => $status]);
+        expect($stack->isActive())->toBeFalse("expected !isActive for status={$status}");
+    }
+});

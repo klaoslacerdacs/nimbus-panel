@@ -48,6 +48,16 @@ class OciStack extends BaseModel
         return $this->belongsTo(OciConnection::class);
     }
 
+    public function server(): BelongsTo
+    {
+        return $this->belongsTo(Server::class);
+    }
+
+    public function isActive(): bool
+    {
+        return in_array($this->status, ['pending', 'planning', 'applying', 'destroying']);
+    }
+
     public static function ownedByTeam(int $teamId): Builder
     {
         return self::query()->where('team_id', $teamId);
