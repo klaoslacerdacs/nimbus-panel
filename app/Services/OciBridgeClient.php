@@ -41,27 +41,32 @@ class OciBridgeClient
 
     public function listInstances(array $config, string $compartmentId, string $region): array
     {
-        return $this->request('POST', '/v1/compute/instances', compact('config', 'compartmentId', 'region'));
+        return $this->request('POST', '/v1/compute/instances', ['config' => $config, 'compartment_id' => $compartmentId, 'region' => $region]);
     }
 
     public function listAvailabilityDomains(array $config, string $compartmentId, string $region): array
     {
-        return $this->request('POST', '/v1/compute/availability-domains', compact('config', 'compartmentId', 'region'));
+        return $this->request('POST', '/v1/compute/availability-domains', ['config' => $config, 'compartment_id' => $compartmentId, 'region' => $region]);
     }
 
     public function listShapes(array $config, string $compartmentId, string $region): array
     {
-        return $this->request('POST', '/v1/compute/shapes', compact('config', 'compartmentId', 'region'));
+        return $this->request('POST', '/v1/compute/shapes', ['config' => $config, 'compartment_id' => $compartmentId, 'region' => $region]);
     }
 
     public function listImages(array $config, string $compartmentId, string $region): array
     {
-        return $this->request('POST', '/v1/compute/images', compact('config', 'compartmentId', 'region'));
+        return $this->request('POST', '/v1/compute/images', ['config' => $config, 'compartment_id' => $compartmentId, 'region' => $region]);
     }
 
     public function listSubnets(array $config, string $vcnId, string $compartmentId, string $region): array
     {
-        return $this->request('POST', '/v1/compute/subnets', compact('config', 'vcnId', 'compartmentId', 'region'));
+        return $this->request('POST', '/v1/compute/subnets', ['config' => $config, 'vcn_id' => $vcnId, 'compartment_id' => $compartmentId, 'region' => $region]);
+    }
+
+    public function listSubnetsByCompartment(array $config, string $compartmentId, string $region): array
+    {
+        return $this->request('POST', '/v1/compute/subnets-by-compartment', ['config' => $config, 'compartment_id' => $compartmentId, 'region' => $region]);
     }
 
     public function createStack(array $config, string $name, string $compartmentId, string $configSourceType, array $configSourceParams, array $variables = []): array
@@ -89,6 +94,11 @@ class OciBridgeClient
     public function getStackJob(array $config, string $jobId): array
     {
         return $this->request('POST', "/v1/stacks/jobs/{$jobId}/status", compact('config'));
+    }
+
+    public function getStackOutputs(array $config, string $jobId): array
+    {
+        return $this->request('POST', "/v1/stacks/jobs/{$jobId}/outputs", compact('config'));
     }
 
     private function request(string $method, string $endpoint, array $data = []): array

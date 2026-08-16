@@ -73,8 +73,16 @@ class OciStackProvisionJob implements ShouldQueue
             return;
         }
 
-        $stack->update(['status' => 'provisioned']);
-        // ponytail: Server IP + status updated when RM job outputs parsed in P4
+        $outputs = $bridge->getStackOutputs($config, $apply['job_id']);
+        if (isset($outputs['public_ip'])) {
+            $stack->server?->update(['ip' => $outputs['public_ip']]);
+            $stack->update([
+                'status' => 'provisioned',
+                'oci_instance_id' => $outputs['instance_id'] ?? null,
+            ]);
+        } else {
+            $stack->update(['status' => 'provisioned']);
+        }
     }
 
     private function pollUntilDone(OciBridgeClient $bridge, array $config, string $jobId): bool

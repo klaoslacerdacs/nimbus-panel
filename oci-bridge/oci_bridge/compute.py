@@ -201,6 +201,46 @@ def list_images(config: OciConfig, compartment_id: str, region: str) -> Dict[str
             }
         }
 
+def list_subnets_by_compartment(config: OciConfig, compartment_id: str, region: str) -> Dict[str, Any]:
+    authentication = build_authentication(config)
+    client_kwargs = {
+        'config': authentication.sdk_config,
+        'signer': authentication.signer
+    }
+    client = oci.core.VirtualNetworkClient(**client_kwargs)
+    retry_strategy = oci.retry.NoneRetryStrategy()
+
+    try:
+        response = oci.pagination.list_call_get_all_results(
+            client.list_subnets,
+            compartment_id=compartment_id,
+            retry_strategy=retry_strategy
+        )
+        subnets = [
+            {
+                'id': s.id,
+                'display_name': s.display_name,
+                'cidr_block': s.cidr_block,
+                'availability_domain': s.availability_domain,
+            }
+            for s in response.data
+        ]
+        return {'success': True, 'data': subnets}
+    except ServiceError as e:
+        return {
+            'success': False,
+            'error': {
+                'category': 'service',
+                'exception_type': type(e).__name__,
+                'status': e.status,
+                'code': e.code,
+                'request_id': e.request_id,
+            },
+        }
+    except Exception as e:
+        return {'success': False, 'error': {'category': 'unexpected', 'exception_type': type(e).__name__}}
+
+
 def list_subnets(config: OciConfig, vcn_id: str, compartment_id: str, region: str) -> Dict[str, Any]:
     authentication = build_authentication(config)
     client_kwargs = {

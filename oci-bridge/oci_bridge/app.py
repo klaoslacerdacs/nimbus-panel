@@ -76,10 +76,27 @@ class ComputeBody(BaseModel):
     config: Dict[str, Any]
 
 
+class ComputeWithRegionBody(BaseModel):
+    config: Dict[str, Any]
+    region: str
+
+
+class ComputeWithLocationBody(BaseModel):
+    config: Dict[str, Any]
+    compartment_id: str
+    region: str
+
+
+class SubnetsBody(BaseModel):
+    config: Dict[str, Any]
+    vcn_id: str
+    compartment_id: str
+    region: str
+
+
 @app.get("/v1/compartments")
 def list_compartments(region: str, config: str = "", _: None = Depends(_verify_token)):
-    # GET with query params — config arrives as JSON string for GET compat
-    # ponytail: POST body would be cleaner; switch when OciBridgeClient supports POST for reads
+    # ponytail: legacy GET kept for backwards compat; POST /v1/compartments is preferred
     import json
     cfg = _parse_config(json.loads(config)) if config else None
     if cfg is None:
@@ -88,33 +105,38 @@ def list_compartments(region: str, config: str = "", _: None = Depends(_verify_t
 
 
 @app.post("/v1/compartments")
-def list_compartments_post(body: ComputeBody, region: str, _: None = Depends(_verify_token)):
-    return _respond(compute.list_compartments(_parse_config(body.config), region))
+def list_compartments_post(body: ComputeWithRegionBody, _: None = Depends(_verify_token)):
+    return _respond(compute.list_compartments(_parse_config(body.config), body.region))
 
 
 @app.post("/v1/compute/instances")
-def list_instances(body: ComputeBody, compartment_id: str, region: str, _: None = Depends(_verify_token)):
-    return _respond(compute.list_instances(_parse_config(body.config), compartment_id, region))
+def list_instances(body: ComputeWithLocationBody, _: None = Depends(_verify_token)):
+    return _respond(compute.list_instances(_parse_config(body.config), body.compartment_id, body.region))
 
 
 @app.post("/v1/compute/availability-domains")
-def list_availability_domains(body: ComputeBody, compartment_id: str, region: str, _: None = Depends(_verify_token)):
-    return _respond(compute.list_availability_domains(_parse_config(body.config), compartment_id, region))
+def list_availability_domains(body: ComputeWithLocationBody, _: None = Depends(_verify_token)):
+    return _respond(compute.list_availability_domains(_parse_config(body.config), body.compartment_id, body.region))
 
 
 @app.post("/v1/compute/shapes")
-def list_shapes(body: ComputeBody, compartment_id: str, region: str, _: None = Depends(_verify_token)):
-    return _respond(compute.list_shapes(_parse_config(body.config), compartment_id, region))
+def list_shapes(body: ComputeWithLocationBody, _: None = Depends(_verify_token)):
+    return _respond(compute.list_shapes(_parse_config(body.config), body.compartment_id, body.region))
 
 
 @app.post("/v1/compute/images")
-def list_images(body: ComputeBody, compartment_id: str, region: str, _: None = Depends(_verify_token)):
-    return _respond(compute.list_images(_parse_config(body.config), compartment_id, region))
+def list_images(body: ComputeWithLocationBody, _: None = Depends(_verify_token)):
+    return _respond(compute.list_images(_parse_config(body.config), body.compartment_id, body.region))
 
 
 @app.post("/v1/compute/subnets")
-def list_subnets(body: ComputeBody, vcn_id: str, compartment_id: str, region: str, _: None = Depends(_verify_token)):
-    return _respond(compute.list_subnets(_parse_config(body.config), vcn_id, compartment_id, region))
+def list_subnets(body: SubnetsBody, _: None = Depends(_verify_token)):
+    return _respond(compute.list_subnets(_parse_config(body.config), body.vcn_id, body.compartment_id, body.region))
+
+
+@app.post("/v1/compute/subnets-by-compartment")
+def list_subnets_by_compartment(body: ComputeWithLocationBody, _: None = Depends(_verify_token)):
+    return _respond(compute.list_subnets_by_compartment(_parse_config(body.config), body.compartment_id, body.region))
 
 
 # ── resource manager ─────────────────────────────────────────────────────────
@@ -165,4 +187,10 @@ class GetJobBody(BaseModel):
 @app.post("/v1/stacks/jobs/{job_id}/status")
 def get_job(job_id: str, body: GetJobBody, _: None = Depends(_verify_token)):
     result = rm.get_job(_parse_config(body.config), job_id)
+    return _respond(result)
+
+
+@app.post("/v1/stacks/jobs/{job_id}/outputs")
+def get_job_outputs(job_id: str, body: GetJobBody, _: None = Depends(_verify_token)):
+    result = rm.get_stack_outputs(_parse_config(body.config), job_id)
     return _respond(result)

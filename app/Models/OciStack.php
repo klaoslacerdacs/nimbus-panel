@@ -23,6 +23,7 @@ class OciStack extends BaseModel
         'status',
         'managed_by',
         'last_plan_summary',
+        'oci_instance_id',
     ];
 
     protected $attributes = [

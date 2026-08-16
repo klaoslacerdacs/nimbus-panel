@@ -125,6 +125,45 @@ def job_operation(config: OciConfig, stack_id: str, operation: Literal['PLAN', '
             }
         }
 
+def get_stack_outputs(config: OciConfig, job_id: str) -> Dict[str, Any]:
+    authentication = build_authentication(config)
+    client_kwargs = {
+        'config': authentication.sdk_config,
+        'signer': authentication.signer
+    }
+    client = oci.resource_manager.ResourceManagerClient(**client_kwargs)
+    retry_strategy = oci.retry.NoneRetryStrategy()
+
+    try:
+        response = client.get_job_tf_state(job_id=job_id, retry_strategy=retry_strategy)
+        import json
+        state = json.loads(response.data.read().decode('utf-8'))
+        outputs = state.get('outputs', {})
+        return {
+            'success': True,
+            'data': {k: v.get('value') for k, v in outputs.items()}
+        }
+    except ServiceError as e:
+        return {
+            'success': False,
+            'error': {
+                'category': 'service',
+                'exception_type': type(e).__name__,
+                'status': e.status,
+                'code': e.code,
+                'request_id': e.request_id
+            }
+        }
+    except Exception as e:
+        return {
+            'success': False,
+            'error': {
+                'category': 'unexpected',
+                'exception_type': type(e).__name__
+            }
+        }
+
+
 def get_job(config: OciConfig, job_id: str) -> Dict[str, Any]:
     authentication = build_authentication(config)
     client_kwargs = {

@@ -9,6 +9,7 @@ use App\Models\PrivateKey;
 use App\Models\Server;
 use App\Models\Team;
 use App\Rules\ValidHostname;
+use App\Services\OciBridgeClient;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Illuminate\Support\Facades\DB;
 use Livewire\Attributes\Locked;
@@ -33,6 +34,14 @@ class ByOracleCloud extends Component
     public string $region = 'us-ashburn-1';
 
     public string $compartment_ocid = '';
+
+    public array $availability_domains = [];
+
+    public string $availability_domain = '';
+
+    public array $subnets = [];
+
+    public string $subnet_ocid = '';
 
     public string $shape = 'VM.Standard.A1.Flex';
 
@@ -79,6 +88,43 @@ class ByOracleCloud extends Component
         $this->current_step = 1;
     }
 
+    public function updatedRegion(): void
+    {
+        $this->loadDropdowns();
+    }
+
+    public function updatedCompartmentOcid(): void
+    {
+        $this->loadDropdowns();
+    }
+
+    private function loadDropdowns(): void
+    {
+        if (! $this->selected_connection_id || ! $this->compartment_ocid || ! $this->region) {
+            return;
+        }
+
+        $connection = OciConnection::ownedByCurrentTeam()->find($this->selected_connection_id);
+        if (! $connection) {
+            return;
+        }
+
+        $client = new OciBridgeClient;
+        $bridgeConfig = $connection->toBridgeConfig();
+
+        $adResult = $client->listAvailabilityDomains($bridgeConfig, $this->compartment_ocid, $this->region);
+        $this->availability_domains = $adResult['data'] ?? [];
+        if ($this->availability_domains && ! $this->availability_domain) {
+            $this->availability_domain = $this->availability_domains[0]['name'] ?? '';
+        }
+
+        $subnetResult = $client->listSubnetsByCompartment($bridgeConfig, $this->compartment_ocid, $this->region);
+        $this->subnets = $subnetResult['data'] ?? [];
+        if ($this->subnets && ! $this->subnet_ocid) {
+            $this->subnet_ocid = $this->subnets[0]['id'] ?? '';
+        }
+    }
+
     public function handleConnectionCreated($connectionId): void
     {
         $this->selected_connection_id = $connectionId;
@@ -103,6 +149,8 @@ class ByOracleCloud extends Component
                 'server_name' => ['required', 'string', 'max:253', new ValidHostname],
                 'region' => 'required|string',
                 'compartment_ocid' => 'required|string',
+                'availability_domain' => 'required|string',
+                'subnet_ocid' => 'required|string',
                 'shape' => 'required|string',
                 'image_id' => 'required|string',
                 'private_key_id' => 'required|integer|exists:private_keys,id,team_id,'.currentTeam()->id,
@@ -211,13 +259,14 @@ class ByOracleCloud extends Component
                     'tf_vars' => [
                         'compartment_ocid' => $this->compartment_ocid,
                         'region' => $this->region,
+                        'availability_domain' => $this->availability_domain,
+                        'subnet_ocid' => $this->subnet_ocid,
                         'shape' => $this->shape,
                         'image_id' => $this->image_id,
                         'instance_name' => $this->server_name,
                         'ssh_authorized_keys' => $privateKey?->public_key ?? '',
                         'project_tag' => currentTeam()->name,
                         'environment_tag' => 'production',
-                        // ponytail: availability_domain + subnet_ocid added to wizard in next iteration
                     ],
                 ]);
 

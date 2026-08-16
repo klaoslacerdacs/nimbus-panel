@@ -29,8 +29,28 @@
                 <div class="lg:col-span-2">
                     <x-forms.input id="server_name" label="Server name" required />
                 </div>
-                <x-forms.input id="region" label="Region" required />
-                <x-forms.input id="compartment_ocid" label="Compartment OCID" required />
+                <x-forms.input id="region" label="Region" wire:model.blur="region" required />
+                <x-forms.input id="compartment_ocid" label="Compartment OCID" wire:model.blur="compartment_ocid" required />
+                <div>
+                    <label for="availability_domain" class="mb-1.5 block text-sm font-medium">Availability Domain <span class="text-red-500">*</span></label>
+                    <select id="availability_domain" wire:model="availability_domain" class="w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm dark:border-white/[0.08] dark:bg-neutral-900">
+                        <option value="">Select an availability domain…</option>
+                        @foreach ($availability_domains as $ad)
+                            <option value="{{ $ad['name'] }}">{{ $ad['name'] }}</option>
+                        @endforeach
+                    </select>
+                    @error('availability_domain') <p class="mt-1 text-xs text-red-500">{{ $message }}</p> @enderror
+                </div>
+                <div>
+                    <label for="subnet_ocid" class="mb-1.5 block text-sm font-medium">Subnet <span class="text-red-500">*</span></label>
+                    <select id="subnet_ocid" wire:model="subnet_ocid" class="w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm dark:border-white/[0.08] dark:bg-neutral-900">
+                        <option value="">Select a subnet…</option>
+                        @foreach ($subnets as $subnet)
+                            <option value="{{ $subnet['id'] }}">{{ $subnet['display_name'] }} ({{ $subnet['cidr_block'] }})</option>
+                        @endforeach
+                    </select>
+                    @error('subnet_ocid') <p class="mt-1 text-xs text-red-500">{{ $message }}</p> @enderror
+                </div>
                 <x-forms.input id="shape" label="Shape" required />
                 <x-forms.input id="image_id" label="Image ID" required />
                 @if ($private_keys->isEmpty())

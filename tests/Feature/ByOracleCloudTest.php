@@ -49,6 +49,8 @@ it('createServer creates Server and OciStack records', function () {
         ->set('server_name', 'test-server')
         ->set('region', 'us-ashburn-1')
         ->set('compartment_ocid', 'ocid1.compartment.oc1..example')
+        ->set('availability_domain', 'MGTy:SA-SAOPAULO-1-AD-1')
+        ->set('subnet_ocid', 'ocid1.subnet.oc1..example')
         ->set('shape', 'VM.Standard.A1.Flex')
         ->set('image_id', 'ocid1.image.oc1..example')
         ->set('private_key_id', $privateKey->id)
@@ -94,6 +96,8 @@ it('shows validation errors on empty submit in step 2', function () {
 
     $component->assertHasErrors([
         'compartment_ocid',
+        'availability_domain',
+        'subnet_ocid',
         'image_id',
     ]);
 });
