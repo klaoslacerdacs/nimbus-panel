@@ -33,14 +33,17 @@ def _parse_config(raw: Dict[str, Any]) -> OciConfig:
     mode = raw.get("auth_mode")
     if mode == AuthMode.INSTANCE_PRINCIPAL or mode == "instance_principal":
         return InstancePrincipalConfig()
-    return ApiKeyConfig(
-        tenancy_id=raw["tenancy_id"],
-        user_id=raw["user_id"],
-        fingerprint=raw["fingerprint"],
-        region=raw["region"],
-        key_content=raw["key_content"],
-        passphrase=raw.get("passphrase"),
-    )
+    try:
+        return ApiKeyConfig(
+            tenancy_id=raw["tenancy_id"],
+            user_id=raw["user_id"],
+            fingerprint=raw["fingerprint"],
+            region=raw["region"],
+            key_content=raw["key_content"],
+            passphrase=raw.get("passphrase"),
+        )
+    except KeyError as e:
+        raise HTTPException(status_code=422, detail=f"Missing config field: {e}")
 
 
 def _respond(result: Dict[str, Any]) -> Dict[str, Any]:

@@ -34,8 +34,8 @@ def test_token_accepted(monkeypatch):
 @patch("oci_bridge.app.compute.list_instances")
 def test_list_instances_proxies_result(mock_fn):
     mock_fn.return_value = {"success": True, "data": [{"id": "ocid1.instance.x"}]}
-    body = {"config": {"auth_mode": "instance_principal"}}
-    resp = client.post("/v1/compute/instances?compartment_id=ocid1.c.x&region=us-ashburn-1", json=body)
+    body = {"config": {"auth_mode": "instance_principal"}, "compartment_id": "ocid1.c.x", "region": "us-ashburn-1"}
+    resp = client.post("/v1/compute/instances", json=body)
     assert resp.status_code == 200
     assert resp.json()["data"][0]["id"] == "ocid1.instance.x"
 

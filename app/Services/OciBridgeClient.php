@@ -157,13 +157,14 @@ class OciBridgeClient
                 }
 
                 return $this->normalizeError($response->status(), $response->json());
-            } catch (ConnectionException $e) {
+            } catch (\Throwable $e) {
+                // Covers ConnectionException (connect) and RequestException (read timeout)
                 $attempt++;
                 if ($attempt > $this->maxRetries) {
                     return [
                         'success' => false,
                         'error' => true,
-                        'message' => 'Bridge unreachable after retries',
+                        'message' => $e instanceof ConnectionException ? 'Bridge unreachable after retries' : $e->getMessage(),
                         'code' => 503,
                         'details' => null,
                     ];

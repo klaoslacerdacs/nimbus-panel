@@ -17,7 +17,7 @@
             ];
             $currentIdx = $steps[$stackStatus] ?? ($isDestroying ? 1 : 0);
         @endphp
-        <div wire:poll.5000ms="loadProvisioningStatus"
+        <div @if ($isProvisioning || $isDestroying) wire:poll.5000ms="loadProvisioningStatus" @endif
             class="rounded-lg border {{ $isFailed ? 'border-red-300 dark:border-red-700' : ($isDestroying ? 'border-orange-200 dark:border-orange-700' : 'border-blue-200 dark:border-blue-700') }} p-4">
             <div class="mb-3 flex items-center justify-between">
                 <h3 class="text-sm font-semibold">

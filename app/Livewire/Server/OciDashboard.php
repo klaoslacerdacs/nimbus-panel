@@ -33,6 +33,8 @@ class OciDashboard extends Component
 
     public bool $isProvisioning = false;
 
+    public bool $statusLoadAttempted = false;
+
     public function mount(Server $server): void
     {
         $this->authorize('view', $server);
@@ -56,7 +58,8 @@ class OciDashboard extends Component
         $this->stackMessage = $ociStack->last_plan_summary;
         $this->isProvisioning = $ociStack->isActive();
 
-        if ($ociStack->status === 'provisioned' && ! $this->instanceStatus) {
+        if ($ociStack->status === 'provisioned' && ! $this->statusLoadAttempted) {
+            $this->statusLoadAttempted = true;
             $this->loadStatus();
             $this->loadMetrics();
             $this->loadNsgRules();
@@ -131,16 +134,18 @@ class OciDashboard extends Component
 
         $client = new OciBridgeClient;
         $result = $client->listNsgRules($connection->toBridgeConfig(), $ociStack->nsg_ocid, $this->server->oci_region);
-        $this->nsgRules = $result['data'] ?? [];
+        $this->nsgRules = isset($result['error']) ? [] : $result;
     }
 
     public function startInstance(): void
     {
+        $this->authorize('update', $this->server);
         $this->performAction('START');
     }
 
     public function confirmStop(): void
     {
+        $this->authorize('update', $this->server);
         $this->confirmingStop = true;
     }
 
@@ -152,6 +157,7 @@ class OciDashboard extends Component
 
     public function confirmReboot(): void
     {
+        $this->authorize('update', $this->server);
         $this->confirmingReboot = true;
     }
 
@@ -194,6 +200,7 @@ class OciDashboard extends Component
 
     public function addNsgRule(): void
     {
+        $this->authorize('update', $this->server);
         $this->validate([
             'newRule.protocol' => 'required|in:TCP,UDP,ICMP,ALL',
             'newRule.port_min' => 'nullable|integer|min:1|max:65535',
@@ -222,6 +229,7 @@ class OciDashboard extends Component
 
     public function removeNsgRule(string $ruleId): void
     {
+        $this->authorize('update', $this->server);
         $ociStack = $this->server->ociStack;
         if (! $ociStack?->nsg_ocid) {
             return;

@@ -203,7 +203,7 @@ class ByOracleCloud extends Component
 
         $client = new OciBridgeClient;
         $result = $client->listCompartments($connection->toBridgeConfig(), $this->region);
-        $this->compartments = $result['data'] ?? [];
+        $this->compartments = isset($result['error']) ? [] : $result;
     }
 
     private function loadVcns(): void
@@ -219,7 +219,7 @@ class ByOracleCloud extends Component
 
         $client = new OciBridgeClient;
         $result = $client->listVcns($connection->toBridgeConfig(), $this->compartment_ocid, $this->region);
-        $this->vcns = $result['data'] ?? [];
+        $this->vcns = isset($result['error']) ? [] : $result;
     }
 
     private function loadSubnets(): void
@@ -235,7 +235,7 @@ class ByOracleCloud extends Component
 
         $client = new OciBridgeClient;
         $result = $client->listSubnets($connection->toBridgeConfig(), $this->vcn_ocid, $this->compartment_ocid, $this->region);
-        $this->subnets = $result['data'] ?? [];
+        $this->subnets = isset($result['error']) ? [] : $result;
         if ($this->subnets && ! $this->subnet_ocid) {
             $this->subnet_ocid = $this->subnets[0]['id'] ?? '';
         }
@@ -261,7 +261,7 @@ class ByOracleCloud extends Component
         $config = $connection->toBridgeConfig();
 
         $adResult = $client->listAvailabilityDomains($config, $compartmentId, $this->region);
-        $this->availability_domains = $adResult['data'] ?? [];
+        $this->availability_domains = isset($adResult['error']) ? [] : $adResult;
         if ($this->availability_domains && ! $this->availability_domain) {
             $this->availability_domain = $this->availability_domains[0]['name'] ?? '';
         }
@@ -403,7 +403,10 @@ class ByOracleCloud extends Component
             }
 
             $connection = OciConnection::ownedByCurrentTeam()->findOrFail($this->selected_connection_id);
-            $privateKey = PrivateKey::find($this->private_key_id);
+            $privateKey = PrivateKey::ownedAndOnlySShKeys()->findOrFail($this->private_key_id);
+            if (! $privateKey->public_key) {
+                return $this->dispatch('error', 'Selected key has no public key material.');
+            }
 
             $compartmentOcid = $this->create_compartment ? '' : $this->compartment_ocid;
 
@@ -424,7 +427,7 @@ class ByOracleCloud extends Component
                 'shape' => $this->shape,
                 'image_id' => $this->image_id,
                 'instance_display_name' => $this->server_name,
-                'ssh_authorized_keys' => $privateKey?->public_key ?? '',
+                'ssh_authorized_keys' => $privateKey->public_key,
                 'ocpus' => (string) $this->ocpus,
                 'memory_in_gbs' => (string) $this->memory_in_gbs,
                 'boot_volume_size_in_gbs' => (string) $this->boot_volume_size_in_gbs,
