@@ -34,34 +34,60 @@ class OciBridgeClient
         return $this->request('GET', '/v1/regions');
     }
 
-    public function listCompartments(string $region): array
+    public function listCompartments(array $config, string $region): array
     {
-        return $this->request('GET', "/v1/compartments?region={$region}");
+        return $this->request('POST', '/v1/compartments', compact('config', 'region'));
     }
 
-    public function listInstances(string $compartmentId, string $region): array
+    public function listInstances(array $config, string $compartmentId, string $region): array
     {
-        return $this->request('GET', "/v1/compute/instances?compartment_id={$compartmentId}&region={$region}");
+        return $this->request('POST', '/v1/compute/instances', compact('config', 'compartmentId', 'region'));
     }
 
-    public function listAvailabilityDomains(string $compartmentId, string $region): array
+    public function listAvailabilityDomains(array $config, string $compartmentId, string $region): array
     {
-        return $this->request('GET', "/v1/compute/availability-domains?compartment_id={$compartmentId}&region={$region}");
+        return $this->request('POST', '/v1/compute/availability-domains', compact('config', 'compartmentId', 'region'));
     }
 
-    public function listShapes(string $compartmentId, string $region): array
+    public function listShapes(array $config, string $compartmentId, string $region): array
     {
-        return $this->request('GET', "/v1/compute/shapes?compartment_id={$compartmentId}&region={$region}");
+        return $this->request('POST', '/v1/compute/shapes', compact('config', 'compartmentId', 'region'));
     }
 
-    public function listImages(string $compartmentId, string $region): array
+    public function listImages(array $config, string $compartmentId, string $region): array
     {
-        return $this->request('GET', "/v1/compute/images?compartment_id={$compartmentId}&region={$region}");
+        return $this->request('POST', '/v1/compute/images', compact('config', 'compartmentId', 'region'));
     }
 
-    public function listSubnets(string $vcnId, string $compartmentId, string $region): array
+    public function listSubnets(array $config, string $vcnId, string $compartmentId, string $region): array
     {
-        return $this->request('GET', "/v1/compute/subnets?vcn_id={$vcnId}&compartment_id={$compartmentId}&region={$region}");
+        return $this->request('POST', '/v1/compute/subnets', compact('config', 'vcnId', 'compartmentId', 'region'));
+    }
+
+    public function createStack(array $config, string $name, string $compartmentId, string $configSourceType, array $configSourceParams): array
+    {
+        return $this->request('POST', '/v1/stacks', [
+            'config' => $config,
+            'name' => $name,
+            'compartment_id' => $compartmentId,
+            'config_source_type' => $configSourceType,
+            'config_source_params' => $configSourceParams,
+        ]);
+    }
+
+    public function runStackJob(array $config, string $stackId, string $operation, bool $confirmDestroy = false): array
+    {
+        return $this->request('POST', "/v1/stacks/{$stackId}/jobs", [
+            'config' => $config,
+            'operation' => $operation,
+            'confirm_destroy' => $confirmDestroy,
+        ]);
+    }
+
+    // ponytail: POST instead of GET to avoid credentials in URL/logs
+    public function getStackJob(array $config, string $jobId): array
+    {
+        return $this->request('POST', "/v1/stacks/jobs/{$jobId}/status", compact('config'));
     }
 
     private function request(string $method, string $endpoint, array $data = []): array
