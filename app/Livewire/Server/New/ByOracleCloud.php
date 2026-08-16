@@ -198,6 +198,7 @@ class ByOracleCloud extends Component
                     'is_build_server' => false,
                 ]);
 
+                $privateKey = PrivateKey::find($this->private_key_id);
                 $ociStack = OciStack::create([
                     'server_id' => $server->id,
                     'team_id' => currentTeam()->id,
@@ -207,6 +208,17 @@ class ByOracleCloud extends Component
                     'region' => $this->region,
                     'config_source' => 'template_zip',
                     'status' => 'pending',
+                    'tf_vars' => [
+                        'compartment_ocid' => $this->compartment_ocid,
+                        'region' => $this->region,
+                        'shape' => $this->shape,
+                        'image_id' => $this->image_id,
+                        'instance_name' => $this->server_name,
+                        'ssh_authorized_keys' => $privateKey?->public_key ?? '',
+                        'project_tag' => currentTeam()->name,
+                        'environment_tag' => 'production',
+                        // ponytail: availability_domain + subnet_ocid added to wizard in next iteration
+                    ],
                 ]);
 
                 return [$server, $ociStack];

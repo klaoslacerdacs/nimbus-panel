@@ -55,3 +55,7 @@ ref
 .dev-instances/
 .claude-flow/
 .claude/
+
+# Terraform
+terraform/**/.terraform/
+terraform/**/.terraform.lock.hcl

@@ -8,7 +8,7 @@ from .core import ApiKeyConfig, InstancePrincipalConfig, OciConfig, build_authen
 
 OciConfig = ApiKeyConfig | InstancePrincipalConfig
 
-def create_stack(config: OciConfig, name: str, compartment_id: str, config_source_type: Literal['ZIP_UPLOAD', 'GIT_CONFIG_SOURCE'], config_source_params: Dict[str, Any]) -> Dict[str, Any]:
+def create_stack(config: OciConfig, name: str, compartment_id: str, config_source_type: Literal['ZIP_UPLOAD', 'GIT_CONFIG_SOURCE'], config_source_params: Dict[str, Any], variables: Optional[Dict[str, str]] = None) -> Dict[str, Any]:
     authentication = build_authentication(config)
     client_kwargs = {
         'config': authentication.sdk_config,
@@ -18,15 +18,21 @@ def create_stack(config: OciConfig, name: str, compartment_id: str, config_sourc
     retry_strategy = oci.retry.NoneRetryStrategy()
 
     try:
+        if config_source_type == 'ZIP_UPLOAD':
+            config_src = oci.resource_manager.models.CreateZipUploadConfigSourceDetails(
+                zip_file_base64_encoded=config_source_params.get('zip_file_base64_encoded', '')
+            )
+        elif config_source_type == 'GIT_CONFIG_SOURCE':
+            config_src = oci.resource_manager.models.CreateGitConfigSourceDetails(**config_source_params)
+        else:
+            raise ValueError(f'Unsupported config_source_type: {config_source_type}')
+
         create_details = oci.resource_manager.models.CreateStackDetails(
             display_name=name,
             compartment_id=compartment_id,
-            config_source=oci.resource_manager.models.CreateConfigSourceDetails(
-                config_source_type=config_source_type,
-                config_source_provider=oci.resource_manager.models.ConfigSourceProvider(
-                    **config_source_params
-                )
-            )
+            config_source=config_src,
+            variables=variables or {},
+            terraform_version='1.5.x',  # ponytail: pinned; expose as param when multi-version needed
         )
         response = client.create_stack(
             create_stack_details=create_details,

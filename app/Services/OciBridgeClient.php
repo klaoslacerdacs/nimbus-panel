@@ -64,7 +64,7 @@ class OciBridgeClient
         return $this->request('POST', '/v1/compute/subnets', compact('config', 'vcnId', 'compartmentId', 'region'));
     }
 
-    public function createStack(array $config, string $name, string $compartmentId, string $configSourceType, array $configSourceParams): array
+    public function createStack(array $config, string $name, string $compartmentId, string $configSourceType, array $configSourceParams, array $variables = []): array
     {
         return $this->request('POST', '/v1/stacks', [
             'config' => $config,
@@ -72,6 +72,7 @@ class OciBridgeClient
             'compartment_id' => $compartmentId,
             'config_source_type' => $configSourceType,
             'config_source_params' => $configSourceParams,
+            'variables' => $variables,
         ]);
     }
 

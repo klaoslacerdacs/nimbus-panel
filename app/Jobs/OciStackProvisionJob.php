@@ -32,8 +32,8 @@ class OciStackProvisionJob implements ShouldQueue
                 $stack->name,
                 $stack->compartment_ocid,
                 'ZIP_UPLOAD',
-                // ponytail: placeholder zip — real Terraform template wired in P4 via OCI Object Storage
-                ['config_source_url' => 'https://placeholder.nimbus.invalid/environment-template.zip']
+                ['zip_file_base64_encoded' => $this->getTemplateZipBase64()],
+                $stack->tf_vars ?? []
             );
 
             if (! isset($result['stack_id'])) {
@@ -97,6 +97,11 @@ class OciStackProvisionJob implements ShouldQueue
         }
 
         return false;
+    }
+
+    private function getTemplateZipBase64(): string
+    {
+        return base64_encode(file_get_contents(base_path('terraform/templates/environment.zip')));
     }
 
     private function markFailed(OciStack $stack, string $reason): void

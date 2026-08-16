@@ -125,6 +125,7 @@ class CreateStackBody(BaseModel):
     compartment_id: str
     config_source_type: Literal["ZIP_UPLOAD", "GIT_CONFIG_SOURCE"]
     config_source_params: Dict[str, Any]
+    variables: Dict[str, str] = {}
 
 
 class JobBody(BaseModel):
@@ -141,6 +142,7 @@ def create_stack(body: CreateStackBody, _: None = Depends(_verify_token)):
         body.compartment_id,
         body.config_source_type,
         body.config_source_params,
+        body.variables,
     )
     return _respond(result)
 
