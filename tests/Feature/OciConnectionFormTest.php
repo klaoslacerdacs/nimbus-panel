@@ -2,6 +2,7 @@
 
 use App\Livewire\Security\OciConnectionForm;
 use App\Models\InstanceSettings;
+use App\Models\OciConnection;
 use App\Models\Team;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -12,6 +13,8 @@ uses(RefreshDatabase::class);
 
 beforeEach(function () {
     InstanceSettings::unguarded(fn () => InstanceSettings::query()->create(['id' => 0]));
+
+    Http::preventStrayRequests();
 
     $this->user = User::factory()->create();
     $this->team = Team::factory()->create();
@@ -29,16 +32,16 @@ it('creates a connection when bridge validates successfully', function () {
         '*/v1/connections/validate' => Http::response(['data' => ['ok' => true, 'auth_mode' => 'api_key', 'operation' => 'get_tenancy', 'error' => null]], 200),
     ]);
 
-    // dehydrate() zeros secrets after every round-trip request. The browser bundles
-    // all form state (including PEM) with the action call in ONE Livewire commit — so
-    // we must too: pass private_key as an update alongside the call, not via set().
+    // dehydrate() zeros secrets after every round-trip. The browser bundles all form
+    // state (including PEM) with the action call in ONE Livewire commit — simulate that
+    // by passing private_key as an update alongside the call, not via a separate set().
     Livewire::test(OciConnectionForm::class)
         ->set('name', 'My OCI Connection')
         ->set('authentication_method', 'api_key')
         ->set('region', 'us-ashburn-1')
         ->set('tenancy_ocid', 'ocid1.tenancy.oc1..aaa')
         ->set('user_ocid', 'ocid1.user.oc1..bbb')
-        ->set('fingerprint', 'aa:bb:cc')
+        ->set('fingerprint', 'aa:bb:cc:dd:ee:ff:00:11:22:33:44:55:66:77:88:99')
         ->update(
             calls: [['method' => 'addConnection', 'params' => [], 'path' => '']],
             updates: ['private_key' => "-----BEGIN RSA PRIVATE KEY-----\ntest\n-----END RSA PRIVATE KEY-----"],
@@ -63,7 +66,7 @@ it('sends bridge-format key names in validateConnection request', function () {
         ->set('region', 'us-ashburn-1')
         ->set('tenancy_ocid', 'ocid1.tenancy.oc1..aaa')
         ->set('user_ocid', 'ocid1.user.oc1..bbb')
-        ->set('fingerprint', 'aa:bb:cc')
+        ->set('fingerprint', 'aa:bb:cc:dd:ee:ff:00:11:22:33:44:55:66:77:88:99')
         ->update(
             calls: [['method' => 'addConnection', 'params' => [], 'path' => '']],
             updates: ['private_key' => "-----BEGIN RSA PRIVATE KEY-----\ntest\n-----END RSA PRIVATE KEY-----"],
@@ -83,13 +86,19 @@ it('sends bridge-format key names in validateConnection request', function () {
     });
 });
 
-it('clears private_key from component state after any response', function () {
-    // dehydrate() zeros secrets before every Livewire snapshot — including validation errors.
+it('clears private_key from component state after addConnection runs', function () {
+    // Inject PEM alongside the call (same Livewire commit) so it IS populated when
+    // addConnection executes. After the method returns, dehydrate() must zero it.
+    // If dehydrate() was removed, private_key would survive in the snapshot.
     Livewire::test(OciConnectionForm::class)
-        ->set('private_key', '-----BEGIN RSA PRIVATE KEY-----secret-----END RSA PRIVATE KEY-----')
-        ->set('passphrase', 'my-passphrase')
-        ->set('name', '') // triggers validation error
-        ->call('addConnection')
+        ->set('name', '')  // deliberately invalid — triggers validation error
+        ->update(
+            calls: [['method' => 'addConnection', 'params' => [], 'path' => '']],
+            updates: [
+                'private_key' => '-----BEGIN RSA PRIVATE KEY-----secret-----END RSA PRIVATE KEY-----',
+                'passphrase' => 'my-passphrase',
+            ],
+        )
         ->assertHasErrors(['name'])
         ->assertSet('private_key', null)
         ->assertSet('passphrase', null);
@@ -106,7 +115,7 @@ it('does not create connection when bridge returns error', function () {
         ->set('region', 'us-ashburn-1')
         ->set('tenancy_ocid', 'ocid1.tenancy.oc1..aaa')
         ->set('user_ocid', 'ocid1.user.oc1..bbb')
-        ->set('fingerprint', 'aa:bb:cc')
+        ->set('fingerprint', 'aa:bb:cc:dd:ee:ff:00:11:22:33:44:55:66:77:88:99')
         ->update(
             calls: [['method' => 'addConnection', 'params' => [], 'path' => '']],
             updates: ['private_key' => "-----BEGIN RSA PRIVATE KEY-----\ntest\n-----END RSA PRIVATE KEY-----"],
@@ -122,6 +131,8 @@ it('denies addConnection to non-admin team members', function () {
     $this->actingAs($member);
     session(['currentTeam' => $this->team]);
 
+    expect($member->cannot('create', OciConnection::class))->toBeTrue();
+
     $this->withoutVite();
 
     Livewire::test(OciConnectionForm::class)
@@ -130,11 +141,39 @@ it('denies addConnection to non-admin team members', function () {
         ->set('region', 'us-ashburn-1')
         ->set('tenancy_ocid', 'ocid1.tenancy.oc1..aaa')
         ->set('user_ocid', 'ocid1.user.oc1..bbb')
-        ->set('fingerprint', 'aa:bb:cc')
+        ->set('fingerprint', 'aa:bb:cc:dd:ee:ff:00:11:22:33:44:55:66:77:88:99')
         ->update(
             calls: [['method' => 'addConnection', 'params' => [], 'path' => '']],
             updates: ['private_key' => "-----BEGIN RSA PRIVATE KEY-----\ntest\n-----END RSA PRIVATE KEY-----"],
-        );
+        )
+        ->assertDispatched('error');
 
     $this->assertDatabaseMissing('oci_connections', ['name' => 'Sneaky Connection']);
+});
+
+it('creates a connection using instance_principal auth', function () {
+    Http::fake([
+        '*/v1/connections/validate' => Http::response(['data' => ['ok' => true, 'auth_mode' => 'instance_principal', 'error' => null]], 200),
+    ]);
+
+    Livewire::test(OciConnectionForm::class)
+        ->set('name', 'Instance Principal Conn')
+        ->set('authentication_method', 'instance_principal')
+        ->set('region', 'us-ashburn-1')
+        ->call('addConnection')
+        ->assertDispatched('connectionAdded');
+
+    Http::assertSent(function ($request) {
+        $config = $request->data()['config'] ?? null;
+
+        return $config !== null
+            && ($config['auth_mode'] ?? null) === 'instance_principal'
+            && ! isset($config['key_content'])   // no PEM for instance_principal
+            && ! isset($config['tenancy_id']);
+    });
+
+    $this->assertDatabaseHas('oci_connections', [
+        'name' => 'Instance Principal Conn',
+        'team_id' => $this->team->id,
+    ]);
 });

@@ -51,7 +51,7 @@ class OciConnectionForm extends Component
             $rules = array_merge($rules, [
                 'tenancy_ocid' => 'required|string|max:255',
                 'user_ocid' => 'required|string|max:255',
-                'fingerprint' => 'required|string|max:255',
+                'fingerprint' => ['required', 'string', 'regex:/^([0-9a-f]{2}:){15}[0-9a-f]{2}$/'],
                 'private_key' => 'required|string',
                 'passphrase' => 'nullable|string',
             ]);
@@ -81,7 +81,14 @@ class OciConnectionForm extends Component
 
     public function addConnection(): void
     {
-        $this->authorize('create', OciConnection::class);
+        try {
+            $this->authorize('create', OciConnection::class);
+        } catch (\Throwable $e) {
+            handleError($e, $this);
+
+            return;
+        }
+
         $this->validate();
 
         // Capture to locals after validation — dehydrate() ensures they are null in the snapshot.
