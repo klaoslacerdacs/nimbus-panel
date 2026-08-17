@@ -37,6 +37,8 @@ class ByOracleCloud extends Component
     // Step 2 — Region + Compartment
     public string $region = 'sa-saopaulo-1';
 
+    public array $regions = [];
+
     public bool $create_compartment = false;
 
     public string $compartment_ocid = '';
@@ -113,6 +115,7 @@ class ByOracleCloud extends Component
         }
 
         $this->limit_reached = Team::serverLimitReached();
+        $this->loadRegions();
     }
 
     public function getListeners(): array
@@ -192,6 +195,23 @@ class ByOracleCloud extends Component
         }
 
         return OciConnection::ownedByCurrentTeam()->find($this->selected_connection_id);
+    }
+
+    private function loadRegions(): void
+    {
+        $result = (new OciBridgeClient)->listRegions();
+        if (isset($result['error'])) {
+            return;
+        }
+
+        $names = array_column($result, 'name');
+        sort($names);
+
+        // sa-saopaulo-1 always first
+        $names = array_values(array_filter($names, fn ($n) => $n !== 'sa-saopaulo-1'));
+        array_unshift($names, 'sa-saopaulo-1');
+
+        $this->regions = $names;
     }
 
     private function loadCompartments(): void

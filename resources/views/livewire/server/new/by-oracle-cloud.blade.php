@@ -23,7 +23,20 @@
     @elseif ($current_step === 2)
         {{-- Step 2: Region + Compartment --}}
         <div class="flex flex-col gap-6">
-            <x-forms.input id="region" label="Region" wire:model.blur="region" required placeholder="e.g. sa-saopaulo-1" />
+            <div>
+                <label class="mb-1 block text-sm font-medium" for="region">Region <span class="text-red-500">*</span></label>
+                @if ($regions)
+                    <select id="region" wire:model.live="region"
+                        class="w-full rounded border border-neutral-200 bg-white px-3 py-2 text-sm dark:border-white/[0.08] dark:bg-neutral-900">
+                        @foreach ($regions as $r)
+                            <option value="{{ $r }}">{{ $r }}</option>
+                        @endforeach
+                    </select>
+                @else
+                    <x-forms.input id="region" wire:model.blur="region" required placeholder="e.g. sa-saopaulo-1" />
+                @endif
+                @error('region') <p class="mt-1 text-xs text-red-500">{{ $message }}</p> @enderror
+            </div>
 
             <div class="rounded-lg border border-neutral-200 p-4 dark:border-white/[0.08]">
                 <div class="mb-3 flex items-center justify-between">
