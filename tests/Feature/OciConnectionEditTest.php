@@ -110,6 +110,23 @@ it('clears PEM from snapshot after updateConnection', function () {
         ->assertSet('private_key', null);
 });
 
+it('blocks cross-team IDOR — other team cannot edit', function () {
+    $otherUser = User::factory()->create();
+    $otherTeam = Team::factory()->create();
+    $otherTeam->members()->attach($otherUser, ['role' => 'owner']);
+    $this->actingAs($otherUser);
+    session(['currentTeam' => $otherTeam]);
+
+    $this->withoutVite();
+
+    // updateConnection scopes to ownedByCurrentTeam → ModelNotFoundException → 404
+    Livewire::test(OciConnectionEdit::class, ['connection' => $this->connection])
+        ->call('updateConnection')
+        ->assertStatus(404);
+
+    $this->assertDatabaseHas('oci_connections', ['name' => 'Test Conn', 'team_id' => $this->team->id]);
+});
+
 it('denies update to non-admin members', function () {
     $member = User::factory()->create();
     $this->team->members()->attach($member, ['role' => 'member']);
@@ -120,9 +137,11 @@ it('denies update to non-admin members', function () {
 
     $this->withoutVite();
 
+    // mount() dispatches 'error' (auth denied) and leaves connectionId=0.
+    // A direct call() then hits findOrFail(0) → ModelNotFoundException → abort(404).
     Livewire::test(OciConnectionEdit::class, ['connection' => $this->connection])
         ->call('updateConnection')
-        ->assertDispatched('error');
+        ->assertStatus(404);
 
     $this->assertDatabaseHas('oci_connections', ['name' => 'Test Conn']);
 });

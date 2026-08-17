@@ -13,7 +13,7 @@ class OciConnectionEdit extends Component
     use AuthorizesRequests;
 
     #[Locked]
-    public int $connectionId;
+    public int $connectionId = 0;
 
     public string $name = '';
 
@@ -115,7 +115,7 @@ class OciConnectionEdit extends Component
 
         // Fall back to existing encrypted PEM when user leaves the field blank.
         $activeKey = $newKey ?: $connection->private_key;
-        $activePassphrase = isset($newKey) && $newKey !== '' ? $newPassphrase : $connection->passphrase;
+        $activePassphrase = $newKey ? $newPassphrase : $connection->passphrase;
 
         try {
             $bridgeConfig = ['auth_mode' => $this->authentication_method, 'region' => $this->region];
