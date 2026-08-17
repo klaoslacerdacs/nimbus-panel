@@ -91,14 +91,14 @@ class OciBridgeClient
         return $this->guard(fn () => $this->compute->listNsgRules($config, $nsgId, $region));
     }
 
-    public function addNsgRules(array $config, string $nsgId, array $rules): array
+    public function addNsgRules(array $config, string $nsgId, array $rules, string $region): array
     {
-        return $this->guard(fn () => $this->compute->addNsgRules($config, $nsgId, $rules));
+        return $this->guard(fn () => $this->compute->addNsgRules($config, $nsgId, $rules, $region));
     }
 
-    public function removeNsgRules(array $config, string $nsgId, array $ruleIds): array
+    public function removeNsgRules(array $config, string $nsgId, array $ruleIds, string $region): array
     {
-        return $this->guard(fn () => $this->compute->removeNsgRules($config, $nsgId, $ruleIds));
+        return $this->guard(fn () => $this->compute->removeNsgRules($config, $nsgId, $ruleIds, $region));
     }
 
     public function createStack(array $config, string $name, string $compartmentId, string $configSourceType, array $configSourceParams, array $variables = []): array

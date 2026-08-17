@@ -134,7 +134,7 @@ class OciStackProvisionJob implements ShouldBeUnique, ShouldQueue
         $nsgId = $outputs['nsg_id'] ?? null;
         if ($nsgId && $stack->firewall_rules) {
             $stack->update(['nsg_ocid' => $nsgId]);
-            $bridge->addNsgRules($config, $nsgId, $stack->firewall_rules);
+            $bridge->addNsgRules($config, $nsgId, $stack->firewall_rules, $config['region']);
         }
 
         if ($stack->server && isset($outputs['public_ip'])) {

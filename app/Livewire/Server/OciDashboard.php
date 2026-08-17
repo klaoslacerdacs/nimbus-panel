@@ -380,7 +380,7 @@ class OciDashboard extends Component
         }
 
         $rule = array_filter($this->newRule, fn ($v) => $v !== '' && $v !== null);
-        $result = app(OciBridgeClient::class)->addNsgRules($connection->toBridgeConfig(), $ociStack->nsg_ocid, [$rule]);
+        $result = app(OciBridgeClient::class)->addNsgRules($connection->toBridgeConfig(), $ociStack->nsg_ocid, [$rule], $connection->region);
 
         if (isset($result['error'])) {
             $this->dispatch('error', 'Failed to update firewall rules.');
@@ -405,7 +405,7 @@ class OciDashboard extends Component
             return;
         }
 
-        $result = app(OciBridgeClient::class)->removeNsgRules($connection->toBridgeConfig(), $ociStack->nsg_ocid, [$ruleId]);
+        $result = app(OciBridgeClient::class)->removeNsgRules($connection->toBridgeConfig(), $ociStack->nsg_ocid, [$ruleId], $connection->region);
 
         if (isset($result['error'])) {
             $this->dispatch('error', 'Failed to update firewall rules.');
