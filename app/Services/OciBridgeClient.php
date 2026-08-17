@@ -24,9 +24,10 @@ class OciBridgeClient
         $this->authToken = Config::get('oci.bridge_auth_token');
     }
 
-    public function validateConnection(array $credentials): array
+    public function validateConnection(array $config): array
     {
-        return $this->request('POST', '/v1/connections/validate', $credentials);
+        // Bridge expects {"config": {...}} matching _parse_config() key names.
+        return $this->request('POST', '/v1/connections/validate', ['config' => $config]);
     }
 
     public function listRegions(): array

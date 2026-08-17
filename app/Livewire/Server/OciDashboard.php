@@ -207,7 +207,7 @@ class OciDashboard extends Component
             'newRule.protocol' => 'required|in:TCP,UDP,ICMP,ALL',
             'newRule.port_min' => 'nullable|integer|min:1|max:65535',
             'newRule.port_max' => 'nullable|integer|min:1|max:65535',
-            'newRule.source' => 'required|string',
+            'newRule.source' => ['required', 'string', 'regex:/^((25[0-5]|2[0-4]\d|[01]?\d\d?)\.){3}(25[0-5]|2[0-4]\d|[01]?\d\d?)\/(3[0-2]|[12]?\d)$/'],
         ]);
 
         $ociStack = $this->server->ociStack()->first();

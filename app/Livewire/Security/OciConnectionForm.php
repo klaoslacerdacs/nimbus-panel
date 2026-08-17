@@ -73,26 +73,31 @@ class OciConnectionForm extends Component
 
     public function addConnection(): void
     {
+        // Capture and zero secrets BEFORE validate() so they are never in the Livewire
+        // snapshot that gets sent back on validation failures or early returns.
+        $privateKey = $this->private_key;
+        $passphrase = $this->passphrase;
+        $this->private_key = null;
+        $this->passphrase = null;
+
         $this->validate();
 
         try {
-            $credentials = [
-                'authentication_method' => $this->authentication_method,
-                'region' => $this->region,
-            ];
+            // Bridge config format matches toBridgeConfig() / _parse_config() key names.
+            $bridgeConfig = ['auth_mode' => $this->authentication_method, 'region' => $this->region];
 
             if ($this->authentication_method === 'api_key') {
-                $credentials = array_merge($credentials, [
-                    'tenancy_ocid' => $this->tenancy_ocid,
-                    'user_ocid' => $this->user_ocid,
+                $bridgeConfig = array_merge($bridgeConfig, [
+                    'tenancy_id' => $this->tenancy_ocid,
+                    'user_id' => $this->user_ocid,
                     'fingerprint' => $this->fingerprint,
-                    'private_key' => $this->private_key,
-                    'passphrase' => $this->passphrase,
+                    'key_content' => $privateKey,
+                    'passphrase' => $passphrase,
                 ]);
             }
 
             $client = app(OciBridgeClient::class);
-            $result = $client->validateConnection($credentials);
+            $result = $client->validateConnection($bridgeConfig);
 
             if (isset($result['error']) && $result['error']) {
                 $this->dispatch('error', $result['message'] ?? 'Validation failed.');
@@ -109,8 +114,8 @@ class OciConnectionForm extends Component
                 'tenancy_ocid' => $this->tenancy_ocid,
                 'user_ocid' => $this->user_ocid,
                 'fingerprint' => $this->fingerprint,
-                'private_key' => $this->private_key,
-                'passphrase' => $this->passphrase,
+                'private_key' => $privateKey,
+                'passphrase' => $passphrase,
             ]);
 
             auditLog('ui.oci_connection.created', [
@@ -122,7 +127,8 @@ class OciConnectionForm extends Component
 
             $this->reset([
                 'name', 'tenancy_ocid', 'user_ocid', 'fingerprint',
-                'private_key', 'passphrase', 'compartment_ocid',
+                'compartment_ocid',
+                // private_key and passphrase already zeroed at method start
             ]);
 
             $this->dispatch('connectionAdded');

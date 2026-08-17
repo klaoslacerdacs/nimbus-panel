@@ -5,6 +5,7 @@ namespace App\Livewire\Security;
 use App\Jobs\OciStackDestroyJob;
 use App\Models\OciStack;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
+use Livewire\Attributes\Locked;
 use Livewire\Component;
 
 class OciStacks extends Component
@@ -13,6 +14,7 @@ class OciStacks extends Component
 
     public $stacks;
 
+    #[Locked]
     public ?int $stackPendingDestroy = null;
 
     public function mount(): void
