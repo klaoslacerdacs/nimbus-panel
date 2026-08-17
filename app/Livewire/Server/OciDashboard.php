@@ -80,7 +80,7 @@ class OciDashboard extends Component
             return;
         }
 
-        $client = new OciBridgeClient;
+        $client = app(OciBridgeClient::class);
         $result = $client->getInstanceStatus($connection->toBridgeConfig(), $instanceId, $this->server->oci_region);
         $this->instanceStatus = isset($result['lifecycle_state']) ? $result : null;
 
@@ -103,7 +103,7 @@ class OciDashboard extends Component
             return;
         }
 
-        $client = new OciBridgeClient;
+        $client = app(OciBridgeClient::class);
         $result = $client->getInstanceMetrics(
             $connection->toBridgeConfig(),
             $instanceId,
@@ -132,7 +132,7 @@ class OciDashboard extends Component
             return;
         }
 
-        $client = new OciBridgeClient;
+        $client = app(OciBridgeClient::class);
         $result = $client->listNsgRules($connection->toBridgeConfig(), $ociStack->nsg_ocid, $this->server->oci_region);
         $this->nsgRules = isset($result['error']) ? [] : $result;
     }
@@ -185,7 +185,7 @@ class OciDashboard extends Component
         }
 
         $this->actionLoading = true;
-        $client = new OciBridgeClient;
+        $client = app(OciBridgeClient::class);
         $result = $client->instanceAction($connection->toBridgeConfig(), $instanceId, $this->server->oci_region, $action);
 
         if (isset($result['lifecycle_state'])) {
@@ -221,7 +221,7 @@ class OciDashboard extends Component
         }
 
         $rule = array_filter($this->newRule, fn ($v) => $v !== '');
-        (new OciBridgeClient)->addNsgRules($connection->toBridgeConfig(), $ociStack->nsg_ocid, [$rule]);
+        app(OciBridgeClient::class)->addNsgRules($connection->toBridgeConfig(), $ociStack->nsg_ocid, [$rule]);
 
         $this->newRule = ['protocol' => 'TCP', 'port_min' => '', 'port_max' => '', 'source' => '0.0.0.0/0', 'description' => ''];
         $this->loadNsgRules();
@@ -240,7 +240,7 @@ class OciDashboard extends Component
             return;
         }
 
-        (new OciBridgeClient)->removeNsgRules($connection->toBridgeConfig(), $ociStack->nsg_ocid, [$ruleId]);
+        app(OciBridgeClient::class)->removeNsgRules($connection->toBridgeConfig(), $ociStack->nsg_ocid, [$ruleId]);
         $this->loadNsgRules();
     }
 
