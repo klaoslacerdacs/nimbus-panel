@@ -19,6 +19,10 @@
                         <span class="text-xs text-neutral-400">
                             {{ $connection->tenancy_ocid ? 'API Key' : 'Instance Principal' }}
                         </span>
+                        <a href="{{ route('security.oci-connections.edit', $connection) }}"
+                            class="button button-secondary text-sm">
+                            Edit
+                        </a>
                         <x-forms.button wire:click="deleteConnection({{ $connection->id }})"
                             wire:confirm="Are you sure? This cannot be undone."
                             class="button-error">
