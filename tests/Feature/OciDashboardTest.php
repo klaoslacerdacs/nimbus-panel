@@ -122,7 +122,7 @@ it('adds NSG rule via bridge client', function () {
     $mock = mockClient();
     $mock->shouldReceive('addNsgRules')
         ->once()
-        ->with(Mockery::any(), 'ocid1.networksecuritygroup.oc1..example', Mockery::on(fn ($rules) => $rules[0]['protocol'] === 'TCP' && $rules[0]['port_min'] === '443'))
+        ->with(Mockery::any(), 'ocid1.networksecuritygroup.oc1..example', Mockery::on(fn ($rules) => $rules[0]['protocol'] === 'TCP' && $rules[0]['port_min'] === '443'), Mockery::any())
         ->andReturn(['success' => true]);
     app()->instance(OciBridgeClient::class, $mock);
 
@@ -139,7 +139,7 @@ it('removes NSG rule via bridge client', function () {
     $mock = mockClient();
     $mock->shouldReceive('removeNsgRules')
         ->once()
-        ->with(Mockery::any(), 'ocid1.networksecuritygroup.oc1..example', ['rule-abc'])
+        ->with(Mockery::any(), 'ocid1.networksecuritygroup.oc1..example', ['rule-abc'], Mockery::any())
         ->andReturn(['success' => true]);
     app()->instance(OciBridgeClient::class, $mock);
 
