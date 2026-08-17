@@ -24,6 +24,18 @@
             'active' => request()->routeIs('security.api-tokens'),
             'icon' => 'code',
         ],
+        [
+            'label' => 'OCI Connections',
+            'route' => 'security.oci-connections',
+            'active' => request()->routeIs('security.oci-connections*'),
+            'icon' => 'cloud',
+        ],
+        [
+            'label' => 'OCI Stacks',
+            'route' => 'security.oci-stacks',
+            'active' => request()->routeIs('security.oci-stacks*'),
+            'icon' => 'layers',
+        ],
     ])->filter();
 @endphp
 

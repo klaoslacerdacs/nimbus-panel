@@ -3,6 +3,7 @@
         <x-forms.input required id="name" label="Stack name" placeholder="Production Stack" wire:model="name" />
 
         <x-forms.select required id="oci_connection_id" label="OCI Connection" wire:model="oci_connection_id">
+            <option value="0" disabled>Select a connection</option>
             @foreach ($connections as $connection)
                 <option value="{{ $connection->id }}">{{ $connection->name }} ({{ $connection->region }})</option>
             @endforeach
@@ -22,6 +23,11 @@
         <x-forms.input required id="compartment_ocid" label="Compartment OCID" placeholder="ocid1.compartment.oc1.." wire:model="compartment_ocid" />
 
         <x-forms.input required id="region" label="Region" placeholder="us-ashburn-1" wire:model="region" />
+
+        <p class="text-xs text-neutral-500 dark:text-fg-dim">
+            Terraform variables (shape, image, SSH key, etc.) must be configured before provisioning.
+            Use the <a href="{{ route('server.new.oracle-cloud') }}" class="underline" wire:navigate>New server wizard</a> to provision a full stack automatically.
+        </p>
 
         <div class="flex justify-end border-t border-neutral-200 pt-4 dark:border-white/[0.08]">
             <x-forms.button type="submit" class="button-highlighted" wire:target="createStack">

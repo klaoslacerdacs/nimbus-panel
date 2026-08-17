@@ -141,6 +141,7 @@ class OciConnectionForm extends Component
             $this->reset(['name', 'tenancy_ocid', 'user_ocid', 'fingerprint', 'compartment_ocid']);
 
             $this->dispatch('connectionAdded');
+            $this->dispatch('close-modal');
             $this->dispatch('success', 'OCI connection added and validated.');
         } catch (\Throwable $e) {
             handleError($e, $this);

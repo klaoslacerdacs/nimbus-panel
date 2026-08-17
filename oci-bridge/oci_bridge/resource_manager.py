@@ -164,44 +164,49 @@ def get_stack_outputs(config: OciConfig, job_id: str) -> Dict[str, Any]:
         }
 
 
-def get_job(config: OciConfig, job_id: str) -> Dict[str, Any]:
-    authentication = build_authentication(config)
-    client_kwargs = {
-        'config': authentication.sdk_config,
-        'signer': authentication.signer
-    }
-    client = oci.resource_manager.ResourceManagerClient(**client_kwargs)
-    retry_strategy = oci.retry.NoneRetryStrategy()
+def _rm_client(config: OciConfig) -> oci.resource_manager.ResourceManagerClient:
+    auth = build_authentication(config)
+    return oci.resource_manager.ResourceManagerClient(config=auth.sdk_config, signer=auth.signer)
 
+
+def _svc_err(e: ServiceError) -> Dict[str, Any]:
+    return {'success': False, 'error': {'category': 'service', 'exception_type': type(e).__name__, 'status': e.status, 'code': e.code, 'request_id': e.request_id}}
+
+
+def _unexpected_err(e: Exception) -> Dict[str, Any]:
+    return {'success': False, 'error': {'category': 'unexpected', 'exception_type': type(e).__name__}}
+
+
+def get_job(config: OciConfig, job_id: str) -> Dict[str, Any]:
+    client = _rm_client(config)
+    retry = oci.retry.NoneRetryStrategy()
     try:
-        work_request = client.get_work_request(
-            work_request_id=job_id,
-            retry_strategy=retry_strategy
-        )
+        job = client.get_job(job_id=job_id, retry_strategy=retry)
         return {
             'success': True,
             'data': {
-                'status': work_request.data.status.value,
-                'lifecycle_state': work_request.data.lifecycle_state,
-                'logs': [log.message for log in getattr(work_request.data, 'log_entries', [])] if hasattr(work_request.data, 'log_entries') else []
+                'status': job.data.lifecycle_state.lower(),
+                'lifecycle_state': job.data.lifecycle_state,
             }
         }
     except ServiceError as e:
-        return {
-            'success': False,
-            'error': {
-                'category': 'service',
-                'exception_type': type(e).__name__,
-                'status': e.status,
-                'code': e.code,
-                'request_id': e.request_id
-            }
-        }
+        return _svc_err(e)
     except Exception as e:
-        return {
-            'success': False,
-            'error': {
-                'category': 'unexpected',
-                'exception_type': type(e).__name__
-            }
-        }
+        return _unexpected_err(e)
+
+
+def get_job_logs(config: OciConfig, job_id: str, max_lines: int = 50) -> Dict[str, Any]:
+    client = _rm_client(config)
+    retry = oci.retry.NoneRetryStrategy()
+    try:
+        resp = oci.pagination.list_call_get_all_results(
+            client.list_job_logs,
+            job_id=job_id,
+            retry_strategy=retry,
+        )
+        lines = [e.message for e in resp.data if e.message]
+        return {'success': True, 'data': {'lines': lines[-max_lines:]}}
+    except ServiceError as e:
+        return _svc_err(e)
+    except Exception as e:
+        return _unexpected_err(e)

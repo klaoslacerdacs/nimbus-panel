@@ -1,3 +1,7 @@
+<div>
+    <x-slot:title>{{ $stack->name }} | OCI Stack | Coolify</x-slot>
+
+    <x-security.settings-layout>
 <div class="flex flex-col gap-6">
 
     {{-- Header --}}
@@ -158,4 +162,6 @@
         </div>
     @endif
 
+</div>
+    </x-security.settings-layout>
 </div>

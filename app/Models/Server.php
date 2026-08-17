@@ -12,6 +12,7 @@ use App\Events\ServerReachabilityChanged;
 use App\Helpers\SslHelper;
 use App\Jobs\CheckAndStartSentinelJob;
 use App\Jobs\CheckTraefikVersionForServerJob;
+use App\Jobs\OciStackDestroyJob;
 use App\Jobs\RegenerateSslCertJob;
 use App\Livewire\Server\Proxy;
 use App\Notifications\Server\Reachable;
@@ -154,6 +155,16 @@ class Server extends BaseModel
             if ($server->wasChanged('private_key_id') || $server->privateKey?->isDirty()) {
                 refresh_server_connection($server->privateKey);
             }
+        });
+        static::deleting(function (Server $server) {
+            $stack = $server->ociStack;
+            if (! $stack) {
+                return;
+            }
+            if (! in_array($stack->status, ['destroying', 'destroyed'])) {
+                OciStackDestroyJob::dispatch($stack);
+            }
+            $stack->update(['server_id' => null]);
         });
         static::created(function ($server) {
             ServerSetting::create([

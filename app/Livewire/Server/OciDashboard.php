@@ -5,6 +5,7 @@ namespace App\Livewire\Server;
 use App\Models\Server;
 use App\Services\OciBridgeClient;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
+use Livewire\Attributes\Locked;
 use Livewire\Component;
 
 class OciDashboard extends Component
@@ -35,6 +36,19 @@ class OciDashboard extends Component
 
     public bool $statusLoadAttempted = false;
 
+    public array $volumeAttachments = [];
+
+    public array $loadBalancers = [];
+
+    public array $autonomousDatabases = [];
+
+    public bool $confirmingDetach = false;
+
+    #[Locked]
+    public ?string $pendingDetachId = null;
+
+    public string $attachVolumeOcid = '';
+
     public function mount(Server $server): void
     {
         $this->authorize('view', $server);
@@ -44,6 +58,9 @@ class OciDashboard extends Component
             $this->loadStatus();
             $this->loadMetrics();
             $this->loadNsgRules();
+            $this->loadVolumeAttachments();
+            $this->loadLoadBalancers();
+            $this->loadAutonomousDatabases();
         }
     }
 
@@ -63,12 +80,18 @@ class OciDashboard extends Component
             $this->loadStatus();
             $this->loadMetrics();
             $this->loadNsgRules();
+            $this->loadVolumeAttachments();
+            $this->loadLoadBalancers();
+            $this->loadAutonomousDatabases();
         }
     }
 
     public function getListeners(): array
     {
-        return ["echo-private:team.{$this->server->team_id},.ServerStatusChanged" => 'loadStatus'];
+        return [
+            "echo-private:team.{$this->server->team_id},.ServerStatusChanged" => 'loadStatus',
+            "echo-private:team.{$this->server->team_id},.OciStackStatusChanged" => 'loadProvisioningStatus',
+        ];
     }
 
     public function loadStatus(): void
@@ -111,11 +134,13 @@ class OciDashboard extends Component
             $this->server->oci_region
         );
 
-        if (! isset($result['cpu_percent'])) {
+        if (! array_key_exists('cpu_percent', $result)) {
+            $this->metrics = null;
+
             return;
         }
 
-        $this->metrics = ($result['cpu_percent'] !== null || $result['memory_percent'] !== null)
+        $this->metrics = ($result['cpu_percent'] !== null || ($result['memory_percent'] ?? null) !== null)
             ? $result
             : null;
     }
@@ -173,6 +198,131 @@ class OciDashboard extends Component
     {
         $this->confirmingStop = false;
         $this->confirmingReboot = false;
+        $this->confirmingDetach = false;
+        $this->pendingDetachId = null;
+    }
+
+    public function loadVolumeAttachments(): void
+    {
+        $connection = $this->server->ociConnection;
+        $instanceId = $this->server->oci_instance_id;
+        $compartmentId = $this->server->oci_compartment_id;
+
+        if (! $connection || ! $instanceId || ! $compartmentId) {
+            return;
+        }
+
+        $result = app(OciBridgeClient::class)->listVolumeAttachments(
+            $connection->toBridgeConfig(),
+            $compartmentId,
+            $instanceId,
+            $this->server->oci_region,
+        );
+
+        $this->volumeAttachments = isset($result['error']) ? [] : $result;
+    }
+
+    public function attachVolume(): void
+    {
+        $this->authorize('update', $this->server);
+        $this->validate(['attachVolumeOcid' => 'required|string|starts_with:ocid1.volume.']);
+
+        $connection = $this->server->ociConnection;
+        $instanceId = $this->server->oci_instance_id;
+
+        if (! $connection || ! $instanceId) {
+            $this->dispatch('error', 'No OCI instance linked to this server.');
+
+            return;
+        }
+
+        $result = app(OciBridgeClient::class)->attachVolume(
+            $connection->toBridgeConfig(),
+            $instanceId,
+            $this->attachVolumeOcid,
+            $this->server->oci_region,
+        );
+
+        if (isset($result['error'])) {
+            $this->dispatch('error', 'Attach failed. Check volume OCID and IAM permissions.');
+
+            return;
+        }
+
+        $this->attachVolumeOcid = '';
+        $this->loadVolumeAttachments();
+    }
+
+    public function confirmDetachVolume(string $attachmentId): void
+    {
+        $this->authorize('update', $this->server);
+        $this->pendingDetachId = $attachmentId;
+        $this->confirmingDetach = true;
+    }
+
+    public function detachVolume(): void
+    {
+        $this->authorize('update', $this->server);
+
+        if (! $this->pendingDetachId) {
+            return;
+        }
+
+        $connection = $this->server->ociConnection;
+
+        if (! $connection) {
+            return;
+        }
+
+        $result = app(OciBridgeClient::class)->detachVolume(
+            $connection->toBridgeConfig(),
+            $this->pendingDetachId,
+            $this->server->oci_region,
+        );
+
+        if (isset($result['error'])) {
+            $this->dispatch('error', 'Detach failed. The volume may still be in use.');
+        }
+
+        $this->confirmingDetach = false;
+        $this->pendingDetachId = null;
+        $this->loadVolumeAttachments();
+    }
+
+    public function loadLoadBalancers(): void
+    {
+        $connection = $this->server->ociConnection;
+        $compartmentId = $this->server->oci_compartment_id;
+
+        if (! $connection || ! $compartmentId) {
+            return;
+        }
+
+        $result = app(OciBridgeClient::class)->listLoadBalancers(
+            $connection->toBridgeConfig(),
+            $compartmentId,
+            $this->server->oci_region,
+        );
+
+        $this->loadBalancers = isset($result['error']) ? [] : $result;
+    }
+
+    public function loadAutonomousDatabases(): void
+    {
+        $connection = $this->server->ociConnection;
+        $compartmentId = $this->server->oci_compartment_id;
+
+        if (! $connection || ! $compartmentId) {
+            return;
+        }
+
+        $result = app(OciBridgeClient::class)->listAutonomousDatabases(
+            $connection->toBridgeConfig(),
+            $compartmentId,
+            $this->server->oci_region,
+        );
+
+        $this->autonomousDatabases = isset($result['error']) ? [] : $result;
     }
 
     private function performAction(string $action): void
@@ -203,6 +353,13 @@ class OciDashboard extends Component
     public function addNsgRule(): void
     {
         $this->authorize('update', $this->server);
+
+        foreach (['port_min', 'port_max'] as $portKey) {
+            if ($this->newRule[$portKey] === '') {
+                $this->newRule[$portKey] = null;
+            }
+        }
+
         $this->validate([
             'newRule.protocol' => 'required|in:TCP,UDP,ICMP,ALL',
             'newRule.port_min' => 'nullable|integer|min:1|max:65535',
@@ -222,8 +379,14 @@ class OciDashboard extends Component
             return;
         }
 
-        $rule = array_filter($this->newRule, fn ($v) => $v !== '');
-        app(OciBridgeClient::class)->addNsgRules($connection->toBridgeConfig(), $ociStack->nsg_ocid, [$rule]);
+        $rule = array_filter($this->newRule, fn ($v) => $v !== '' && $v !== null);
+        $result = app(OciBridgeClient::class)->addNsgRules($connection->toBridgeConfig(), $ociStack->nsg_ocid, [$rule]);
+
+        if (isset($result['error'])) {
+            $this->dispatch('error', 'Failed to update firewall rules.');
+
+            return;
+        }
 
         $this->newRule = ['protocol' => 'TCP', 'port_min' => '', 'port_max' => '', 'source' => '0.0.0.0/0', 'description' => ''];
         $this->loadNsgRules();
@@ -242,7 +405,14 @@ class OciDashboard extends Component
             return;
         }
 
-        app(OciBridgeClient::class)->removeNsgRules($connection->toBridgeConfig(), $ociStack->nsg_ocid, [$ruleId]);
+        $result = app(OciBridgeClient::class)->removeNsgRules($connection->toBridgeConfig(), $ociStack->nsg_ocid, [$ruleId]);
+
+        if (isset($result['error'])) {
+            $this->dispatch('error', 'Failed to update firewall rules.');
+
+            return;
+        }
+
         $this->loadNsgRules();
     }
 

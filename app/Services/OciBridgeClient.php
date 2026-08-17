@@ -2,187 +2,184 @@
 
 namespace App\Services;
 
-use Illuminate\Http\Client\ConnectionException;
-use Illuminate\Support\Facades\Config;
-use Illuminate\Support\Facades\Http;
+use App\Services\Oci\OciApiClient;
+use App\Services\Oci\OciComputeService;
+use App\Services\Oci\OciException;
+use App\Services\Oci\OciMonitoringService;
+use App\Services\Oci\OciResourceManagerService;
+use Throwable;
 
+/**
+ * Thin facade over the native OCI services. Keeps the exact public surface the
+ * Livewire components and jobs already call: unwrapped `data` array on success,
+ * {success:false, error:true, message, code, details} on failure. The former
+ * Python HTTP bridge has been replaced by in-process REST calls.
+ */
 class OciBridgeClient
 {
-    private string $baseUrl;
-
-    private int $timeout;
-
-    private int $maxRetries;
-
-    private ?string $authToken;
-
-    public function __construct()
-    {
-        $this->baseUrl = rtrim(Config::get('oci.bridge_url', 'http://localhost:8000'), '/');
-        $this->timeout = (int) Config::get('oci.bridge_timeout', 30);
-        $this->maxRetries = (int) Config::get('oci.bridge_retry_max', 3);
-        $this->authToken = Config::get('oci.bridge_auth_token');
+    public function __construct(
+        private ?OciComputeService $compute = null,
+        private ?OciMonitoringService $monitoring = null,
+        private ?OciResourceManagerService $resourceManager = null,
+        private ?OciApiClient $api = null,
+    ) {
+        $this->compute ??= app(OciComputeService::class);
+        $this->monitoring ??= app(OciMonitoringService::class);
+        $this->resourceManager ??= app(OciResourceManagerService::class);
+        $this->api ??= app(OciApiClient::class);
     }
 
+    /**
+     * @param  array<string, mixed>  $config
+     */
     public function validateConnection(array $config): array
     {
-        // Bridge expects {"config": {...}} matching _parse_config() key names.
-        return $this->request('POST', '/v1/connections/validate', ['config' => $config]);
+        return $this->guard(function () use ($config): array {
+            $this->api->get($config, 'identity', $config['region'], "/20160918/tenancies/{$config['tenancy_id']}");
+
+            return ['ok' => true];
+        });
     }
 
     public function listRegions(): array
     {
-        return $this->request('GET', '/v1/regions');
+        return array_map(fn (string $name): array => ['name' => $name], config('oci.regions', []));
     }
 
     public function listCompartments(array $config, string $region): array
     {
-        return $this->request('POST', '/v1/compartments', compact('config', 'region'));
+        return $this->guard(fn () => $this->compute->listCompartments($config, $region));
     }
 
     public function listInstances(array $config, string $compartmentId, string $region): array
     {
-        return $this->request('POST', '/v1/compute/instances', ['config' => $config, 'compartment_id' => $compartmentId, 'region' => $region]);
+        return $this->guard(fn () => $this->compute->listInstances($config, $compartmentId, $region));
     }
 
     public function listAvailabilityDomains(array $config, string $compartmentId, string $region): array
     {
-        return $this->request('POST', '/v1/compute/availability-domains', ['config' => $config, 'compartment_id' => $compartmentId, 'region' => $region]);
+        return $this->guard(fn () => $this->compute->listAvailabilityDomains($config, $compartmentId, $region));
     }
 
     public function listShapes(array $config, string $compartmentId, string $region): array
     {
-        return $this->request('POST', '/v1/compute/shapes', ['config' => $config, 'compartment_id' => $compartmentId, 'region' => $region]);
+        return $this->guard(fn () => $this->compute->listShapes($config, $compartmentId, $region));
     }
 
     public function listImages(array $config, string $compartmentId, string $region): array
     {
-        return $this->request('POST', '/v1/compute/images', ['config' => $config, 'compartment_id' => $compartmentId, 'region' => $region]);
+        return $this->guard(fn () => $this->compute->listImages($config, $compartmentId, $region));
     }
 
     public function listSubnets(array $config, string $vcnId, string $compartmentId, string $region): array
     {
-        return $this->request('POST', '/v1/compute/subnets', ['config' => $config, 'vcn_id' => $vcnId, 'compartment_id' => $compartmentId, 'region' => $region]);
+        return $this->guard(fn () => $this->compute->listSubnets($config, $vcnId, $compartmentId, $region));
     }
 
     public function listSubnetsByCompartment(array $config, string $compartmentId, string $region): array
     {
-        return $this->request('POST', '/v1/compute/subnets-by-compartment', ['config' => $config, 'compartment_id' => $compartmentId, 'region' => $region]);
+        return $this->guard(fn () => $this->compute->listSubnetsByCompartment($config, $compartmentId, $region));
     }
 
     public function listVcns(array $config, string $compartmentId, string $region): array
     {
-        return $this->request('POST', '/v1/compute/vcns', ['config' => $config, 'compartment_id' => $compartmentId, 'region' => $region]);
+        return $this->guard(fn () => $this->compute->listVcns($config, $compartmentId, $region));
     }
 
     public function listNsgRules(array $config, string $nsgId, string $region): array
     {
-        return $this->request('POST', '/v1/compute/nsg/rules', ['config' => $config, 'nsg_id' => $nsgId, 'region' => $region]);
+        return $this->guard(fn () => $this->compute->listNsgRules($config, $nsgId, $region));
     }
 
     public function addNsgRules(array $config, string $nsgId, array $rules): array
     {
-        return $this->request('POST', '/v1/compute/nsg/rules/add', ['config' => $config, 'nsg_id' => $nsgId, 'rules' => $rules]);
+        return $this->guard(fn () => $this->compute->addNsgRules($config, $nsgId, $rules));
     }
 
     public function removeNsgRules(array $config, string $nsgId, array $ruleIds): array
     {
-        return $this->request('POST', '/v1/compute/nsg/rules/remove', ['config' => $config, 'nsg_id' => $nsgId, 'rule_ids' => $ruleIds]);
+        return $this->guard(fn () => $this->compute->removeNsgRules($config, $nsgId, $ruleIds));
     }
 
     public function createStack(array $config, string $name, string $compartmentId, string $configSourceType, array $configSourceParams, array $variables = []): array
     {
-        return $this->request('POST', '/v1/stacks', [
-            'config' => $config,
-            'name' => $name,
-            'compartment_id' => $compartmentId,
-            'config_source_type' => $configSourceType,
-            'config_source_params' => $configSourceParams,
-            'variables' => $variables,
-        ]);
+        return $this->guard(fn () => $this->resourceManager->createStack($config, $name, $compartmentId, $configSourceType, $configSourceParams, $variables));
     }
 
     public function runStackJob(array $config, string $stackId, string $operation, bool $confirmDestroy = false): array
     {
-        return $this->request('POST', "/v1/stacks/{$stackId}/jobs", [
-            'config' => $config,
-            'operation' => $operation,
-            'confirm_destroy' => $confirmDestroy,
-        ]);
+        return $this->guard(fn () => $this->resourceManager->runJob($config, $stackId, $operation, $confirmDestroy));
     }
 
-    // ponytail: POST instead of GET to avoid credentials in URL/logs
     public function getStackJob(array $config, string $jobId): array
     {
-        return $this->request('POST', "/v1/stacks/jobs/{$jobId}/status", compact('config'));
+        return $this->guard(fn () => $this->resourceManager->getJob($config, $jobId));
     }
 
     public function getStackOutputs(array $config, string $jobId): array
     {
-        return $this->request('POST', "/v1/stacks/jobs/{$jobId}/outputs", compact('config'));
+        return $this->guard(fn () => $this->resourceManager->getStackOutputs($config, $jobId));
+    }
+
+    public function getJobLogs(array $config, string $jobId): array
+    {
+        return $this->guard(fn () => $this->resourceManager->getJobLogs($config, $jobId));
     }
 
     public function getInstanceStatus(array $config, string $instanceId, string $region): array
     {
-        return $this->request('POST', "/v1/compute/instances/{$instanceId}/status", ['config' => $config, 'instance_id' => $instanceId, 'region' => $region]);
+        return $this->guard(fn () => $this->compute->getInstanceStatus($config, $instanceId, $region));
     }
 
     public function getInstanceMetrics(array $config, string $instanceId, string $compartmentId, string $region): array
     {
-        return $this->request('POST', "/v1/compute/instances/{$instanceId}/metrics", ['config' => $config, 'instance_id' => $instanceId, 'compartment_id' => $compartmentId, 'region' => $region]);
+        return $this->guard(fn () => $this->monitoring->getInstanceMetrics($config, $instanceId, $compartmentId, $region));
     }
 
     public function instanceAction(array $config, string $instanceId, string $region, string $action): array
     {
-        return $this->request('POST', "/v1/compute/instances/{$instanceId}/action", ['config' => $config, 'instance_id' => $instanceId, 'region' => $region, 'action' => $action]);
+        return $this->guard(fn () => $this->compute->instanceAction($config, $instanceId, $region, $action));
     }
 
-    private function request(string $method, string $endpoint, array $data = []): array
+    public function listVolumeAttachments(array $config, string $compartmentId, string $instanceId, string $region): array
     {
-        $headers = ['Accept' => 'application/json'];
-        if ($this->authToken) {
-            $headers['Authorization'] = 'Bearer '.$this->authToken;
-        }
-
-        $attempt = 0;
-        while (true) {
-            try {
-                $http = Http::timeout($this->timeout)->withHeaders($headers);
-
-                $response = $method === 'POST'
-                    ? $http->post($this->baseUrl.$endpoint, $data)
-                    : $http->get($this->baseUrl.$endpoint);
-
-                if ($response->successful()) {
-                    return $response->json('data', []);
-                }
-
-                return $this->normalizeError($response->status(), $response->json());
-            } catch (\Throwable $e) {
-                // Covers ConnectionException (connect) and RequestException (read timeout)
-                $attempt++;
-                if ($attempt > $this->maxRetries) {
-                    return [
-                        'success' => false,
-                        'error' => true,
-                        'message' => $e instanceof ConnectionException ? 'Bridge unreachable after retries' : $e->getMessage(),
-                        'code' => 503,
-                        'details' => null,
-                    ];
-                }
-                usleep(100000 * (2 ** $attempt)); // ponytail: exponential backoff, max ~3.2s
-            }
-        }
+        return $this->guard(fn () => $this->compute->listVolumeAttachments($config, $compartmentId, $instanceId, $region));
     }
 
-    private function normalizeError(int $status, ?array $body): array
+    public function attachVolume(array $config, string $instanceId, string $volumeId, string $region, bool $readOnly = false): array
     {
-        return [
-            'success' => false,
-            'error' => true,
-            'message' => $body['message'] ?? 'Unknown OCI bridge error',
-            'code' => $body['code'] ?? $status,
-            'details' => $body['details'] ?? null,
-        ];
+        return $this->guard(fn () => $this->compute->attachVolume($config, $instanceId, $volumeId, $region, $readOnly));
+    }
+
+    public function detachVolume(array $config, string $volumeAttachmentId, string $region): array
+    {
+        return $this->guard(fn () => $this->compute->detachVolume($config, $volumeAttachmentId, $region));
+    }
+
+    public function listLoadBalancers(array $config, string $compartmentId, string $region): array
+    {
+        return $this->guard(fn () => $this->compute->listLoadBalancers($config, $compartmentId, $region));
+    }
+
+    public function listAutonomousDatabases(array $config, string $compartmentId, string $region): array
+    {
+        return $this->guard(fn () => $this->compute->listAutonomousDatabases($config, $compartmentId, $region));
+    }
+
+    /**
+     * Run a delegate, normalizing any OCI failure into the legacy error shape.
+     *
+     * @param  callable(): array<mixed>  $fn
+     */
+    private function guard(callable $fn): array
+    {
+        try {
+            return $fn();
+        } catch (OciException $e) {
+            return $e->toArray();
+        } catch (Throwable) {
+            // Never leak internals (stack traces may reference key material paths).
+            return ['success' => false, 'error' => true, 'message' => 'OCI request failed', 'code' => 500, 'details' => null];
+        }
     }
 }

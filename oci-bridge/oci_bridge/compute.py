@@ -7,9 +7,21 @@ from oci.exceptions import ServiceError
 from .core import ApiKeyConfig, InstancePrincipalConfig, OciConfig, build_authentication
 import datetime
 
+def _make_client(config: OciConfig, client_class):
+    auth = build_authentication(config)
+    return client_class(config=auth.sdk_config, signer=auth.signer)
+
+
+def _svc_error(e: ServiceError) -> Dict[str, Any]:
+    return {'success': False, 'error': {'category': 'service', 'exception_type': type(e).__name__, 'status': e.status, 'code': e.code, 'request_id': e.request_id}}
+
+
+def _unexpected_error(e: Exception) -> Dict[str, Any]:
+    return {'success': False, 'error': {'category': 'unexpected', 'exception_type': type(e).__name__}}
+
+
 def list_compartments(config: OciConfig, region: str) -> Dict[str, Any]:
-    # ponytail: auth block repeated per-function; extract _make_client(config, cls) when a 7th function is added
-    # ponytail: error handler repeated per-function; extract _oci_call() if a new error field is needed across functions
+    # ponytail: auth block repeated in older functions; new functions use _make_client() + _svc_error()/_unexpected_error()
     authentication = build_authentication(config)
     client_kwargs = {
         'config': authentication.sdk_config,
@@ -623,31 +635,138 @@ def instance_action(config: OciConfig, instance_id: str, region: str, action: st
     if action.upper() not in {'START', 'SOFTSTOP', 'SOFTRESET'}:
         return {'success': False, 'error': {'category': 'validation', 'message': 'action must be START, SOFTSTOP, or SOFTRESET'}}
 
-    authentication = build_authentication(config)
-    client_kwargs = {
-        'config': authentication.sdk_config,
-        'signer': authentication.signer
-    }
-    client = oci.core.ComputeClient(**client_kwargs)
-    retry_strategy = oci.retry.NoneRetryStrategy()
+    client = _make_client(config, oci.core.ComputeClient)
+    retry = oci.retry.NoneRetryStrategy()
 
     try:
         response = client.instance_action(
             instance_id=instance_id,
             action=action.upper(),
-            retry_strategy=retry_strategy,
+            retry_strategy=retry,
         )
         return {'success': True, 'data': {'lifecycle_state': response.data.lifecycle_state}}
     except ServiceError as e:
-        return {
-            'success': False,
-            'error': {
-                'category': 'service',
-                'exception_type': type(e).__name__,
-                'status': e.status,
-                'code': e.code,
-                'request_id': e.request_id,
-            },
-        }
+        return _svc_error(e)
     except Exception as e:
-        return {'success': False, 'error': {'category': 'unexpected', 'exception_type': type(e).__name__}}
+        return _unexpected_error(e)
+
+
+# ── P4: block volumes ────────────────────────────────────────────────────────
+
+def list_volume_attachments(config: OciConfig, compartment_id: str, instance_id: str, region: str) -> Dict[str, Any]:
+    client = _make_client(config, oci.core.ComputeClient)
+    retry = oci.retry.NoneRetryStrategy()
+    try:
+        resp = client.list_volume_attachments(
+            compartment_id=compartment_id,
+            instance_id=instance_id,
+            limit=100,
+            retry_strategy=retry,
+        )
+        return {'success': True, 'data': [
+            {
+                'id': a.id,
+                'volume_id': a.volume_id,
+                'display_name': getattr(a, 'display_name', None),
+                'lifecycle_state': a.lifecycle_state,
+                'attachment_type': a.attachment_type,
+                'is_read_only': getattr(a, 'is_read_only', False),
+            }
+            for a in resp.data
+        ]}
+    except ServiceError as e:
+        return _svc_error(e)
+    except Exception as e:
+        return _unexpected_error(e)
+
+
+def attach_volume(config: OciConfig, instance_id: str, volume_id: str, region: str, read_only: bool = False) -> Dict[str, Any]:
+    client = _make_client(config, oci.core.ComputeClient)
+    retry = oci.retry.NoneRetryStrategy()
+    try:
+        details = oci.core.models.AttachParavirtualizedVolumeDetails(
+            instance_id=instance_id,
+            volume_id=volume_id,
+            is_read_only=read_only,
+        )
+        a = client.attach_volume(attach_volume_details=details, retry_strategy=retry).data
+        return {'success': True, 'data': {
+            'id': a.id,
+            'volume_id': a.volume_id,
+            'lifecycle_state': a.lifecycle_state,
+            'attachment_type': a.attachment_type,
+        }}
+    except ServiceError as e:
+        return _svc_error(e)
+    except Exception as e:
+        return _unexpected_error(e)
+
+
+def detach_volume(config: OciConfig, volume_attachment_id: str, region: str) -> Dict[str, Any]:
+    client = _make_client(config, oci.core.ComputeClient)
+    retry = oci.retry.NoneRetryStrategy()
+    try:
+        client.detach_volume(volume_attachment_id=volume_attachment_id, retry_strategy=retry)
+        return {'success': True, 'data': {'detached': True}}
+    except ServiceError as e:
+        return _svc_error(e)
+    except Exception as e:
+        return _unexpected_error(e)
+
+
+# ── P4: load balancers ───────────────────────────────────────────────────────
+
+def list_load_balancers(config: OciConfig, compartment_id: str, region: str) -> Dict[str, Any]:
+    client = _make_client(config, oci.load_balancer.LoadBalancerClient)
+    retry = oci.retry.NoneRetryStrategy()
+    try:
+        resp = client.list_load_balancers(
+            compartment_id=compartment_id,
+            limit=100,
+            retry_strategy=retry,
+        )
+        return {'success': True, 'data': [
+            {
+                'id': lb.id,
+                'display_name': lb.display_name,
+                'lifecycle_state': lb.lifecycle_state,
+                'shape_name': lb.shape_name,
+                'ip_addresses': [ip.ip_address for ip in (lb.ip_addresses or [])],
+                'backend_sets': list(lb.backend_sets.keys()) if lb.backend_sets else [],
+            }
+            for lb in resp.data
+        ]}
+    except ServiceError as e:
+        return _svc_error(e)
+    except Exception as e:
+        return _unexpected_error(e)
+
+
+# ── P4: autonomous databases ─────────────────────────────────────────────────
+
+def list_autonomous_databases(config: OciConfig, compartment_id: str, region: str) -> Dict[str, Any]:
+    client = _make_client(config, oci.database.DatabaseClient)
+    retry = oci.retry.NoneRetryStrategy()
+    try:
+        resp = client.list_autonomous_databases(
+            compartment_id=compartment_id,
+            limit=100,
+            retry_strategy=retry,
+        )
+        return {'success': True, 'data': [
+            {
+                'id': adb.id,
+                'display_name': adb.display_name,
+                'db_name': adb.db_name,
+                'lifecycle_state': adb.lifecycle_state,
+                'db_workload': adb.db_workload,
+                'cpu_core_count': adb.cpu_core_count,
+                'data_storage_size_in_tbs': adb.data_storage_size_in_tbs,
+                'connection_strings': (getattr(adb.connection_strings, 'all_connection_strings', None) if adb.connection_strings else None),
+            }
+            for adb in resp.data
+        ]}
+    except ServiceError as e:
+        return _svc_error(e)
+    except Exception as e:
+        return _unexpected_error(e)

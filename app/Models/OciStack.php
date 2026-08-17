@@ -2,13 +2,14 @@
 
 namespace App\Models;
 
+use App\Traits\ClearsGlobalSearchCache;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class OciStack extends BaseModel
 {
-    use HasFactory;
+    use ClearsGlobalSearchCache, HasFactory;
 
     protected $fillable = [
         'server_id',

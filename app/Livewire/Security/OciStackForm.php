@@ -51,6 +51,7 @@ class OciStackForm extends Component
         return [
             'name.required' => 'Stack name is required.',
             'oci_connection_id.required' => 'OCI connection is required.',
+            'oci_connection_id.exists' => 'OCI connection is required.',
             'config_url.required_if' => 'Config URL is required for template zip or git repo.',
             'compartment_ocid.required' => 'Compartment OCID is required.',
         ];
@@ -82,6 +83,7 @@ class OciStackForm extends Component
             $this->reset(['name', 'oci_connection_id', 'config_source', 'config_url', 'compartment_ocid', 'region']);
 
             $this->dispatch('stackCreated');
+            $this->dispatch('close-modal');
             $this->dispatch('success', 'OCI stack created.');
         } catch (\Throwable $e) {
             handleError($e, $this);

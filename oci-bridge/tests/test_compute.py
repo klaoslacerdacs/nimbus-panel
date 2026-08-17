@@ -5,7 +5,9 @@ from unittest.mock import MagicMock, patch
 
 import oci
 import oci.core
+import oci.database
 import oci.identity
+import oci.load_balancer
 from oci.exceptions import ServiceError
 
 from oci_bridge.core import ApiKeyConfig
@@ -23,6 +25,11 @@ from oci_bridge.compute import (
     get_instance_status,
     get_instance_metrics,
     instance_action,
+    list_volume_attachments,
+    attach_volume,
+    detach_volume,
+    list_load_balancers,
+    list_autonomous_databases,
 )
 
 def _fake_rsa_key():
@@ -66,6 +73,14 @@ class TestCompute(unittest.TestCase):
         self.mock_vnet_client_cls = self._vnet_patcher.start()
         self.mock_vnet_client = self.mock_vnet_client_cls.return_value
 
+        self._lb_patcher = patch.object(oci.load_balancer, 'LoadBalancerClient')
+        self.mock_lb_client_cls = self._lb_patcher.start()
+        self.mock_lb_client = self.mock_lb_client_cls.return_value
+
+        self._db_patcher = patch.object(oci.database, 'DatabaseClient')
+        self.mock_db_client_cls = self._db_patcher.start()
+        self.mock_db_client = self.mock_db_client_cls.return_value
+
         # ponytail: makes list_call_get_all_results a pass-through so client mocks work
         self._pagination_patcher = patch(
             'oci.pagination.list_call_get_all_results',
@@ -79,6 +94,8 @@ class TestCompute(unittest.TestCase):
         self._identity_client_patcher.stop()
         self._core_patcher.stop()
         self._vnet_patcher.stop()
+        self._lb_patcher.stop()
+        self._db_patcher.stop()
         self._pagination_patcher.stop()
 
     def _cfg(self):
@@ -376,3 +393,136 @@ class TestCompute(unittest.TestCase):
                 self.assertEqual(result['error']['status'], 404)
                 self.assertEqual(result['error']['category'], 'service')
                 mock_method.side_effect = None
+
+    # ── P4 tests ─────────────────────────────────────────────────────────────
+
+    def test_list_volume_attachments_happy_path(self):
+        resp = MagicMock()
+        att = MagicMock()
+        att.id = 'ocid1.volumeattachment.oc1..att1'
+        att.volume_id = 'ocid1.volume.oc1..vol1'
+        att.display_name = 'vol1-attach'
+        att.lifecycle_state = 'ATTACHED'
+        att.attachment_type = 'paravirtualized'
+        att.is_read_only = False
+        resp.data = [att]
+        self.mock_compute_client.list_volume_attachments.return_value = resp
+
+        result = list_volume_attachments(self._cfg(), 'comp_id', 'inst-id', 'us-ashburn-1')
+
+        self.assertTrue(result['success'])
+        self.assertEqual(len(result['data']), 1)
+        self.assertEqual(result['data'][0]['id'], 'ocid1.volumeattachment.oc1..att1')
+        self.assertEqual(result['data'][0]['volume_id'], 'ocid1.volume.oc1..vol1')
+        self.assertEqual(result['data'][0]['lifecycle_state'], 'ATTACHED')
+        self.assertFalse(result['data'][0]['is_read_only'])
+
+    def test_list_volume_attachments_empty(self):
+        resp = MagicMock()
+        resp.data = []
+        self.mock_compute_client.list_volume_attachments.return_value = resp
+
+        result = list_volume_attachments(self._cfg(), 'comp_id', 'inst-id', 'us-ashburn-1')
+
+        self.assertTrue(result['success'])
+        self.assertEqual(result['data'], [])
+
+    def test_attach_volume_happy_path(self):
+        mock_resp = MagicMock()
+        mock_resp.data.id = 'ocid1.volumeattachment.oc1..new'
+        mock_resp.data.volume_id = 'ocid1.volume.oc1..vol1'
+        mock_resp.data.lifecycle_state = 'ATTACHING'
+        mock_resp.data.attachment_type = 'paravirtualized'
+        self.mock_compute_client.attach_volume.return_value = mock_resp
+
+        result = attach_volume(self._cfg(), 'inst-id', 'ocid1.volume.oc1..vol1', 'us-ashburn-1')
+
+        self.assertTrue(result['success'])
+        self.assertEqual(result['data']['id'], 'ocid1.volumeattachment.oc1..new')
+        self.assertEqual(result['data']['lifecycle_state'], 'ATTACHING')
+        self.mock_compute_client.attach_volume.assert_called_once()
+
+    def test_attach_volume_service_error(self):
+        err = ServiceError(status=409, code='VolumeAlreadyAttached', headers={}, message='Volume already attached')
+        self.mock_compute_client.attach_volume.side_effect = err
+
+        result = attach_volume(self._cfg(), 'inst-id', 'ocid1.volume.oc1..vol1', 'us-ashburn-1')
+
+        self.assertFalse(result['success'])
+        self.assertEqual(result['error']['status'], 409)
+        self.assertEqual(result['error']['category'], 'service')
+
+    def test_detach_volume_happy_path(self):
+        self.mock_compute_client.detach_volume.return_value = None
+
+        result = detach_volume(self._cfg(), 'ocid1.volumeattachment.oc1..att1', 'us-ashburn-1')
+
+        self.assertTrue(result['success'])
+        self.assertTrue(result['data']['detached'])
+        self.mock_compute_client.detach_volume.assert_called_once_with(
+            volume_attachment_id='ocid1.volumeattachment.oc1..att1',
+            retry_strategy=unittest.mock.ANY,
+        )
+
+    def test_list_load_balancers_happy_path(self):
+        resp = MagicMock()
+        lb = MagicMock()
+        lb.id = 'ocid1.loadbalancer.oc1..lb1'
+        lb.display_name = 'prod-lb'
+        lb.lifecycle_state = 'ACTIVE'
+        lb.shape_name = 'flexible'
+        ip = MagicMock()
+        ip.ip_address = '10.0.0.1'
+        lb.ip_addresses = [ip]
+        lb.backend_sets = {'bs1': MagicMock(), 'bs2': MagicMock()}
+        resp.data = [lb]
+        self.mock_lb_client.list_load_balancers.return_value = resp
+
+        result = list_load_balancers(self._cfg(), 'comp_id', 'us-ashburn-1')
+
+        self.assertTrue(result['success'])
+        self.assertEqual(len(result['data']), 1)
+        self.assertEqual(result['data'][0]['display_name'], 'prod-lb')
+        self.assertEqual(result['data'][0]['ip_addresses'], ['10.0.0.1'])
+        self.assertIn('bs1', result['data'][0]['backend_sets'])
+
+    def test_list_autonomous_databases_happy_path(self):
+        resp = MagicMock()
+        adb = MagicMock()
+        adb.id = 'ocid1.autonomousdatabase.oc1..adb1'
+        adb.display_name = 'prod-adb'
+        adb.db_name = 'PRODADB'
+        adb.lifecycle_state = 'AVAILABLE'
+        adb.db_workload = 'OLTP'
+        adb.cpu_core_count = 2
+        adb.data_storage_size_in_tbs = 1
+        adb.connection_strings.all_connection_strings = {'high': 'jdbc:...high', 'medium': 'jdbc:...medium'}
+        resp.data = [adb]
+        self.mock_db_client.list_autonomous_databases.return_value = resp
+
+        result = list_autonomous_databases(self._cfg(), 'comp_id', 'us-ashburn-1')
+
+        self.assertTrue(result['success'])
+        self.assertEqual(len(result['data']), 1)
+        self.assertEqual(result['data'][0]['display_name'], 'prod-adb')
+        self.assertEqual(result['data'][0]['db_workload'], 'OLTP')
+        self.assertIn('high', result['data'][0]['connection_strings'])
+
+    def test_list_autonomous_databases_no_connection_strings(self):
+        resp = MagicMock()
+        adb = MagicMock()
+        adb.id = 'ocid1.autonomousdatabase.oc1..adb1'
+        adb.display_name = 'stopped-adb'
+        adb.db_name = 'STOPADB'
+        adb.lifecycle_state = 'STOPPED'
+        adb.db_workload = 'DW'
+        adb.cpu_core_count = 1
+        adb.data_storage_size_in_tbs = 1
+        adb.connection_strings = None
+        resp.data = [adb]
+        self.mock_db_client.list_autonomous_databases.return_value = resp
+
+        result = list_autonomous_databases(self._cfg(), 'comp_id', 'us-ashburn-1')
+
+        self.assertTrue(result['success'])
+        self.assertIsNone(result['data'][0]['connection_strings'])

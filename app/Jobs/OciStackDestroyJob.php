@@ -2,6 +2,7 @@
 
 namespace App\Jobs;
 
+use App\Events\OciStackStatusChanged;
 use App\Models\OciStack;
 use App\Services\OciBridgeClient;
 use Illuminate\Bus\Queueable;
@@ -39,6 +40,7 @@ class OciStackDestroyJob implements ShouldQueue
 
         $config = $stack->ociConnection->toBridgeConfig();
         $stack->update(['status' => 'destroying', 'last_plan_summary' => 'Running Terraform destroy...']);
+        OciStackStatusChanged::dispatch($stack->team_id);
 
         $destroy = $bridge->runStackJob($config, $stack->stack_ocid, 'DESTROY', confirmDestroy: true);
 
@@ -65,8 +67,16 @@ class OciStackDestroyJob implements ShouldQueue
                 return;
             }
 
+            if ($status === '') {
+                // Bridge unreachable (already retried 3x) — treat as transient, keep polling
+                sleep(30);
+
+                continue;
+            }
+
             if (! in_array($status, ['in_progress', 'accepted', 'waiting'])) {
                 $stack->update(['status' => 'destroy_failed', 'last_plan_summary' => "Destroy job ended with status: {$status}"]);
+                OciStackStatusChanged::dispatch($stack->team_id);
 
                 return;
             }
@@ -75,5 +85,6 @@ class OciStackDestroyJob implements ShouldQueue
         }
 
         $stack->update(['status' => 'destroy_failed', 'last_plan_summary' => 'Destroy timed out after 30 minutes']);
+        OciStackStatusChanged::dispatch($stack->team_id);
     }
 }

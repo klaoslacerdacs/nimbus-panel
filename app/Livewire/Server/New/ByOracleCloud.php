@@ -19,7 +19,7 @@ class ByOracleCloud extends Component
 {
     use AuthorizesRequests;
 
-    public int $current_step = 1;
+    public int $current_step = 0;
 
     #[Locked]
     public $private_keys;
@@ -134,7 +134,7 @@ class ByOracleCloud extends Component
     public function resetSelection(): void
     {
         $this->selected_connection_id = null;
-        $this->current_step = 1;
+        $this->current_step = 0;
     }
 
     public function updatedRegion(): void
@@ -292,15 +292,15 @@ class ByOracleCloud extends Component
         $client = new OciBridgeClient;
         $config = $connection->toBridgeConfig();
 
+        // Reset region-scoped selections so stale OCIDs from a previous region/compartment are not submitted
+        $this->image_id = '';
+        $this->availability_domain = '';
+
         $adResult = $client->listAvailabilityDomains($config, $compartmentId, $this->region);
         $this->availability_domains = isset($adResult['error']) ? [] : $adResult;
         if ($this->availability_domains && ! $this->availability_domain) {
             $this->availability_domain = $this->availability_domains[0]['name'] ?? '';
         }
-
-        // Reset region-scoped selections so stale OCIDs from a previous region/compartment are not submitted
-        $this->image_id = '';
-        $this->availability_domain = '';
 
         $shapeResult = $client->listShapes($config, $compartmentId, $this->region);
         if (! isset($shapeResult['error'])) {
@@ -364,8 +364,8 @@ class ByOracleCloud extends Component
                 'vcn_cidr' => $this->create_network ? ['required', 'regex:/^((25[0-5]|2[0-4]\d|[01]?\d\d?)\.){3}(25[0-5]|2[0-4]\d|[01]?\d\d?)\/(3[0-2]|[12]?\d)$/'] : 'nullable',
                 'firewall_rules' => 'array',
                 'firewall_rules.*.protocol' => 'required|in:TCP,UDP,ICMP,ALL',
-                'firewall_rules.*.port_min' => 'nullable|integer|min:1|max:65535',
-                'firewall_rules.*.port_max' => 'nullable|integer|min:1|max:65535',
+                'firewall_rules.*.port_min' => 'nullable|required_if:firewall_rules.*.protocol,TCP,UDP|integer|min:1|max:65535',
+                'firewall_rules.*.port_max' => 'nullable|required_if:firewall_rules.*.protocol,TCP,UDP|integer|min:1|max:65535',
                 'firewall_rules.*.source' => ['required', 'string', 'regex:/^((25[0-5]|2[0-4]\d|[01]?\d\d?)\.){3}(25[0-5]|2[0-4]\d|[01]?\d\d?)\/(3[0-2]|[12]?\d)$/'],
             ],
             4 => [
@@ -375,6 +375,9 @@ class ByOracleCloud extends Component
                 'image_id' => 'required|string',
                 'private_key_id' => 'required|integer|exists:private_keys,id,team_id,'.currentTeam()->id,
                 'ssh_username' => 'required|string|max:255',
+                'ocpus' => 'required|integer|min:1|max:114',
+                'memory_in_gbs' => 'required|integer|min:1|max:1776',
+                'boot_volume_size_in_gbs' => 'required|integer|min:50|max:32768',
                 'oci_metrics_source' => 'required|in:oci_monitoring,sentinel',
             ],
         ];
@@ -419,10 +422,17 @@ class ByOracleCloud extends Component
 
     public function nextStep(): mixed
     {
-        $rules = $this->stepRules()[$this->current_step] ?? [];
-        $this->validate($rules, $this->messages());
+        // Step 0 is the prerequisites screen — no fields to validate.
+        if ($this->current_step > 0) {
+            $rules = $this->stepRules()[$this->current_step] ?? [];
+            $this->validate($rules, $this->messages());
+        }
 
         try {
+            if ($this->current_step === 1) {
+                $this->loadCompartments();
+            }
+
             if ($this->current_step === 2) {
                 $this->loadVcns();
             }
@@ -441,7 +451,7 @@ class ByOracleCloud extends Component
 
     public function previousStep(): mixed
     {
-        if ($this->current_step <= 1) {
+        if ($this->current_step <= 0) {
             if ($this->selectedConnectionUuid) {
                 return $this->redirectRoute('server.create.type', ['type' => 'oracle-cloud'], navigate: true);
             }

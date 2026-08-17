@@ -2,6 +2,7 @@
 
 namespace App\Jobs;
 
+use App\Events\OciStackStatusChanged;
 use App\Models\OciStack;
 use App\Services\OciBridgeClient;
 use Illuminate\Bus\Queueable;
@@ -64,6 +65,7 @@ class OciStackProvisionJob implements ShouldQueue
             }
 
             $stack->update(['stack_ocid' => $result['stack_id'], 'status' => 'planning', 'last_plan_summary' => 'Running Terraform plan...']);
+            OciStackStatusChanged::dispatch($stack->team_id);
         }
 
         $plan = $bridge->runStackJob($config, $stack->stack_ocid, 'PLAN');
@@ -73,13 +75,15 @@ class OciStackProvisionJob implements ShouldQueue
             return;
         }
 
-        if (! $this->pollUntilDone($bridge, $config, $plan['job_id'])) {
-            $this->markFailed($stack, 'Plan failed or timed out');
+        $planLogs = null;
+        if (! $this->pollUntilDone($bridge, $config, $plan['job_id'], $planLogs)) {
+            $this->markFailed($stack, 'Terraform plan failed', $planLogs);
 
             return;
         }
 
         $stack->update(['status' => 'applying', 'last_plan_summary' => 'Applying Terraform — creating OCI resources (this can take up to 30 min)...']);
+        OciStackStatusChanged::dispatch($stack->team_id);
 
         $apply = $bridge->runStackJob($config, $stack->stack_ocid, 'APPLY');
         if (! isset($apply['job_id'])) {
@@ -88,8 +92,9 @@ class OciStackProvisionJob implements ShouldQueue
             return;
         }
 
-        if (! $this->pollUntilDone($bridge, $config, $apply['job_id'])) {
-            $this->markFailed($stack, 'Apply failed or timed out');
+        $applyLogs = null;
+        if (! $this->pollUntilDone($bridge, $config, $apply['job_id'], $applyLogs)) {
+            $this->markFailed($stack, 'Terraform apply failed', $applyLogs);
 
             return;
         }
@@ -107,6 +112,7 @@ class OciStackProvisionJob implements ShouldQueue
             $stackUpdate['compartment_ocid'] = $outputs['compartment_id'];
         }
         $stack->update($stackUpdate);
+        OciStackStatusChanged::dispatch($stack->team_id);
 
         $nsgId = $outputs['nsg_id'] ?? null;
         if ($nsgId && $stack->firewall_rules) {
@@ -120,7 +126,7 @@ class OciStackProvisionJob implements ShouldQueue
         }
     }
 
-    private function pollUntilDone(OciBridgeClient $bridge, array $config, string $jobId): bool
+    private function pollUntilDone(OciBridgeClient $bridge, array $config, string $jobId, ?string &$errorLogs = null): bool
     {
         $deadline = now()->addMinutes(30);
 
@@ -132,7 +138,19 @@ class OciStackProvisionJob implements ShouldQueue
                 return true;
             }
 
+            if ($status === '') {
+                // Bridge unreachable (already retried 3x) — treat as transient, keep polling
+                sleep(30);
+
+                continue;
+            }
+
             if (! in_array($status, ['in_progress', 'accepted', 'waiting'])) {
+                $logResult = $bridge->getJobLogs($config, $jobId);
+                if (! empty($logResult['lines'])) {
+                    $errorLogs = implode("\n", $logResult['lines']);
+                }
+
                 return false;
             }
 
@@ -153,8 +171,12 @@ class OciStackProvisionJob implements ShouldQueue
         return base64_encode($contents);
     }
 
-    private function markFailed(OciStack $stack, string $reason): void
+    private function markFailed(OciStack $stack, string $reason, ?string $logs = null): void
     {
-        $stack->update(['status' => 'failed', 'last_plan_summary' => $reason]);
+        $summary = $logs ? $reason."\n\n".$logs : $reason;
+        $stack->update(['status' => 'failed', 'last_plan_summary' => $summary]);
+        OciStackStatusChanged::dispatch($stack->team_id);
+        Log::error('OciStackProvisionJob failed', ['oci_stack_id' => $stack->id, 'reason' => $reason]);
+        auditLog('oci.stack.provision_failed', ['oci_stack_id' => $stack->id, 'reason' => $reason], 'error');
     }
 }

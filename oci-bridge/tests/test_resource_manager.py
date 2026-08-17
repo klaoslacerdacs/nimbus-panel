@@ -7,7 +7,7 @@ import oci
 import oci.resource_manager
 from oci.exceptions import ServiceError
 
-from oci_bridge.resource_manager import create_stack, get_job, job_operation
+from oci_bridge.resource_manager import create_stack, get_job, get_job_logs, job_operation
 
 
 def _fake_rsa_key():
@@ -52,11 +52,18 @@ class TestResourceManager(unittest.TestCase):
         self._models_patcher = patch.object(oci.resource_manager, 'models', MagicMock())
         self._models_patcher.start()
 
+        self._pagination_patcher = patch(
+            'oci.pagination.list_call_get_all_results',
+            side_effect=lambda fn, *args, **kwargs: fn(*args, **kwargs),
+        )
+        self._pagination_patcher.start()
+
     def tearDown(self):
         self._key_patcher.stop()
         self._auth_patcher.stop()
         self._client_patcher.stop()
         self._models_patcher.stop()
+        self._pagination_patcher.stop()
 
     def _cfg(self):
         from oci_bridge.core import ApiKeyConfig
@@ -121,21 +128,66 @@ class TestResourceManager(unittest.TestCase):
 
     def test_get_job_happy_path(self):
         resp = MagicMock()
-        resp.data.status.value = 'SUCCEEDED'
         resp.data.lifecycle_state = 'SUCCEEDED'
-        resp.data.log_entries = [MagicMock(message='log1'), MagicMock(message='log2')]
-        self.mock_client.get_work_request.return_value = resp
+        self.mock_client.get_job.return_value = resp
 
-        result = get_job(self._cfg(), 'job_id')
+        result = get_job(self._cfg(), 'job-123')
 
         self.assertTrue(result['success'])
-        self.assertEqual(result['data']['status'], 'SUCCEEDED')
-        self.assertEqual(result['data']['logs'], ['log1', 'log2'])
+        self.assertEqual(result['data']['status'], 'succeeded')
+        self.assertEqual(result['data']['lifecycle_state'], 'SUCCEEDED')
+        self.mock_client.get_job.assert_called_once_with(job_id='job-123', retry_strategy=unittest.mock.ANY)
+
+    def test_get_job_in_progress(self):
+        resp = MagicMock()
+        resp.data.lifecycle_state = 'IN_PROGRESS'
+        self.mock_client.get_job.return_value = resp
+
+        result = get_job(self._cfg(), 'job-456')
+
+        self.assertTrue(result['success'])
+        self.assertEqual(result['data']['status'], 'in_progress')
 
     def test_get_job_service_error(self):
-        self.mock_client.get_work_request.side_effect = ServiceError(500, 'InternalError', {}, 'err')
+        self.mock_client.get_job.side_effect = ServiceError(500, 'InternalError', {}, 'err')
 
         result = get_job(self._cfg(), 'job_id')
 
         self.assertFalse(result['success'])
         self.assertEqual(result['error']['status'], 500)
+
+    def test_get_job_logs_happy_path(self):
+        resp = MagicMock()
+        entry1 = MagicMock()
+        entry1.message = 'Error: quota exceeded'
+        entry2 = MagicMock()
+        entry2.message = 'Apply failed'
+        resp.data = [entry1, entry2]
+        self.mock_client.list_job_logs.return_value = resp
+
+        result = get_job_logs(self._cfg(), 'job-123')
+
+        self.assertTrue(result['success'])
+        self.assertEqual(result['data']['lines'], ['Error: quota exceeded', 'Apply failed'])
+
+    def test_get_job_logs_filters_empty_messages(self):
+        resp = MagicMock()
+        entry1 = MagicMock()
+        entry1.message = 'real log line'
+        entry2 = MagicMock()
+        entry2.message = None
+        resp.data = [entry1, entry2]
+        self.mock_client.list_job_logs.return_value = resp
+
+        result = get_job_logs(self._cfg(), 'job-123')
+
+        self.assertTrue(result['success'])
+        self.assertEqual(result['data']['lines'], ['real log line'])
+
+    def test_get_job_logs_service_error(self):
+        self.mock_client.list_job_logs.side_effect = ServiceError(404, 'NotFound', {}, 'not found')
+
+        result = get_job_logs(self._cfg(), 'job-123')
+
+        self.assertFalse(result['success'])
+        self.assertEqual(result['error']['status'], 404)

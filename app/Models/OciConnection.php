@@ -3,13 +3,14 @@
 namespace App\Models;
 
 use App\Enums\OciAuthenticationMethod;
+use App\Traits\ClearsGlobalSearchCache;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class OciConnection extends BaseModel
 {
-    use HasFactory;
+    use ClearsGlobalSearchCache, HasFactory;
 
     protected $fillable = [
         'team_id',

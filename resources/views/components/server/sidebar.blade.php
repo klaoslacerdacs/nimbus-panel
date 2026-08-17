@@ -81,6 +81,14 @@
             'group' => 'Platform',
         ],
         [
+            'label' => 'OCI',
+            'route' => 'server.oci',
+            'active' => $activeMenu === 'oci',
+            'icon' => 'cloud',
+            'group' => 'Platform',
+            'visible' => (bool) $server->oci_connection_id,
+        ],
+        [
             'label' => 'Terminal',
             'route' => 'server.command',
             'active' => $activeMenu === 'terminal',

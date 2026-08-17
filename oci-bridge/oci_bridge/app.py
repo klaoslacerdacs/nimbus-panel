@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import logging
 import os
 from typing import Any, Dict, Literal, Optional
+
+_log = logging.getLogger(__name__)
 
 from fastapi import Depends, FastAPI, HTTPException, Security
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
@@ -24,7 +27,8 @@ _OCI_REGIONS = [
 def _verify_token(creds: Optional[HTTPAuthorizationCredentials] = Security(_bearer)) -> None:
     expected = os.environ.get("OCI_BRIDGE_AUTH_TOKEN")
     if not expected:
-        return  # token auth disabled
+        _log.warning("OCI_BRIDGE_AUTH_TOKEN not set — bridge running without authentication")
+        return
     if creds is None or creds.credentials != expected:
         raise HTTPException(status_code=401, detail="Unauthorized")
 
@@ -42,8 +46,8 @@ def _parse_config(raw: Dict[str, Any]) -> OciConfig:
             key_content=raw["key_content"],
             passphrase=raw.get("passphrase"),
         )
-    except KeyError as e:
-        raise HTTPException(status_code=422, detail=f"Missing config field: {e}")
+    except (KeyError, ValueError) as e:
+        raise HTTPException(status_code=422, detail=f"Invalid config: {e}")
 
 
 def _respond(result: Dict[str, Any]) -> Dict[str, Any]:
@@ -187,7 +191,7 @@ class InstanceActionBody(BaseModel):
     config: Dict[str, Any]
     instance_id: str
     region: str
-    action: str
+    action: Literal["START", "SOFTSTOP", "SOFTRESET"]
 
 
 @app.post("/v1/compute/instances/{instance_id}/status")
@@ -260,3 +264,71 @@ def get_job(job_id: str, body: GetJobBody, _: None = Depends(_verify_token)):
 def get_job_outputs(job_id: str, body: GetJobBody, _: None = Depends(_verify_token)):
     result = rm.get_stack_outputs(_parse_config(body.config), job_id)
     return _respond(result)
+
+
+@app.post("/v1/stacks/jobs/{job_id}/logs")
+def get_job_logs(job_id: str, body: GetJobBody, _: None = Depends(_verify_token)):
+    result = rm.get_job_logs(_parse_config(body.config), job_id)
+    return _respond(result)
+
+
+# ── P4: block volumes ────────────────────────────────────────────────────────
+
+class VolumeAttachmentsBody(BaseModel):
+    config: Dict[str, Any]
+    compartment_id: str
+    region: str
+
+
+class AttachVolumeBody(BaseModel):
+    config: Dict[str, Any]
+    instance_id: str
+    volume_id: str
+    region: str
+    read_only: bool = False
+
+
+class DetachVolumeBody(BaseModel):
+    config: Dict[str, Any]
+    region: str
+
+
+@app.post("/v1/compute/instances/{instance_id}/volume-attachments")
+def list_volume_attachments(instance_id: str, body: VolumeAttachmentsBody, _: None = Depends(_verify_token)):
+    return _respond(compute.list_volume_attachments(_parse_config(body.config), body.compartment_id, instance_id, body.region))
+
+
+@app.post("/v1/compute/volume-attachments/attach")
+def attach_volume(body: AttachVolumeBody, _: None = Depends(_verify_token)):
+    return _respond(compute.attach_volume(_parse_config(body.config), body.instance_id, body.volume_id, body.region, body.read_only))
+
+
+@app.post("/v1/compute/volume-attachments/{attachment_id}/detach")
+def detach_volume(attachment_id: str, body: DetachVolumeBody, _: None = Depends(_verify_token)):
+    return _respond(compute.detach_volume(_parse_config(body.config), attachment_id, body.region))
+
+
+# ── P4: load balancers ───────────────────────────────────────────────────────
+
+class LoadBalancerBody(BaseModel):
+    config: Dict[str, Any]
+    compartment_id: str
+    region: str
+
+
+@app.post("/v1/load-balancers")
+def list_load_balancers(body: LoadBalancerBody, _: None = Depends(_verify_token)):
+    return _respond(compute.list_load_balancers(_parse_config(body.config), body.compartment_id, body.region))
+
+
+# ── P4: autonomous databases ─────────────────────────────────────────────────
+
+class AutonomousDatabaseBody(BaseModel):
+    config: Dict[str, Any]
+    compartment_id: str
+    region: str
+
+
+@app.post("/v1/autonomous-databases")
+def list_autonomous_databases(body: AutonomousDatabaseBody, _: None = Depends(_verify_token)):
+    return _respond(compute.list_autonomous_databases(_parse_config(body.config), body.compartment_id, body.region))

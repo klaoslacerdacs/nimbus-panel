@@ -1,21 +1,81 @@
 <div class="w-full">
     @if ($limit_reached)
         <x-limit-reached name="servers" />
+    @elseif ($current_step === 0)
+        {{-- Step 0: Prerequisites --}}
+        <div class="flex flex-col gap-6">
+            <div>
+                <h3 class="text-base font-semibold">Before you start</h3>
+                <p class="mt-1 text-sm text-neutral-500 dark:text-fg-dim">Complete these steps in the Oracle Cloud Console before continuing.</p>
+            </div>
+
+            <ol class="flex flex-col gap-4">
+                <li class="flex gap-3">
+                    <span class="flex size-6 shrink-0 items-center justify-center rounded-full bg-coolgray-200 text-xs font-bold dark:bg-coolgray-700">1</span>
+                    <div>
+                        <p class="text-sm font-medium">Create or log in to your Oracle Cloud account</p>
+                        <p class="mt-0.5 text-xs text-neutral-500 dark:text-fg-dim">
+                            <a href="https://cloud.oracle.com" target="_blank" rel="noopener" class="underline">cloud.oracle.com</a> → sign up free (Always Free tier available).
+                        </p>
+                    </div>
+                </li>
+
+                <li class="flex gap-3">
+                    <span class="flex size-6 shrink-0 items-center justify-center rounded-full bg-coolgray-200 text-xs font-bold dark:bg-coolgray-700">2</span>
+                    <div>
+                        <p class="text-sm font-medium">Generate an API key</p>
+                        <p class="mt-0.5 text-xs text-neutral-500 dark:text-fg-dim">
+                            Console → <strong>Profile menu (top-right) → My profile → API keys → Add API key</strong>.<br>
+                            Choose <em>Generate API key pair</em>, download the <strong>private key (.pem)</strong>, then click Add.<br>
+                            Copy the config snippet shown — it has your Tenancy OCID, User OCID, Fingerprint and Region.
+                        </p>
+                    </div>
+                </li>
+
+                <li class="flex gap-3">
+                    <span class="flex size-6 shrink-0 items-center justify-center rounded-full bg-coolgray-200 text-xs font-bold dark:bg-coolgray-700">3</span>
+                    <div>
+                        <p class="text-sm font-medium">Note your Compartment OCID <span class="font-normal text-neutral-400">(optional)</span></p>
+                        <p class="mt-0.5 text-xs text-neutral-500 dark:text-fg-dim">
+                            Console → <strong>Identity & Security → Compartments</strong>. Copy the OCID of the compartment where servers should be created. Leave blank to use the root compartment.
+                        </p>
+                    </div>
+                </li>
+            </ol>
+
+            <div class="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800 dark:border-blue-800/40 dark:bg-blue-900/20 dark:text-blue-300">
+                Already have your API key? <a href="{{ route('security.oci-connections') }}" class="underline" wire:navigate>Add an OCI Connection</a> first, then return here to provision a server.
+            </div>
+
+            <x-forms.button wire:click="$set('current_step', 1)" class="button-highlighted">
+                I'm ready — Continue
+            </x-forms.button>
+        </div>
+
     @elseif ($current_step === 1)
         {{-- Step 1: Connection --}}
         <div class="flex flex-col gap-6">
             <div>
                 <label for="selected_connection_id" class="mb-1.5 block text-sm font-medium">Oracle Cloud connection</label>
-                <select id="selected_connection_id" wire:model="selected_connection_id"
-                    class="w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm dark:border-white/[0.08] dark:bg-neutral-900">
-                    <option value="">Select a connection…</option>
-                    @foreach ($connections as $conn)
-                        <option value="{{ $conn->id }}">{{ $conn->name }} · {{ $conn->region }}</option>
-                    @endforeach
-                </select>
-                @error('selected_connection_id') <p class="mt-1 text-xs text-red-500">{{ $message }}</p> @enderror
+                @if ($connections->isEmpty())
+                    <div class="rounded-lg border border-neutral-200 bg-neutral-50 p-4 text-sm dark:border-white/[0.08] dark:bg-white/[0.025]">
+                        <p class="font-medium">No OCI connections configured yet.</p>
+                        <p class="mt-1 text-neutral-500 dark:text-fg-dim">
+                            Go to <a href="{{ route('security.oci-connections') }}" class="underline" wire:navigate>Security → OCI Connections</a> to add your Oracle Cloud API key, then come back here.
+                        </p>
+                    </div>
+                @else
+                    <select id="selected_connection_id" wire:model.live="selected_connection_id"
+                        class="w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm dark:border-white/[0.08] dark:bg-neutral-900">
+                        <option value="">Select a connection…</option>
+                        @foreach ($connections as $conn)
+                            <option value="{{ $conn->id }}">{{ $conn->name }} · {{ $conn->region }}</option>
+                        @endforeach
+                    </select>
+                    @error('selected_connection_id') <p class="mt-1 text-xs text-red-500">{{ $message }}</p> @enderror
+                @endif
             </div>
-            <x-forms.button wire:click="nextStep" :disabled="!$selected_connection_id" class="button-highlighted">
+            <x-forms.button wire:click="nextStep" :disabled="!$selected_connection_id || $connections->isEmpty()" class="button-highlighted">
                 Continue
             </x-forms.button>
         </div>
@@ -217,7 +277,7 @@
         <div class="flex flex-col gap-6">
             <div class="grid gap-4 lg:grid-cols-2">
                 <div class="lg:col-span-2">
-                    <x-forms.input id="server_name" label="Server / instance name" required />
+                    <x-forms.input id="server_name" wire:model="server_name" label="Server / instance name" required />
                 </div>
                 <div>
                     <label for="availability_domain" class="mb-1.5 block text-sm font-medium">Availability domain <span class="text-red-500">*</span></label>
@@ -278,15 +338,15 @@
                             @endforeach
                         </select>
                     @else
-                        <x-forms.input id="image_id" required placeholder="ocid1.image.oc1…" />
+                        <x-forms.input id="image_id" wire:model="image_id" required placeholder="ocid1.image.oc1…" />
                     @endif
                     @error('image_id') <p class="mt-1 text-xs text-red-500">{{ $message }}</p> @enderror
                 </div>
                 @if (str_contains($shape, 'Flex'))
-                    <x-forms.input id="ocpus" label="OCPUs" type="number" min="1" />
-                    <x-forms.input id="memory_in_gbs" label="Memory (GB)" type="number" min="1" />
+                    <x-forms.input id="ocpus" wire:model="ocpus" label="OCPUs" type="number" min="1" />
+                    <x-forms.input id="memory_in_gbs" wire:model="memory_in_gbs" label="Memory (GB)" type="number" min="1" />
                 @endif
-                <x-forms.input id="boot_volume_size_in_gbs" label="Boot volume (GB)" type="number" min="50" />
+                <x-forms.input id="boot_volume_size_in_gbs" wire:model="boot_volume_size_in_gbs" label="Boot volume (GB)" type="number" min="50" />
                 @if ($private_keys->isEmpty())
                     <div class="lg:col-span-2">
                         <p class="text-sm text-warning">No private keys found. Create one first.</p>
@@ -294,7 +354,7 @@
                 @else
                     <x-forms.listbox id="private_key_id" label="Private key" required :options="$privateKeyOptions" />
                 @endif
-                <x-forms.input id="ssh_username" label="SSH username" required />
+                <x-forms.input id="ssh_username" wire:model="ssh_username" label="SSH username" required />
                 <div class="lg:col-span-2">
                     <label class="mb-1.5 block text-sm font-medium">Metrics source</label>
                     <div class="flex flex-wrap gap-4">

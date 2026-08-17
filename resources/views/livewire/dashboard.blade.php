@@ -182,7 +182,7 @@
                             };
                         @endphp
 
-                        <a href="{{ route('server.show', ['server_uuid' => $server->uuid]) }}"
+                        <a href="{{ $server->oci_connection_id ? route('server.oci', ['server_uuid' => $server->uuid]) : route('server.show', ['server_uuid' => $server->uuid]) }}"
                             {{ wireNavigate() }} aria-label="Open {{ $server->name }}"
                             class="group relative flex min-h-28 min-w-0 flex-col rounded-xl border border-neutral-200 bg-white p-3 shadow-sm transition-all hover:-translate-y-px hover:border-neutral-300 hover:shadow-md dark:border-white/[0.08] dark:bg-white/[0.025] dark:hover:border-white/[0.14]">
                             @if ($server->isMetricsEnabled())

@@ -22,16 +22,24 @@ beforeEach(function () {
     session(['currentTeam' => $this->team]);
 });
 
-it('can render step 1', function () {
+it('renders step 0 prerequisites by default', function () {
     $component = Livewire::test(ByOracleCloud::class);
 
-    $component->assertStatus(200);
+    $component->assertStatus(200)->assertSet('current_step', 0);
+});
+
+it('can advance from step 0 to step 1 without validation', function () {
+    $component = Livewire::test(ByOracleCloud::class)
+        ->call('nextStep');
+
+    $component->assertSet('current_step', 1);
 });
 
 it('can advance to step 2 by selecting connection', function () {
     $connection = OciConnection::factory()->create(['team_id' => $this->team->id]);
 
     $component = Livewire::test(ByOracleCloud::class)
+        ->set('current_step', 1)
         ->set('selected_connection_id', $connection->id)
         ->call('nextStep');
 
@@ -45,6 +53,7 @@ it('createServer creates Server and OciStack records', function () {
     $privateKey = PrivateKey::factory()->create(['team_id' => $this->team->id]);
 
     Livewire::test(ByOracleCloud::class)
+        ->set('current_step', 1)
         ->set('selected_connection_id', $connection->id)
         ->call('nextStep')
         ->assertSet('current_step', 2)
@@ -127,6 +136,7 @@ it('cannot advance to step 2 with a connection from another team', function () {
     $connectionB = OciConnection::factory()->create(['team_id' => $otherTeam->id]);
 
     Livewire::test(ByOracleCloud::class)
+        ->set('current_step', 1)
         ->set('selected_connection_id', $connectionB->id)
         ->call('nextStep')
         ->assertHasErrors(['selected_connection_id']);

@@ -43,6 +43,7 @@ services:
     networks:
       - coolify
   postgres:
+    image: postgres:16-alpine
     pull_policy: always
     ports:
       - "${FORWARD_DB_PORT:-5432}:5432"
@@ -61,6 +62,7 @@ services:
     volumes:
       - dev_postgres_data:/var/lib/postgresql/data
   redis:
+    image: redis:7-alpine
     pull_policy: always
     ports:
       - "${FORWARD_REDIS_PORT:-6379}:6379"
@@ -178,6 +180,20 @@ services:
       mc mb local/local --ignore-existing;
       echo 'MinIO initialization complete - bucket local is ready';
       "
+    networks:
+      - coolify
+
+  oci-bridge:
+    build:
+      context: ./oci-bridge
+      dockerfile: Dockerfile
+    ports:
+      - "${OCI_BRIDGE_PORT:-8888}:8080"
+    environment:
+      OCI_BRIDGE_AUTH_TOKEN: "${OCI_BRIDGE_AUTH_TOKEN:-dev-secret}"
+    volumes:
+      - ./oci-bridge:/app:cached
+      - "${OCI_KEY_FILE:-/dev/null}:/run/secrets/oci_key.pem:ro"
     networks:
       - coolify
 

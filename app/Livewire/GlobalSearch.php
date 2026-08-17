@@ -4,6 +4,8 @@ namespace App\Livewire;
 
 use App\Models\Application;
 use App\Models\Environment;
+use App\Models\OciConnection;
+use App\Models\OciStack;
 use App\Models\Project;
 use App\Models\Server;
 use App\Models\Service;
@@ -715,6 +717,20 @@ class GlobalSearch extends Component
                     'link' => route('notifications.email'),
                     'search_text' => 'notifications alerts email discord telegram slack pushover',
                 ],
+                [
+                    'name' => 'OCI Connections',
+                    'type' => 'navigation',
+                    'description' => 'Manage Oracle Cloud Infrastructure connections',
+                    'link' => route('security.oci-connections'),
+                    'search_text' => 'oci oracle cloud connections infrastructure api key',
+                ],
+                [
+                    'name' => 'OCI Stacks',
+                    'type' => 'navigation',
+                    'description' => 'Manage OCI Resource Manager Terraform stacks',
+                    'link' => route('security.oci-stacks'),
+                    'search_text' => 'oci oracle cloud stacks terraform resource manager provisioning',
+                ],
             ]);
 
             // Add instance settings only for self-hosted and root team
@@ -728,6 +744,34 @@ class GlobalSearch extends Component
                 ]);
             }
 
+            $ociConnections = OciConnection::ownedByCurrentTeam()
+                ->get()
+                ->map(fn ($conn) => [
+                    'id' => $conn->id,
+                    'name' => $conn->name,
+                    'type' => 'oci-connection',
+                    'uuid' => $conn->uuid,
+                    'description' => $conn->region,
+                    'link' => route('security.oci-connections.edit', $conn),
+                    'project' => null,
+                    'environment' => null,
+                    'search_text' => strtolower($conn->name.' '.$conn->region.' '.$conn->tenancy_ocid.' oci oracle cloud connection'),
+                ]);
+
+            $ociStacks = OciStack::ownedByCurrentTeam()
+                ->get()
+                ->map(fn ($stack) => [
+                    'id' => $stack->id,
+                    'name' => $stack->name,
+                    'type' => 'oci-stack',
+                    'uuid' => $stack->uuid,
+                    'description' => $stack->status,
+                    'link' => route('security.oci-stacks.show', $stack),
+                    'project' => null,
+                    'environment' => null,
+                    'search_text' => strtolower($stack->name.' '.($stack->region ?? '').' '.$stack->status.' oci oracle cloud stack terraform'),
+                ]);
+
             // Merge all collections
             $items = $items->merge($navigation)
                 ->merge($applications)
@@ -735,7 +779,9 @@ class GlobalSearch extends Component
                 ->merge($databases)
                 ->merge($servers)
                 ->merge($projects)
-                ->merge($environments);
+                ->merge($environments)
+                ->merge($ociConnections)
+                ->merge($ociStacks);
 
             return $items->toArray();
         });

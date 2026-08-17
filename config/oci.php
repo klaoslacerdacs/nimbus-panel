@@ -1,1 +1,41 @@
-<?php\n\nreturn [\n    'bridge_url' => env('OCI_BRIDGE_URL', 'http://localhost:8000'),\n    'bridge_timeout' => env('OCI_BRIDGE_TIMEOUT', 30),\n    'bridge_retry_max' => env('OCI_BRIDGE_RETRY_MAX', 3),\n    'bridge_auth_token' => env('OCI_BRIDGE_AUTH_TOKEN'),\n];
+<?php
+
+return [
+    // Native OCI REST client tuning.
+    'timeout' => (int) env('OCI_HTTP_TIMEOUT', 30),
+    'retry_max' => (int) env('OCI_HTTP_RETRY_MAX', 3),
+    'terraform_version' => env('OCI_TERRAFORM_VERSION', '1.5.x'),
+
+    // ponytail: per-service regional host templates are the calibration knob.
+    // If a service returns 404/NotAuthenticated, verify its host against the OCI
+    // SDK region template and fix it here (one line) — no code change needed.
+    'endpoints' => [
+        'iaas' => 'https://iaas.{region}.oraclecloud.com',
+        'identity' => 'https://identity.{region}.oci.oraclecloud.com',
+        'telemetry' => 'https://telemetry.{region}.oraclecloud.com',
+        'resourcemanager' => 'https://resourcemanager.{region}.oraclecloud.com',
+        'loadbalancer' => 'https://iaas.{region}.oraclecloud.com',
+        'database' => 'https://database.{region}.oraclecloud.com',
+    ],
+
+    // Canonical commercial regions (frozen from the SDK list). listRegions() reads this.
+    'regions' => [
+        'sa-saopaulo-1', 'sa-vinhedo-1', 'sa-santiago-1', 'sa-bogota-1', 'sa-valparaiso-1',
+        'us-ashburn-1', 'us-phoenix-1', 'us-sanjose-1', 'us-chicago-1',
+        'ca-toronto-1', 'ca-montreal-1', 'mx-queretaro-1', 'mx-monterrey-1',
+        'uk-london-1', 'uk-cardiff-1',
+        'eu-frankfurt-1', 'eu-amsterdam-1', 'eu-zurich-1', 'eu-madrid-1',
+        'eu-paris-1', 'eu-marseille-1', 'eu-milan-1', 'eu-stockholm-1',
+        'ap-tokyo-1', 'ap-osaka-1', 'ap-seoul-1', 'ap-chuncheon-1',
+        'ap-mumbai-1', 'ap-hyderabad-1', 'ap-singapore-1', 'ap-singapore-2',
+        'ap-sydney-1', 'ap-melbourne-1',
+        'me-jeddah-1', 'me-dubai-1', 'me-abudhabi-1', 'il-jerusalem-1',
+        'af-johannesburg-1',
+    ],
+
+    // Deprecated Python-bridge keys — kept for silent fallback, unused by the native client.
+    'bridge_url' => env('OCI_BRIDGE_URL'),
+    'bridge_timeout' => env('OCI_BRIDGE_TIMEOUT', 30),
+    'bridge_retry_max' => env('OCI_BRIDGE_RETRY_MAX', 3),
+    'bridge_auth_token' => env('OCI_BRIDGE_AUTH_TOKEN'),
+];

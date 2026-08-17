@@ -3,111 +3,101 @@
 namespace Tests\Unit;
 
 use App\Services\OciBridgeClient;
-use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
 
 class OciBridgeClientTest extends TestCase
 {
+    private array $config;
+
     protected function setUp(): void
     {
         parent::setUp();
-        Config::set('oci.bridge_url', 'http://test');
-        Config::set('oci.bridge_timeout', 10);
-        Config::set('oci.bridge_retry_max', 2);
-        Config::set('oci.bridge_auth_token', 'token');
+
+        openssl_pkey_export(openssl_pkey_new(['private_key_bits' => 2048, 'private_key_type' => OPENSSL_KEYTYPE_RSA]), $pem);
+
+        $this->config = [
+            'auth_mode' => 'api_key',
+            'tenancy_id' => 'ocid1.tenancy.oc1..aaaa',
+            'user_id' => 'ocid1.user.oc1..bbbb',
+            'fingerprint' => 'aa:bb:cc:dd:ee:ff:00:11:22:33:44:55:66:77:88:99',
+            'key_content' => $pem,
+            'passphrase' => null,
+            'region' => 'us-ashburn-1',
+        ];
+    }
+
+    public function test_list_regions_returns_named_entries_with_saopaulo(): void
+    {
+        $regions = (new OciBridgeClient)->listRegions();
+
+        $names = array_column($regions, 'name');
+        $this->assertContains('sa-saopaulo-1', $names);
+        $this->assertArrayHasKey('name', $regions[0]);
     }
 
     public function test_validate_connection_success(): void
     {
-        Http::fake([
-            'http://test/v1/connections/validate' => Http::response(['data' => ['valid' => true]]),
-        ]);
+        Http::fake(['https://identity.*' => Http::response(['id' => 'ocid1.tenancy.oc1..aaaa'])]);
 
-        $client = new OciBridgeClient;
-        $result = $client->validateConnection(['tenancy_ocid' => 'ocid1']);
+        $result = (new OciBridgeClient)->validateConnection($this->config);
 
-        $this->assertEquals(['valid' => true], $result);
+        $this->assertSame(['ok' => true], $result);
+        $this->assertArrayNotHasKey('error', $result);
     }
 
-    public function test_list_regions_success(): void
+    public function test_list_instances_maps_oci_fields(): void
     {
-        Http::fake([
-            'http://test/v1/regions' => Http::response(['data' => ['regions' => []]]),
-        ]);
+        Http::fake(['https://iaas.*/instances*' => Http::response([
+            ['id' => 'ocid1.instance.oc1..x', 'displayName' => 'web-1', 'lifecycleState' => 'RUNNING', 'shape' => 'VM.Standard.A1.Flex'],
+        ])]);
 
-        $client = new OciBridgeClient;
-        $result = $client->listRegions();
+        $result = (new OciBridgeClient)->listInstances($this->config, 'ocid1.compartment.oc1..c', 'us-ashburn-1');
 
-        $this->assertEquals(['regions' => []], $result);
+        $this->assertCount(1, $result);
+        $this->assertSame('web-1', $result[0]['display_name']);
+        $this->assertSame('RUNNING', $result[0]['lifecycle_state']);
+        $this->assertSame('us-ashburn-1', $result[0]['region']);
     }
 
-    public function test_list_compartments_success(): void
+    public function test_run_stack_job_unwraps_job_id(): void
     {
-        Http::fake([
-            'http://test/v1/compartments?region=us-ashburn-1' => Http::response(['data' => ['compartments' => []]]),
-        ]);
+        Http::fake(['https://resourcemanager.*/jobs' => Http::response(['id' => 'ocid1.ormjob.oc1..j'])]);
 
-        $client = new OciBridgeClient;
-        $result = $client->listCompartments('us-ashburn-1');
+        $result = (new OciBridgeClient)->runStackJob($this->config, 'ocid1.ormstack.oc1..s', 'PLAN');
 
-        $this->assertEquals(['compartments' => []], $result);
+        $this->assertSame('ocid1.ormjob.oc1..j', $result['job_id']);
+        $this->assertSame('plan', $result['operation']);
     }
 
-    public function test_list_instances_success(): void
+    public function test_destroy_without_confirmation_is_blocked(): void
     {
-        Http::fake([
-            'http://test/v1/compute/instances?compartment_id=comp&region=us-ashburn-1' => Http::response(['data' => ['instances' => []]]),
-        ]);
+        Http::fake();
 
-        $client = new OciBridgeClient;
-        $result = $client->listInstances('comp', 'us-ashburn-1');
+        $result = (new OciBridgeClient)->runStackJob($this->config, 'ocid1.ormstack.oc1..s', 'DESTROY');
 
-        $this->assertEquals(['instances' => []], $result);
-    }
-
-    public function test_error_normalization(): void
-    {
-        Http::fake([
-            '*' => Http::response(['message' => 'Bad request', 'code' => 400], 400),
-        ]);
-
-        $client = new OciBridgeClient;
-        $result = $client->listRegions();
-
-        $this->assertFalse($result['success']);
         $this->assertTrue($result['error']);
-        $this->assertEquals('Bad request', $result['message']);
-        $this->assertEquals(400, $result['code']);
+        Http::assertNothingSent();
     }
 
-    public function test_auth_header_sent_when_token_set(): void
+    public function test_service_error_is_normalized(): void
     {
-        Http::fake([
-            'http://test/v1/regions' => Http::response(['data' => ['regions' => []]]),
-        ]);
+        Http::fake(['https://iaas.*' => Http::response(['code' => 'NotAuthenticated', 'message' => 'Not authenticated'], 401)]);
 
-        $client = new OciBridgeClient;
-        $client->listRegions();
+        $result = (new OciBridgeClient)->listInstances($this->config, 'c', 'us-ashburn-1');
 
-        Http::assertSent(function ($request) {
-            return $request->hasHeader('Authorization', 'Bearer token');
-        });
+        $this->assertTrue($result['error']);
+        $this->assertSame('Not authenticated', $result['message']);
+        $this->assertSame(401, $result['code']);
+        $this->assertSame('NotAuthenticated', $result['details']);
     }
 
-    public function test_no_auth_header_when_token_null(): void
+    public function test_signature_header_is_sent(): void
     {
-        Config::set('oci.bridge_auth_token', null);
+        Http::fake(['https://iaas.*' => Http::response([])]);
 
-        Http::fake([
-            'http://test/v1/regions' => Http::response(['data' => ['regions' => []]]),
-        ]);
+        (new OciBridgeClient)->listInstances($this->config, 'c', 'us-ashburn-1');
 
-        $client = new OciBridgeClient;
-        $client->listRegions();
-
-        Http::assertSent(function ($request) {
-            return ! $request->hasHeader('Authorization');
-        });
+        Http::assertSent(fn ($request) => str_starts_with($request->header('Authorization')[0] ?? '', 'Signature version="1"'));
     }
 }

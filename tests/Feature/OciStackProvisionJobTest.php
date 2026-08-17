@@ -62,11 +62,14 @@ it('marks failed when apply times out', function () {
     $mock->shouldReceive('getStackJob')->with(Mockery::any(), 'job-plan-1')->once()->andReturn(['status' => 'succeeded']);
     $mock->shouldReceive('runStackJob')->with(Mockery::any(), 'ocid1.stack.existing', 'APPLY')->once()->andReturn(['job_id' => 'job-apply-1']);
     $mock->shouldReceive('getStackJob')->with(Mockery::any(), 'job-apply-1')->once()->andReturn(['status' => 'FAILED']);
+    $mock->shouldReceive('getJobLogs')->with(Mockery::any(), 'job-apply-1')->once()->andReturn(['lines' => ['Error: quota exceeded for shape VM.Standard.E4.Flex']]);
     app()->instance(OciBridgeClient::class, $mock);
 
     (new OciStackProvisionJob($stack))->handle(app(OciBridgeClient::class));
 
-    expect($stack->fresh()->status)->toBe('failed');
+    $fresh = $stack->fresh();
+    expect($fresh->status)->toBe('failed');
+    expect($fresh->last_plan_summary)->toContain('quota exceeded');
 });
 
 it('is dispatched when createServer succeeds', function () {
