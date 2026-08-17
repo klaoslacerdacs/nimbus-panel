@@ -6,12 +6,13 @@ use App\Events\OciStackStatusChanged;
 use App\Models\OciStack;
 use App\Services\OciBridgeClient;
 use Illuminate\Bus\Queueable;
+use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 
-class OciStackDestroyJob implements ShouldQueue
+class OciStackDestroyJob implements ShouldBeUnique, ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
@@ -20,7 +21,23 @@ class OciStackDestroyJob implements ShouldQueue
 
     public int $tries = 1;
 
-    public function __construct(public OciStack $ociStack) {}
+    public int $uniqueFor = 1800;
+
+    public function __construct(public OciStack $ociStack)
+    {
+        $this->onQueue('oci');
+    }
+
+    public function uniqueId(): string
+    {
+        return (string) $this->ociStack->id;
+    }
+
+    /** @return array<int, string> */
+    public function tags(): array
+    {
+        return ["oci-stack:{$this->ociStack->id}", "team:{$this->ociStack->team_id}"];
+    }
 
     public function handle(OciBridgeClient $bridge): void
     {

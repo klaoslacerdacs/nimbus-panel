@@ -95,6 +95,7 @@ return [
 
     'waits' => [
         'redis:default' => 60,
+        'redis:oci' => 300,
     ],
 
     /*
@@ -203,6 +204,18 @@ return [
             'timeout' => env('HORIZON_TIMEOUT', 36000),
         ],
 
+        'oci-provision' => [
+            'connection' => 'redis',
+            'queue' => ['oci'],
+            'balance' => 'false',
+            'maxProcesses' => 2,
+            'maxJobs' => 0,
+            'memory' => 256,
+            'tries' => 1,
+            'nice' => 5,
+            'timeout' => env('HORIZON_OCI_TIMEOUT', 36000),
+        ],
+
         ...($v5Enabled ? [
             'v5reconcile' => [
                 'connection' => 'redis',
@@ -228,6 +241,10 @@ return [
                 'balanceMaxShift' => env('HORIZON_BALANCE_MAX_SHIFT', 1),
                 'balanceCooldown' => env('HORIZON_BALANCE_COOLDOWN', 1),
             ],
+            'oci-provision' => [
+                'minProcesses' => 1,
+                'maxProcesses' => 2,
+            ],
         ],
         'local' => [
             's6' => [
@@ -236,6 +253,10 @@ return [
                 'maxProcesses' => env('HORIZON_MAX_PROCESSES', 4),
                 'balanceMaxShift' => env('HORIZON_BALANCE_MAX_SHIFT', 1),
                 'balanceCooldown' => env('HORIZON_BALANCE_COOLDOWN', 1),
+            ],
+            'oci-provision' => [
+                'minProcesses' => 1,
+                'maxProcesses' => 2,
             ],
             ...$v5ReconcileSupervisor,
         ],
