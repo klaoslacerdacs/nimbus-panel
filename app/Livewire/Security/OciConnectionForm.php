@@ -71,16 +71,22 @@ class OciConnectionForm extends Component
         ];
     }
 
-    public function addConnection(): void
+    // Zeros secrets before every snapshot sent to the browser — covers validation errors,
+    // bridge failures, and any early return path. User must re-enter PEM on retry.
+    public function dehydrate(): void
     {
-        // Capture and zero secrets BEFORE validate() so they are never in the Livewire
-        // snapshot that gets sent back on validation failures or early returns.
-        $privateKey = $this->private_key;
-        $passphrase = $this->passphrase;
         $this->private_key = null;
         $this->passphrase = null;
+    }
 
+    public function addConnection(): void
+    {
+        $this->authorize('create', OciConnection::class);
         $this->validate();
+
+        // Capture to locals after validation — dehydrate() ensures they are null in the snapshot.
+        $privateKey = $this->private_key;
+        $passphrase = $this->passphrase;
 
         try {
             // Bridge config format matches toBridgeConfig() / _parse_config() key names.
@@ -125,11 +131,7 @@ class OciConnectionForm extends Component
                 'auth_method' => $connection->authentication_method->value,
             ]);
 
-            $this->reset([
-                'name', 'tenancy_ocid', 'user_ocid', 'fingerprint',
-                'compartment_ocid',
-                // private_key and passphrase already zeroed at method start
-            ]);
+            $this->reset(['name', 'tenancy_ocid', 'user_ocid', 'fingerprint', 'compartment_ocid']);
 
             $this->dispatch('connectionAdded');
             $this->dispatch('success', 'OCI connection added and validated.');

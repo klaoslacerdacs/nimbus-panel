@@ -12,6 +12,7 @@ class OciConnection extends BaseModel
     use HasFactory;
 
     protected $fillable = [
+        'team_id',
         'name',
         'authentication_method',
         'region',

@@ -150,29 +150,48 @@ class TestCompute(unittest.TestCase):
         self.assertEqual(result['data'][0]['is_flexible'], True)
         self.mock_compute_client.list_shapes.assert_called_once()
 
+    def _make_image(self, id, display_name, os, os_version, state='AVAILABLE'):
+        img = MagicMock()
+        img.id = id
+        img.display_name = display_name
+        img.operating_system = os
+        img.operating_system_version = os_version
+        img.lifecycle_state = state
+        return img
+
     def test_list_images_happy_path(self):
         resp = MagicMock()
-        img1 = MagicMock()
-        img1.id = 'ocid1.image.oc1..img1'
-        img1.display_name = 'Oracle Linux 8'
-        img1.operating_system = 'Oracle Linux'
-        img1.operating_system_version = '8'
-        img2 = MagicMock()
-        img2.id = 'ocid1.image.oc1..img2'
-        img2.display_name = 'Ubuntu 20.04'
-        img2.operating_system = 'Canonical Ubuntu'
-        img2.operating_system_version = '20.04'
-        resp.data = [img1, img2]
+        resp.data = [
+            self._make_image('ocid1.image.oc1..img1', 'Oracle Linux 8', 'Oracle Linux', '8'),
+            self._make_image('ocid1.image.oc1..img2', 'Ubuntu 22.04', 'Canonical Ubuntu', '22.04'),
+            self._make_image('ocid1.image.oc1..img3', 'Rocky Linux 9', 'Rocky Linux', '9'),
+        ]
         self.mock_compute_client.list_images.return_value = resp
 
         result = list_images(self._cfg(), 'comp_id', 'us-ashburn-1')
 
         self.assertTrue(result['success'])
-        self.assertEqual(len(result['data']), 2)
-        self.assertEqual(result['data'][0]['id'], 'ocid1.image.oc1..img1')
-        self.assertEqual(result['data'][0]['operating_system'], 'Oracle Linux')
-        self.assertEqual(result['data'][0]['os_version'], '8')
+        self.assertEqual(len(result['data']), 3)
+        ids = [img['id'] for img in result['data']]
+        self.assertIn('ocid1.image.oc1..img1', ids)
+        self.assertIn('ocid1.image.oc1..img3', ids)
         self.mock_compute_client.list_images.assert_called_once()
+
+    def test_list_images_filters_deprecated_and_unknown_os(self):
+        resp = MagicMock()
+        resp.data = [
+            self._make_image('available-ubuntu', 'Ubuntu 22.04', 'Canonical Ubuntu', '22.04', 'AVAILABLE'),
+            self._make_image('deprecated-oracle', 'Oracle Linux 7', 'Oracle Linux', '7', 'DEPRECATED'),
+            self._make_image('deleted-ubuntu', 'Ubuntu 20.04', 'Canonical Ubuntu', '20.04', 'DELETED'),
+            self._make_image('windows-img', 'Windows Server 2022', 'Windows', '2022', 'AVAILABLE'),
+        ]
+        self.mock_compute_client.list_images.return_value = resp
+
+        result = list_images(self._cfg(), 'comp_id', 'us-ashburn-1')
+
+        self.assertTrue(result['success'])
+        self.assertEqual(len(result['data']), 1)
+        self.assertEqual(result['data'][0]['id'], 'available-ubuntu')
 
     def test_list_subnets_happy_path(self):
         resp = MagicMock()
