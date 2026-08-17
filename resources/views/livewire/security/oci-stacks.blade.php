@@ -40,6 +40,12 @@
                             {{ $badge['text'] }}
                         </span>
 
+                        <a href="{{ route('security.oci-stacks.show', $stack) }}"
+                            class="rounded border border-neutral-200 px-2 py-1 text-xs hover:bg-neutral-50 dark:border-white/[0.08] dark:hover:bg-neutral-800"
+                            wire:navigate>
+                            Details
+                        </a>
+
                         @if($stackPendingDestroy === $stack->id)
                             <span class="text-xs text-red-600 dark:text-red-400">Destroy OCI resources?</span>
                             <x-forms.button wire:click="destroyStack" class="button-error">Confirm</x-forms.button>
