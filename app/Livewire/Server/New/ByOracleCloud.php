@@ -298,14 +298,19 @@ class ByOracleCloud extends Component
             $this->availability_domain = $this->availability_domains[0]['name'] ?? '';
         }
 
+        // Reset region-scoped selections so stale OCIDs from a previous region/compartment are not submitted
+        $this->image_id = '';
+        $this->availability_domain = '';
+
         $shapeResult = $client->listShapes($config, $compartmentId, $this->region);
         if (! isset($shapeResult['error'])) {
             // Group: Ampere (ARM) → AMD → Intel/Optimized → BM, alphabetical within group
+            // BM check must precede .E check — BM.Standard.E* shapes contain ".E"
             $family = fn (string $name): int => match (true) {
                 str_contains($name, '.A1.') || str_contains($name, '.A2.') || str_contains($name, '.A4.') => 0,
+                str_starts_with($name, 'BM.') => 3,
                 str_contains($name, '.E') => 1,
                 str_contains($name, 'Standard3') || str_contains($name, 'Standard2') || str_contains($name, 'Optimized') => 2,
-                str_starts_with($name, 'BM.') => 3,
                 default => 4,
             };
             usort($shapeResult, fn ($a, $b) => $family($a['name']) <=> $family($b['name']) ?: strcmp($a['name'], $b['name']));
@@ -356,12 +361,12 @@ class ByOracleCloud extends Component
                 'vcn_ocid' => $this->create_network ? 'nullable' : 'required|string',
                 'subnet_ocid' => $this->create_network ? 'nullable' : 'required|string',
                 'vcn_display_name' => $this->create_network ? 'required|string|max:255' : 'nullable',
-                'vcn_cidr' => $this->create_network ? ['required', 'regex:/^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\/\d{1,2}$/'] : 'nullable',
+                'vcn_cidr' => $this->create_network ? ['required', 'regex:/^((25[0-5]|2[0-4]\d|[01]?\d\d?)\.){3}(25[0-5]|2[0-4]\d|[01]?\d\d?)\/(3[0-2]|[12]?\d)$/'] : 'nullable',
                 'firewall_rules' => 'array',
                 'firewall_rules.*.protocol' => 'required|in:TCP,UDP,ICMP,ALL',
                 'firewall_rules.*.port_min' => 'nullable|integer|min:1|max:65535',
                 'firewall_rules.*.port_max' => 'nullable|integer|min:1|max:65535',
-                'firewall_rules.*.source' => ['required', 'string', 'regex:/^(\d{1,3}\.){3}\d{1,3}\/\d{1,2}$/'],
+                'firewall_rules.*.source' => ['required', 'string', 'regex:/^((25[0-5]|2[0-4]\d|[01]?\d\d?)\.){3}(25[0-5]|2[0-4]\d|[01]?\d\d?)\/(3[0-2]|[12]?\d)$/'],
             ],
             4 => [
                 'server_name' => ['required', 'string', 'max:253', new ValidHostname],
@@ -459,6 +464,14 @@ class ByOracleCloud extends Component
 
             if (Team::serverLimitReached()) {
                 return $this->dispatch('error', 'You have reached the server limit for your subscription.');
+            }
+
+            foreach ($this->firewall_rules as $i => $rule) {
+                if (isset($rule['port_min'], $rule['port_max']) && (int) $rule['port_max'] < (int) $rule['port_min']) {
+                    $this->addError("firewall_rules.{$i}.port_max", 'Port max must be ≥ port min.');
+
+                    return null;
+                }
             }
 
             $connection = OciConnection::ownedByCurrentTeam()->findOrFail($this->selected_connection_id);

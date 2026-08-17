@@ -236,9 +236,9 @@
                         @php
                             $shapeGroup = fn(string $n): string => match(true) {
                                 str_contains($n, '.A1.') || str_contains($n, '.A2.') || str_contains($n, '.A4.') => 'Ampere (ARM)',
+                                str_starts_with($n, 'BM.') => 'Bare Metal',
                                 str_contains($n, '.E') => 'AMD',
                                 str_contains($n, 'Standard3') || str_contains($n, 'Standard2') || str_contains($n, 'Optimized') => 'Intel',
-                                str_starts_with($n, 'BM.') => 'Bare Metal',
                                 default => 'Other',
                             };
                             $shapesByGroup = collect($shapes)->groupBy(fn($s) => $shapeGroup($s['name']));
@@ -272,7 +272,7 @@
                             @foreach ($imagesByOs as $os => $imgs)
                                 <optgroup label="{{ $os }}">
                                     @foreach ($imgs as $img)
-                                        <option value="{{ $img['id'] }}">{{ $img['os_version'] }}</option>
+                                        <option value="{{ $img['id'] }}">{{ $img['display_name'] }}</option>
                                     @endforeach
                                 </optgroup>
                             @endforeach

@@ -171,7 +171,7 @@ def list_images(config: OciConfig, compartment_id: str, region: str) -> Dict[str
         )
         images = []
         for img in response.data:
-            if img.operating_system in ('Oracle Linux', 'Canonical Ubuntu', 'Rocky Linux'):
+            if img.operating_system in ('Oracle Linux', 'Canonical Ubuntu', 'Rocky Linux') and img.lifecycle_state == 'AVAILABLE':
                 images.append({
                     'id': img.id,
                     'display_name': img.display_name,
