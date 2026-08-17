@@ -300,16 +300,25 @@ class ByOracleCloud extends Component
 
         $shapeResult = $client->listShapes($config, $compartmentId, $this->region);
         if (! isset($shapeResult['error'])) {
-            // Pin free-tier shapes first, then alphabetical
-            $free = ['VM.Standard.A1.Flex', 'VM.Standard.E2.1.Micro'];
-            usort($shapeResult, fn ($a, $b) => (in_array($b['name'], $free) <=> in_array($a['name'], $free)) ?: strcmp($a['name'], $b['name']));
+            // Group: Ampere (ARM) → AMD → Intel/Optimized → BM, alphabetical within group
+            $family = fn (string $name): int => match (true) {
+                str_contains($name, '.A1.') || str_contains($name, '.A2.') || str_contains($name, '.A4.') => 0,
+                str_contains($name, '.E') => 1,
+                str_contains($name, 'Standard3') || str_contains($name, 'Standard2') || str_contains($name, 'Optimized') => 2,
+                str_starts_with($name, 'BM.') => 3,
+                default => 4,
+            };
+            usort($shapeResult, fn ($a, $b) => $family($a['name']) <=> $family($b['name']) ?: strcmp($a['name'], $b['name']));
             $this->shapes = $shapeResult;
         }
 
         $imageResult = $client->listImages($config, $compartmentId, $this->region);
         if (! isset($imageResult['error'])) {
+            // Group: Ubuntu first (Coolify-preferred), then Rocky, then Oracle Linux
+            $order = ['Canonical Ubuntu' => 0, 'Rocky Linux' => 1, 'Oracle Linux' => 2];
+            usort($imageResult, fn ($a, $b) => ($order[$a['operating_system']] ?? 9) <=> ($order[$b['operating_system']] ?? 9));
             $this->images = $imageResult;
-            // Default: latest Ubuntu (preferred for Coolify)
+            // Default: latest Ubuntu
             $ubuntu = collect($this->images)->firstWhere('operating_system', 'Canonical Ubuntu');
             if ($ubuntu && ! $this->image_id) {
                 $this->image_id = $ubuntu['id'];

@@ -233,10 +233,26 @@
                 <div>
                     <label for="shape" class="mb-1.5 block text-sm font-medium">Shape <span class="text-red-500">*</span></label>
                     @if ($shapes)
+                        @php
+                            $shapeGroup = fn(string $n): string => match(true) {
+                                str_contains($n, '.A1.') || str_contains($n, '.A2.') || str_contains($n, '.A4.') => 'Ampere (ARM)',
+                                str_contains($n, '.E') => 'AMD',
+                                str_contains($n, 'Standard3') || str_contains($n, 'Standard2') || str_contains($n, 'Optimized') => 'Intel',
+                                str_starts_with($n, 'BM.') => 'Bare Metal',
+                                default => 'Other',
+                            };
+                            $shapesByGroup = collect($shapes)->groupBy(fn($s) => $shapeGroup($s['name']));
+                        @endphp
                         <select id="shape" wire:model.live="shape"
                             class="w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm dark:border-white/[0.08] dark:bg-neutral-900">
-                            @foreach ($shapes as $s)
-                                <option value="{{ $s['name'] }}">{{ $s['name'] }}{{ $s['is_flexible'] ? ' (Flex)' : ($s['ocpus'] ? ' · '.$s['ocpus'].' OCPU' : '') }}</option>
+                            @foreach ($shapesByGroup as $group => $groupShapes)
+                                <optgroup label="{{ $group }}">
+                                    @foreach ($groupShapes as $s)
+                                        <option value="{{ $s['name'] }}">
+                                            {{ $s['name'] }}{{ $s['is_flexible'] ? '' : ($s['ocpus'] ? ' · '.$s['ocpus'].' OCPU / '.$s['memory_in_gbs'].' GB' : '') }}
+                                        </option>
+                                    @endforeach
+                                </optgroup>
                             @endforeach
                         </select>
                     @else
@@ -247,11 +263,18 @@
                 <div class="lg:col-span-2">
                     <label for="image_id" class="mb-1.5 block text-sm font-medium">Image <span class="text-red-500">*</span></label>
                     @if ($images)
+                        @php
+                            $imagesByOs = collect($images)->groupBy('operating_system');
+                        @endphp
                         <select id="image_id" wire:model="image_id"
                             class="w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm dark:border-white/[0.08] dark:bg-neutral-900">
                             <option value="">Select an image…</option>
-                            @foreach ($images as $img)
-                                <option value="{{ $img['id'] }}">{{ $img['display_name'] }}</option>
+                            @foreach ($imagesByOs as $os => $imgs)
+                                <optgroup label="{{ $os }}">
+                                    @foreach ($imgs as $img)
+                                        <option value="{{ $img['id'] }}">{{ $img['os_version'] }}</option>
+                                    @endforeach
+                                </optgroup>
                             @endforeach
                         </select>
                     @else
