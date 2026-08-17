@@ -80,7 +80,11 @@ class ByOracleCloud extends Component
 
     public string $availability_domain = '';
 
+    public array $shapes = [];
+
     public string $shape = 'VM.Standard.A1.Flex';
+
+    public array $images = [];
 
     public string $image_id = '';
 
@@ -179,11 +183,19 @@ class ByOracleCloud extends Component
 
     public function addFirewallRule(): void
     {
+        if (count($this->firewall_rules) >= 20) {
+            return;
+        }
+
         $this->firewall_rules[] = ['protocol' => 'TCP', 'port_min' => 80, 'port_max' => 80, 'source' => '0.0.0.0/0', 'description' => ''];
     }
 
     public function removeFirewallRule(int $index): void
     {
+        if ($index < 0 || $index >= count($this->firewall_rules)) {
+            return;
+        }
+
         array_splice($this->firewall_rules, $index, 1);
         $this->firewall_rules = array_values($this->firewall_rules);
     }
@@ -285,6 +297,24 @@ class ByOracleCloud extends Component
         if ($this->availability_domains && ! $this->availability_domain) {
             $this->availability_domain = $this->availability_domains[0]['name'] ?? '';
         }
+
+        $shapeResult = $client->listShapes($config, $compartmentId, $this->region);
+        if (! isset($shapeResult['error'])) {
+            // Pin free-tier shapes first, then alphabetical
+            $free = ['VM.Standard.A1.Flex', 'VM.Standard.E2.1.Micro'];
+            usort($shapeResult, fn ($a, $b) => (in_array($b['name'], $free) <=> in_array($a['name'], $free)) ?: strcmp($a['name'], $b['name']));
+            $this->shapes = $shapeResult;
+        }
+
+        $imageResult = $client->listImages($config, $compartmentId, $this->region);
+        if (! isset($imageResult['error'])) {
+            $this->images = $imageResult;
+            // Default: latest Ubuntu (preferred for Coolify)
+            $ubuntu = collect($this->images)->firstWhere('operating_system', 'Canonical Ubuntu');
+            if ($ubuntu && ! $this->image_id) {
+                $this->image_id = $ubuntu['id'];
+            }
+        }
     }
 
     public function handleConnectionCreated($connectionId): void
@@ -322,7 +352,7 @@ class ByOracleCloud extends Component
                 'firewall_rules.*.protocol' => 'required|in:TCP,UDP,ICMP,ALL',
                 'firewall_rules.*.port_min' => 'nullable|integer|min:1|max:65535',
                 'firewall_rules.*.port_max' => 'nullable|integer|min:1|max:65535',
-                'firewall_rules.*.source' => 'required|string',
+                'firewall_rules.*.source' => ['required', 'string', 'regex:/^(\d{1,3}\.){3}\d{1,3}\/\d{1,2}$/'],
             ],
             4 => [
                 'server_name' => ['required', 'string', 'max:253', new ValidHostname],
@@ -488,7 +518,7 @@ class ByOracleCloud extends Component
 
             auditLog('server_created', $server->only(['uuid', 'name', 'team_id', 'oci_region', 'oci_compartment_id']));
 
-            OciStackProvisionJob::dispatch($ociStack);
+            OciStackProvisionJob::dispatch($ociStack)->afterCommit();
 
             $this->dispatch('serverCreated', $server->uuid);
 

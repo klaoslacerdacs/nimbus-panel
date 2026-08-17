@@ -230,9 +230,34 @@
                     </select>
                     @error('availability_domain') <p class="mt-1 text-xs text-red-500">{{ $message }}</p> @enderror
                 </div>
-                <x-forms.input id="shape" label="Shape" required />
+                <div>
+                    <label for="shape" class="mb-1.5 block text-sm font-medium">Shape <span class="text-red-500">*</span></label>
+                    @if ($shapes)
+                        <select id="shape" wire:model.live="shape"
+                            class="w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm dark:border-white/[0.08] dark:bg-neutral-900">
+                            @foreach ($shapes as $s)
+                                <option value="{{ $s['name'] }}">{{ $s['name'] }}{{ $s['is_flexible'] ? ' (Flex)' : ($s['ocpus'] ? ' · '.$s['ocpus'].' OCPU' : '') }}</option>
+                            @endforeach
+                        </select>
+                    @else
+                        <x-forms.input id="shape" wire:model.live="shape" required placeholder="VM.Standard.A1.Flex" />
+                    @endif
+                    @error('shape') <p class="mt-1 text-xs text-red-500">{{ $message }}</p> @enderror
+                </div>
                 <div class="lg:col-span-2">
-                    <x-forms.input id="image_id" label="Image OCID" required />
+                    <label for="image_id" class="mb-1.5 block text-sm font-medium">Image <span class="text-red-500">*</span></label>
+                    @if ($images)
+                        <select id="image_id" wire:model="image_id"
+                            class="w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm dark:border-white/[0.08] dark:bg-neutral-900">
+                            <option value="">Select an image…</option>
+                            @foreach ($images as $img)
+                                <option value="{{ $img['id'] }}">{{ $img['display_name'] }}</option>
+                            @endforeach
+                        </select>
+                    @else
+                        <x-forms.input id="image_id" required placeholder="ocid1.image.oc1…" />
+                    @endif
+                    @error('image_id') <p class="mt-1 text-xs text-red-500">{{ $message }}</p> @enderror
                 </div>
                 @if (str_contains($shape, 'Flex'))
                     <x-forms.input id="ocpus" label="OCPUs" type="number" min="1" />
@@ -287,6 +312,8 @@
                     <dd>{{ $availability_domain }}</dd>
                     <dt class="text-neutral-500">Shape</dt>
                     <dd>{{ $shape }}</dd>
+                    <dt class="text-neutral-500">Image</dt>
+                    <dd>{{ collect($images)->firstWhere('id', $image_id)['display_name'] ?? $image_id }}</dd>
                     <dt class="text-neutral-500">Firewall rules</dt>
                     <dd>{{ count($firewall_rules) }} ingress {{ Str::plural('rule', count($firewall_rules)) }}</dd>
                     <dt class="text-neutral-500">Metrics</dt>
