@@ -40,12 +40,20 @@ class OciStackProvisionJob implements ShouldQueue
             ?: $stack->ociConnection->tenancy_ocid;
 
         if (! $stack->stack_ocid) {
+            try {
+                $zipBase64 = $this->getTemplateZipBase64();
+            } catch (\RuntimeException $e) {
+                $this->markFailed($stack, $e->getMessage());
+
+                return;
+            }
+
             $result = $bridge->createStack(
                 $config,
                 $stack->name,
                 $stackCompartmentId,
                 'ZIP_UPLOAD',
-                ['zip_file_base64_encoded' => $this->getTemplateZipBase64()],
+                ['zip_file_base64_encoded' => $zipBase64],
                 $stack->tf_vars ?? []
             );
 
@@ -117,8 +125,6 @@ class OciStackProvisionJob implements ShouldQueue
         $deadline = now()->addMinutes(30);
 
         while (now()->lt($deadline)) {
-            sleep(30);
-
             $result = $bridge->getStackJob($config, $jobId);
             $status = strtolower($result['status'] ?? '');
 
@@ -129,6 +135,8 @@ class OciStackProvisionJob implements ShouldQueue
             if (! in_array($status, ['in_progress', 'accepted', 'waiting'])) {
                 return false;
             }
+
+            sleep(30);
         }
 
         return false;
@@ -136,7 +144,13 @@ class OciStackProvisionJob implements ShouldQueue
 
     private function getTemplateZipBase64(): string
     {
-        return base64_encode(file_get_contents(base_path('terraform/templates/environment.zip')));
+        $path = base_path('terraform/templates/environment.zip');
+        $contents = file_get_contents($path);
+        if ($contents === false) {
+            throw new \RuntimeException("OCI template ZIP not found at {$path}");
+        }
+
+        return base64_encode($contents);
     }
 
     private function markFailed(OciStack $stack, string $reason): void

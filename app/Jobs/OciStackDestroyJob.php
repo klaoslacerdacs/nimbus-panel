@@ -31,6 +31,12 @@ class OciStackDestroyJob implements ShouldQueue
             return;
         }
 
+        if (! $stack->stack_ocid) {
+            $stack->update(['status' => 'destroy_failed', 'last_plan_summary' => 'No OCI stack OCID — nothing to destroy']);
+
+            return;
+        }
+
         $config = $stack->ociConnection->toBridgeConfig();
         $stack->update(['status' => 'destroying', 'last_plan_summary' => 'Running Terraform destroy...']);
 
@@ -45,8 +51,6 @@ class OciStackDestroyJob implements ShouldQueue
         $deadline = now()->addMinutes(30);
 
         while (now()->lt($deadline)) {
-            sleep(30);
-
             $result = $bridge->getStackJob($config, $destroy['job_id']);
             $status = strtolower($result['status'] ?? '');
 
@@ -66,6 +70,8 @@ class OciStackDestroyJob implements ShouldQueue
 
                 return;
             }
+
+            sleep(30);
         }
 
         $stack->update(['status' => 'destroy_failed', 'last_plan_summary' => 'Destroy timed out after 30 minutes']);

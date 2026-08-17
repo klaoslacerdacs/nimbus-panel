@@ -97,16 +97,6 @@ class SubnetsBody(BaseModel):
     region: str
 
 
-@app.get("/v1/compartments")
-def list_compartments(region: str, config: str = "", _: None = Depends(_verify_token)):
-    # ponytail: legacy GET kept for backwards compat; POST /v1/compartments is preferred
-    import json
-    cfg = _parse_config(json.loads(config)) if config else None
-    if cfg is None:
-        raise HTTPException(status_code=422, detail="config required")
-    return _respond(compute.list_compartments(cfg, region))
-
-
 @app.post("/v1/compartments")
 def list_compartments_post(body: ComputeWithRegionBody, _: None = Depends(_verify_token)):
     return _respond(compute.list_compartments(_parse_config(body.config), body.region))

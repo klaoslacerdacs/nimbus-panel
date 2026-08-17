@@ -122,7 +122,7 @@ class OciDashboard extends Component
 
     public function loadNsgRules(): void
     {
-        $ociStack = $this->server->ociStack;
+        $ociStack = $this->server->ociStack()->first();
         if (! $ociStack?->nsg_ocid) {
             return;
         }
@@ -151,6 +151,7 @@ class OciDashboard extends Component
 
     public function stopInstance(): void
     {
+        $this->authorize('update', $this->server);
         $this->confirmingStop = false;
         $this->performAction('SOFTSTOP');
     }
@@ -163,6 +164,7 @@ class OciDashboard extends Component
 
     public function rebootInstance(): void
     {
+        $this->authorize('update', $this->server);
         $this->confirmingReboot = false;
         $this->performAction('SOFTRESET');
     }
@@ -208,7 +210,7 @@ class OciDashboard extends Component
             'newRule.source' => 'required|string',
         ]);
 
-        $ociStack = $this->server->ociStack;
+        $ociStack = $this->server->ociStack()->first();
         if (! $ociStack?->nsg_ocid) {
             $this->dispatch('error', 'No NSG linked to this server.');
 
@@ -230,7 +232,7 @@ class OciDashboard extends Component
     public function removeNsgRule(string $ruleId): void
     {
         $this->authorize('update', $this->server);
-        $ociStack = $this->server->ociStack;
+        $ociStack = $this->server->ociStack()->first();
         if (! $ociStack?->nsg_ocid) {
             return;
         }
