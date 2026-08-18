@@ -29,6 +29,24 @@ class OciConnectionForm extends Component
 
     public ?string $passphrase = null;
 
+    public string $config_snippet = '';
+
+    public function updatedConfigSnippet(string $value): void
+    {
+        foreach (explode("\n", $value) as $line) {
+            [$k, $v] = array_pad(explode('=', $line, 2), 2, '');
+            $k = trim($k);
+            $v = trim($v);
+            match ($k) {
+                'user' => $this->user_ocid = $v,
+                'tenancy' => $this->tenancy_ocid = $v,
+                'fingerprint' => $this->fingerprint = $v,
+                'region' => in_array($v, config('oci.regions')) ? ($this->region = $v) : null,
+                default => null,
+            };
+        }
+    }
+
     public function mount(): void
     {
         try {

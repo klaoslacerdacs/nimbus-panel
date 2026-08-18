@@ -8,12 +8,16 @@
                 ['value' => 'instance_principal', 'label' => 'Instance Principal'],
             ]" />
 
-        <x-forms.input required id="region" label="Region" placeholder="us-ashburn-1" />
+        <x-forms.select required id="region" label="Region" wire:model="region">
+            @foreach(config('oci.regions') as $r)
+                <option value="{{ $r }}">{{ $r }}</option>
+            @endforeach
+        </x-forms.select>
 
         @if ($authentication_method === 'api_key')
-            <div class="rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm text-blue-800 dark:border-blue-800/40 dark:bg-blue-900/20 dark:text-blue-300">
-                In the OCI Console: open the <strong>Profile menu → My profile → API keys → Add API key</strong>. Download the private key and copy the config snippet — it contains your tenancy OCID, user OCID, fingerprint, and region.
-            </div>
+            <x-forms.textarea monospace rows="5" id="config_snippet" label="OCI config snippet (optional — auto-fills fields below)"
+                placeholder="[DEFAULT]&#10;user=ocid1.user.oc1..&#10;fingerprint=aa:bb:cc:..&#10;tenancy=ocid1.tenancy.oc1..&#10;region=us-ashburn-1&#10;key_file=~/.oci/key.pem"
+                helper="Paste the snippet from OCI Console → Profile → API keys → Add API key. Region, tenancy, user and fingerprint are filled automatically." />
             <div class="grid gap-4 lg:grid-cols-2">
                 <x-forms.input required id="tenancy_ocid" label="Tenancy OCID"
                     placeholder="ocid1.tenancy.oc1.."

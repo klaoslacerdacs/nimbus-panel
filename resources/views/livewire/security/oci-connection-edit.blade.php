@@ -12,7 +12,11 @@
                         ['value' => 'instance_principal', 'label' => 'Instance Principal'],
                     ]" />
 
-                <x-forms.input required id="region" label="Region" placeholder="us-ashburn-1" />
+                <x-forms.select required id="region" label="Region" wire:model="region">
+                    @foreach(config('oci.regions') as $r)
+                        <option value="{{ $r }}">{{ $r }}</option>
+                    @endforeach
+                </x-forms.select>
 
                 @if ($authentication_method === 'api_key')
                     <div class="grid gap-4 lg:grid-cols-2">
