@@ -45,9 +45,14 @@
                     <a href="{{ route('security.oci-connections') }}" class="button button-secondary" wire:navigate>
                         ← Back
                     </a>
-                    <x-forms.button type="submit" class="button-highlighted" wire:target="updateConnection">
-                        Validate and save
-                    </x-forms.button>
+                    <div class="flex gap-2">
+                        <x-forms.button type="button" wire:click="testConnection" wire:target="testConnection">
+                            Test connection
+                        </x-forms.button>
+                        <x-forms.button type="submit" class="button-highlighted" wire:target="updateConnection">
+                            Validate and save
+                        </x-forms.button>
+                    </div>
                 </div>
             </form>
         </x-application.settings-section>

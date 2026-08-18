@@ -30,6 +30,8 @@ class Create extends Component
         $this->selectedTokenUuid = $this->selectedType && $this->selectedType !== 'manual' ? $selectedTokenUuid : null;
 
         $this->private_keys = PrivateKey::ownedByCurrentTeamCached();
+        $this->has_oci_connections = OciConnection::where('team_id', currentTeam()->id)->exists();
+
         if (! isCloud()) {
             $this->limit_reached = false;
 
@@ -41,8 +43,6 @@ class Create extends Component
         $this->has_hetzner_tokens = CloudProviderToken::ownedByCurrentTeam()
             ->where('provider', 'hetzner')
             ->exists();
-
-        $this->has_oci_connections = OciConnection::where('team_id', currentTeam()->id)->exists();
     }
 
     public function render()

@@ -96,6 +96,40 @@ class OciConnectionEdit extends Component
         $this->passphrase = null;
     }
 
+    public function testConnection(): void
+    {
+        try {
+            $connection = OciConnection::ownedByCurrentTeam()->findOrFail($this->connectionId);
+            $this->authorize('update', $connection);
+
+            $activeKey = $this->private_key ?: $connection->private_key;
+            $activePassphrase = $this->private_key ? $this->passphrase : $connection->passphrase;
+
+            $bridgeConfig = ['auth_mode' => $this->authentication_method, 'region' => $this->region];
+            if ($this->authentication_method === 'api_key') {
+                $bridgeConfig = array_merge($bridgeConfig, [
+                    'tenancy_id' => $this->tenancy_ocid ?? $connection->tenancy_ocid,
+                    'user_id' => $this->user_ocid ?? $connection->user_ocid,
+                    'fingerprint' => $this->fingerprint ?? $connection->fingerprint,
+                    'key_content' => $activeKey,
+                    'passphrase' => $activePassphrase,
+                ]);
+            }
+
+            $result = app(OciBridgeClient::class)->validateConnection($bridgeConfig);
+
+            if (isset($result['error']) && $result['error']) {
+                $this->dispatch('error', $result['message'] ?? 'Connection test failed.');
+
+                return;
+            }
+
+            $this->dispatch('success', 'Connection OK — tenancy: '.($result['tenancy_name'] ?? $result['tenancy_ocid'] ?? 'validated'));
+        } catch (\Throwable $e) {
+            handleError($e, $this);
+        }
+    }
+
     public function updateConnection(): void
     {
         try {
