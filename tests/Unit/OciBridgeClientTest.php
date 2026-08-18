@@ -42,7 +42,8 @@ class OciBridgeClientTest extends TestCase
 
         $result = (new OciBridgeClient)->validateConnection($this->config);
 
-        $this->assertSame(['ok' => true], $result);
+        $this->assertTrue($result['ok']);
+        $this->assertSame('ocid1.tenancy.oc1..aaaa', $result['tenancy_ocid']);
         $this->assertArrayNotHasKey('error', $result);
     }
 

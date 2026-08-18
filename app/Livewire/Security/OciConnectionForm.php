@@ -136,6 +136,14 @@ class OciConnectionForm extends Component
                 return;
             }
 
+            // Auto-fill from tenancy response if the user left them blank.
+            if (empty($this->name) && ! empty($result['tenancy_name'])) {
+                $this->name = $result['tenancy_name'];
+            }
+            if (empty($this->compartment_ocid) && ! empty($result['tenancy_ocid'])) {
+                $this->compartment_ocid = $result['tenancy_ocid'];
+            }
+
             $connection = OciConnection::create([
                 'team_id' => currentTeam()->id,
                 'name' => $this->name,
