@@ -3,6 +3,7 @@
 namespace App\Livewire\Server;
 
 use App\Models\Server;
+use App\Models\ServerSetting;
 use App\Services\OciBridgeClient;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Livewire\Attributes\Locked;
@@ -53,6 +54,11 @@ class OciDashboard extends Component
     {
         $this->authorize('view', $server);
         $this->server = $server;
+        // Ensure settings record exists — older servers may lack it if created without observer
+        if (! $server->settings) {
+            ServerSetting::create(['server_id' => $server->id]);
+            $server->load('settings');
+        }
         $this->loadProvisioningStatus();
         if (! $this->isProvisioning) {
             $this->loadStatus();

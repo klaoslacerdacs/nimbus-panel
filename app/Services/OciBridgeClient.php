@@ -37,12 +37,7 @@ class OciBridgeClient
         return $this->guard(function () use ($config): array {
             $tenancy = $this->api->get($config, 'identity', $config['region'], "/20160918/tenancies/{$config['tenancy_id']}");
 
-            return [
-                'ok' => true,
-                'tenancy_name' => $tenancy['name'] ?? null,
-                'tenancy_ocid' => $tenancy['id'] ?? $config['tenancy_id'],
-                'home_region_key' => $tenancy['homeRegionKey'] ?? null,
-            ];
+            return ['ok' => true, 'tenancy_ocid' => $tenancy['id'] ?? $config['tenancy_id']];
         });
     }
 

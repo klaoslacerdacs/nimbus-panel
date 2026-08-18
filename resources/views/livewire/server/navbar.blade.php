@@ -42,7 +42,7 @@
                 'label' => 'Proxy',
                 'route' => 'server.proxy',
                 'active' => request()->routeIs('server.proxy', 'server.proxy.*'),
-                'visible' => ! $server->isSwarmWorker() && ! $server->settings->is_build_server,
+                'visible' => ! $server->isSwarmWorker() && ! $server->settings?->is_build_server,
                 'warning' => $this->hasTraefikOutdated,
             ],
             [
@@ -51,7 +51,7 @@
                 'active' => request()->routeIs('server.sentinel', 'server.sentinel.*'),
                 'visible' => $server->isFunctional()
                     && ! $server->isSwarm()
-                    && ! $server->settings->is_build_server
+                    && ! $server->settings?->is_build_server
                     && auth()->user()?->can('viewSentinel', $server),
                 'warning' => $server->isSentinelEnabled() && ! $server->isSentinelLive(),
             ],

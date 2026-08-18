@@ -54,7 +54,7 @@
             'active' => $activeMenu === 'proxy',
             'icon' => 'network',
             'group' => 'Platform',
-            'visible' => ! $server->isSwarmWorker() && ! $server->settings->is_build_server,
+            'visible' => ! $server->isSwarmWorker() && ! $server->settings?->is_build_server,
             'children' => [
                 ['label' => 'Configuration', 'route' => 'server.proxy', 'active' => $activeSubMenu === 'configuration', 'icon' => 'settings'],
                 ['label' => 'Dynamic Configurations', 'route' => 'server.proxy.dynamic-confs', 'active' => $activeSubMenu === 'dynamic-confs', 'icon' => 'sliders', 'visible' => $server->proxySet()],
@@ -67,7 +67,7 @@
             'active' => request()->routeIs('server.sentinel', 'server.sentinel.*'),
             'icon' => 'shield-star',
             'group' => 'Platform',
-            'visible' => $server->isFunctional() && ! $server->isSwarm() && ! $server->settings->is_build_server && auth()->user()?->can('viewSentinel', $server),
+            'visible' => $server->isFunctional() && ! $server->isSwarm() && ! $server->settings?->is_build_server && auth()->user()?->can('viewSentinel', $server),
             'children' => [
                 ['label' => 'Configuration', 'route' => 'server.sentinel', 'active' => request()->routeIs('server.sentinel'), 'icon' => 'settings'],
                 ['label' => 'Logs', 'route' => 'server.sentinel.logs', 'active' => request()->routeIs('server.sentinel.logs'), 'icon' => 'file-content'],
