@@ -5,9 +5,10 @@ use App\Models\InstanceSettings;
 use App\Models\OciConnection;
 use App\Models\Team;
 use App\Models\User;
+use App\Services\OciBridgeClient;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Facades\Http;
 use Livewire\Livewire;
+use Mockery\MockInterface;
 
 uses(RefreshDatabase::class);
 
@@ -25,10 +26,16 @@ function makeConnection(Team $team): OciConnection
     ]);
 }
 
+function mockValidClient(): MockInterface
+{
+    $mock = Mockery::mock(OciBridgeClient::class);
+    $mock->shouldReceive('validateConnection')->andReturn(['ok' => true]);
+
+    return $mock;
+}
+
 beforeEach(function () {
     InstanceSettings::unguarded(fn () => InstanceSettings::query()->create(['id' => 0]));
-
-    Http::preventStrayRequests();
 
     $this->user = User::factory()->create();
     $this->team = Team::factory()->create();
@@ -48,9 +55,7 @@ it('renders the edit form with existing values', function () {
 });
 
 it('updates metadata without rotating PEM', function () {
-    Http::fake([
-        '*/v1/connections/validate' => Http::response(['data' => ['ok' => true, 'auth_mode' => 'api_key', 'error' => null]], 200),
-    ]);
+    app()->instance(OciBridgeClient::class, mockValidClient());
 
     Livewire::test(OciConnectionEdit::class, ['connection' => $this->connection])
         ->set('name', 'Updated Name')
@@ -70,9 +75,7 @@ it('updates metadata without rotating PEM', function () {
 });
 
 it('rotates PEM when new key provided', function () {
-    Http::fake([
-        '*/v1/connections/validate' => Http::response(['data' => ['ok' => true, 'auth_mode' => 'api_key', 'error' => null]], 200),
-    ]);
+    app()->instance(OciBridgeClient::class, mockValidClient());
 
     Livewire::test(OciConnectionEdit::class, ['connection' => $this->connection])
         ->update(
@@ -85,9 +88,9 @@ it('rotates PEM when new key provided', function () {
 });
 
 it('does not update when bridge returns error', function () {
-    Http::fake([
-        '*/v1/connections/validate' => Http::response(['data' => ['error' => true, 'message' => 'Bad creds']], 200),
-    ]);
+    $mock = Mockery::mock(OciBridgeClient::class);
+    $mock->shouldReceive('validateConnection')->andReturn(['error' => true, 'message' => 'Bad creds']);
+    app()->instance(OciBridgeClient::class, $mock);
 
     Livewire::test(OciConnectionEdit::class, ['connection' => $this->connection])
         ->set('name', 'Should Not Save')

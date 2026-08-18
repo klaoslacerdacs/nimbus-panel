@@ -5,16 +5,14 @@ use App\Models\InstanceSettings;
 use App\Models\OciConnection;
 use App\Models\Team;
 use App\Models\User;
+use App\Services\OciBridgeClient;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Facades\Http;
 use Livewire\Livewire;
 
 uses(RefreshDatabase::class);
 
 beforeEach(function () {
     InstanceSettings::unguarded(fn () => InstanceSettings::query()->create(['id' => 0]));
-
-    Http::preventStrayRequests();
 
     $this->user = User::factory()->create();
     $this->team = Team::factory()->create();
@@ -28,9 +26,9 @@ it('renders the connection form', function () {
 });
 
 it('creates a connection when bridge validates successfully', function () {
-    Http::fake([
-        '*/v1/connections/validate' => Http::response(['data' => ['ok' => true, 'auth_mode' => 'api_key', 'operation' => 'get_tenancy', 'error' => null]], 200),
-    ]);
+    $mock = Mockery::mock(OciBridgeClient::class);
+    $mock->shouldReceive('validateConnection')->andReturn(['ok' => true]);
+    app()->instance(OciBridgeClient::class, $mock);
 
     // dehydrate() zeros secrets after every round-trip. The browser bundles all form
     // state (including PEM) with the action call in ONE Livewire commit — simulate that
@@ -56,9 +54,17 @@ it('creates a connection when bridge validates successfully', function () {
 });
 
 it('sends bridge-format key names in validateConnection request', function () {
-    Http::fake([
-        '*/v1/connections/validate' => Http::response(['data' => ['ok' => true, 'auth_mode' => 'api_key', 'operation' => 'get_tenancy', 'error' => null]], 200),
-    ]);
+    $mock = Mockery::mock(OciBridgeClient::class);
+    $mock->shouldReceive('validateConnection')
+        ->once()
+        ->with(Mockery::on(fn ($config) => isset($config['auth_mode'])     // bridge name, not authentication_method
+            && isset($config['tenancy_id'])   // bridge name, not tenancy_ocid
+            && isset($config['user_id'])      // bridge name, not user_ocid
+            && isset($config['key_content'])  // bridge name, not private_key
+            && ! isset($config['tenancy_ocid'])
+            && ! isset($config['private_key'])))
+        ->andReturn(['ok' => true]);
+    app()->instance(OciBridgeClient::class, $mock);
 
     Livewire::test(OciConnectionForm::class)
         ->set('name', 'Test')
@@ -71,19 +77,6 @@ it('sends bridge-format key names in validateConnection request', function () {
             calls: [['method' => 'addConnection', 'params' => [], 'path' => '']],
             updates: ['private_key' => "-----BEGIN RSA PRIVATE KEY-----\ntest\n-----END RSA PRIVATE KEY-----"],
         );
-
-    Http::assertSent(function ($request) {
-        $body = $request->data();
-        $config = $body['config'] ?? null;
-
-        return $config !== null
-            && isset($config['auth_mode'])    // bridge name, not authentication_method
-            && isset($config['tenancy_id'])   // bridge name, not tenancy_ocid
-            && isset($config['user_id'])      // bridge name, not user_ocid
-            && isset($config['key_content'])  // bridge name, not private_key
-            && ! isset($config['tenancy_ocid'])
-            && ! isset($config['private_key']);
-    });
 });
 
 it('clears private_key from component state after addConnection runs', function () {
@@ -105,9 +98,9 @@ it('clears private_key from component state after addConnection runs', function 
 });
 
 it('does not create connection when bridge returns error', function () {
-    Http::fake([
-        '*/v1/connections/validate' => Http::response(['data' => ['error' => true, 'message' => 'Invalid credentials']], 200),
-    ]);
+    $mock = Mockery::mock(OciBridgeClient::class);
+    $mock->shouldReceive('validateConnection')->andReturn(['error' => true, 'message' => 'Invalid credentials']);
+    app()->instance(OciBridgeClient::class, $mock);
 
     Livewire::test(OciConnectionForm::class)
         ->set('name', 'Bad Connection')
@@ -152,9 +145,14 @@ it('denies addConnection to non-admin team members', function () {
 });
 
 it('creates a connection using instance_principal auth', function () {
-    Http::fake([
-        '*/v1/connections/validate' => Http::response(['data' => ['ok' => true, 'auth_mode' => 'instance_principal', 'error' => null]], 200),
-    ]);
+    $mock = Mockery::mock(OciBridgeClient::class);
+    $mock->shouldReceive('validateConnection')
+        ->once()
+        ->with(Mockery::on(fn ($config) => ($config['auth_mode'] ?? null) === 'instance_principal'
+            && ! isset($config['key_content'])   // no PEM for instance_principal
+            && ! isset($config['tenancy_id'])))
+        ->andReturn(['ok' => true]);
+    app()->instance(OciBridgeClient::class, $mock);
 
     Livewire::test(OciConnectionForm::class)
         ->set('name', 'Instance Principal Conn')
@@ -162,15 +160,6 @@ it('creates a connection using instance_principal auth', function () {
         ->set('region', 'us-ashburn-1')
         ->call('addConnection')
         ->assertDispatched('connectionAdded');
-
-    Http::assertSent(function ($request) {
-        $config = $request->data()['config'] ?? null;
-
-        return $config !== null
-            && ($config['auth_mode'] ?? null) === 'instance_principal'
-            && ! isset($config['key_content'])   // no PEM for instance_principal
-            && ! isset($config['tenancy_id']);
-    });
 
     $this->assertDatabaseHas('oci_connections', [
         'name' => 'Instance Principal Conn',

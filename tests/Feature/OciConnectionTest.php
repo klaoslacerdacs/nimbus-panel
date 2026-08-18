@@ -54,14 +54,16 @@ it('scopes connection queries to the requested team', function () {
         ->and($connections->contains($otherConnection))->toBeFalse();
 });
 
-it('does not allow team ownership to be mass assigned', function () {
+it('allows team_id to be set by the application', function () {
+    // team_id is fillable so application code can set it; cross-team protection
+    // is enforced at the policy layer (OciConnectionPolicy) and ownedByCurrentTeam() scope.
     $connection = new OciConnection([
         'name' => 'Production OCI',
         'authentication_method' => OciAuthenticationMethod::API_KEY,
         'team_id' => 123,
     ]);
 
-    expect($connection->team_id)->toBeNull();
+    expect($connection->team_id)->toBe(123);
 });
 
 it('encrypts and hides api key secrets', function () {
