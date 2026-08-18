@@ -59,7 +59,7 @@ class OciConnectionForm extends Component
     protected function rules(): array
     {
         $rules = [
-            'name' => 'required|string|max:255',
+            'name' => 'nullable|string|max:255',
             'authentication_method' => 'required|string|in:api_key,instance_principal',
             'region' => 'required|string|max:50',
             'compartment_ocid' => 'nullable|string|max:255',
@@ -142,6 +142,12 @@ class OciConnectionForm extends Component
             }
             if (empty($this->compartment_ocid) && ! empty($result['tenancy_ocid'])) {
                 $this->compartment_ocid = $result['tenancy_ocid'];
+            }
+
+            if (empty($this->name)) {
+                $this->dispatch('error', 'Connection name could not be determined. Please fill it in.');
+
+                return;
             }
 
             $connection = OciConnection::create([

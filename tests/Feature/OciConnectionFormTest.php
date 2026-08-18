@@ -84,7 +84,7 @@ it('clears private_key from component state after addConnection runs', function 
     // addConnection executes. After the method returns, dehydrate() must zero it.
     // If dehydrate() was removed, private_key would survive in the snapshot.
     Livewire::test(OciConnectionForm::class)
-        ->set('name', '')  // deliberately invalid — triggers validation error
+        ->set('fingerprint', 'invalid')  // deliberately invalid — triggers validation error
         ->update(
             calls: [['method' => 'addConnection', 'params' => [], 'path' => '']],
             updates: [
@@ -92,7 +92,7 @@ it('clears private_key from component state after addConnection runs', function 
                 'passphrase' => 'my-passphrase',
             ],
         )
-        ->assertHasErrors(['name'])
+        ->assertHasErrors(['fingerprint'])
         ->assertSet('private_key', null)
         ->assertSet('passphrase', null);
 });
