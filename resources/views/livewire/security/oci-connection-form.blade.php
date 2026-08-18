@@ -1,6 +1,6 @@
 <div class="w-full">
-    <form class="flex w-full flex-col gap-4" wire:submit="addConnection">
-        <x-forms.input required id="name" label="Connection name" placeholder="Production OCI" />
+    <form class="flex w-full flex-col gap-4" wire:submit="addConnection" novalidate>
+        <x-forms.input id="name" label="Connection name" placeholder="Production OCI (auto-filled from OCI if blank)" />
 
         <x-forms.listbox required live id="authentication_method" label="Authentication method"
             :options="[
