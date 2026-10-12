@@ -131,77 +131,129 @@
         @endif
     </x-application.settings-section>
 
-    {{-- NSG Firewall Rules --}}
+    {{-- Firewall: NSGs on the VM's VNIC + subnet security lists --}}
     @php $ociStack = $server->ociStack; @endphp
-    @if ($ociStack?->nsg_ocid)
-        <x-application.settings-section title="Firewall rules" helper="NSG ingress rules for this instance." flush>
+    @if ($firewall)
+        <x-application.settings-section title="Firewall"
+            helper="Inbound traffic is allowed when any security group (NSG) on this VM or any security list of its subnet allows it." flush>
             <x-slot:actions>
-                <button wire:click="addNsgRule" class="button button-highlighted">
-                    <x-reicon name="plus" class="size-3.5" />
-                    Add rule
-                </button>
+                @if ($firewall['nsgs'] ?? [])
+                    <button wire:click="addNsgRule" class="button button-highlighted">
+                        <x-reicon name="plus" class="size-3.5" />
+                        Add rule
+                    </button>
+                @else
+                    <button wire:click="createNsg" wire:loading.attr="disabled" class="button button-highlighted">
+                        <x-reicon name="shield" class="size-3.5" />
+                        Create security group for this VM
+                    </button>
+                @endif
             </x-slot:actions>
 
-            {{-- Add rule form --}}
-            <div class="flex flex-wrap items-start gap-2 border-b border-neutral-200 p-4 dark:border-white/[0.08]">
-                <div class="flex-1 min-w-24">
-                    <x-forms.listbox id="newRule.protocol" label="Protocol" :options="[
-                        ['value' => 'TCP', 'label' => 'TCP'],
-                        ['value' => 'UDP', 'label' => 'UDP'],
-                        ['value' => 'ICMP', 'label' => 'ICMP'],
-                        ['value' => 'ALL', 'label' => 'ALL'],
-                    ]" />
-                </div>
-                <div class="w-24">
-                    <x-forms.input id="newRule.port_min" type="number" label="Port min" placeholder="22" min="1" max="65535" />
-                </div>
-                <div class="w-24">
-                    <x-forms.input id="newRule.port_max" type="number" label="Port max" placeholder="22" min="1" max="65535" />
-                </div>
-                <div class="w-36">
-                    <x-forms.input id="newRule.source" label="Source CIDR" placeholder="0.0.0.0/0" />
-                </div>
-                <div class="min-w-0 flex-1">
-                    <x-forms.input id="newRule.description" label="Description" placeholder="Optional" />
-                </div>
-            </div>
-            @error('newRule.source') <p class="px-4 pb-2 text-[12px] text-error">{{ $message }}</p> @enderror
-
-            @if ($nsgRules)
-                <div class="data-table">
-                    <div class="data-table-header oci-nsg-grid">
-                        <span>Protocol</span>
-                        <span>Port</span>
-                        <span>Source</span>
-                        <span>Description</span>
-                        <span class="text-right">Actions</span>
-                    </div>
-                    @foreach ($nsgRules as $rule)
-                        <div wire:key="nsg-rule-{{ $rule['id'] }}" class="data-table-row oci-nsg-grid border-b border-neutral-200 last:border-b-0 dark:border-white/[0.07]">
-                            <div class="font-mono text-[12px]">{{ $rule['protocol'] === '6' ? 'TCP' : ($rule['protocol'] === '17' ? 'UDP' : $rule['protocol']) }}</div>
-                            <div class="font-mono text-[12px]">
-                                @if (isset($rule['port_min']))
-                                    {{ $rule['port_min'] }}{{ isset($rule['port_max']) && $rule['port_max'] !== $rule['port_min'] ? '-'.$rule['port_max'] : '' }}
-                                @else
-                                    all
-                                @endif
-                            </div>
-                            <div class="font-mono text-[12px]">{{ $rule['source'] ?? '-' }}</div>
-                            <div class="text-[12px] text-neutral-500 dark:text-fg-dim">{{ $rule['description'] ?: '-' }}</div>
-                            <div class="flex justify-end">
-                                <button wire:click="removeNsgRule('{{ $rule['id'] }}')"
-                                    class="inline-flex h-7 items-center rounded-md px-2 text-[11px] font-medium text-error transition-colors hover:bg-error/10">
-                                    Remove
-                                </button>
-                            </div>
+            @if ($firewall['nsgs'] ?? [])
+                <div class="grid gap-3 border-b border-neutral-200 p-4 dark:border-white/[0.08]">
+                    @if (count($firewall['nsgs']) > 1)
+                        <div class="max-w-md">
+                            <x-forms.listbox id="selectedNsgId" label="Security group" live
+                                :options="collect($firewall['nsgs'])->map(fn ($nsg) => ['value' => $nsg['id'], 'label' => $nsg['display_name'] ?? $nsg['id']])->all()" />
                         </div>
+                    @else
+                        <p class="text-[12px] text-neutral-500 dark:text-fg-dim">Security group: <span class="font-mono">{{ $firewall['nsgs'][0]['display_name'] ?? $firewall['nsgs'][0]['id'] }}</span></p>
+                    @endif
+
+                    <div class="flex flex-wrap items-center gap-2 text-[12px]">
+                        <span class="text-neutral-500 dark:text-fg-dim">Quick add:</span>
+                        <button type="button" wire:click="applyRulePreset('http')" class="button button-secondary text-xs">HTTP 80</button>
+                        <button type="button" wire:click="applyRulePreset('https')" class="button button-secondary text-xs">HTTPS 443</button>
+                        <button type="button" wire:click="applyRulePreset('ssh')" class="button button-secondary text-xs">SSH 22</button>
+                    </div>
+
+                    <div class="flex flex-wrap items-start gap-2">
+                        <div class="min-w-24 flex-1">
+                            <x-forms.listbox id="newRule.protocol" label="Protocol" :options="[
+                                ['value' => 'TCP', 'label' => 'TCP'],
+                                ['value' => 'UDP', 'label' => 'UDP'],
+                                ['value' => 'ICMP', 'label' => 'ICMP'],
+                                ['value' => 'ALL', 'label' => 'ALL'],
+                            ]" />
+                        </div>
+                        <div class="w-28">
+                            <x-forms.input id="newRule.port_min" type="number" label="Port" placeholder="8080" min="1" max="65535" />
+                        </div>
+                        <div class="w-28">
+                            <x-forms.input id="newRule.port_max" type="number" label="To port (optional)" placeholder="8090" min="1" max="65535" />
+                        </div>
+                        <div class="w-40">
+                            <x-forms.input id="newRule.source" label="Source CIDR" placeholder="0.0.0.0/0" />
+                        </div>
+                        <div class="min-w-0 flex-1">
+                            <x-forms.input id="newRule.description" label="Description" placeholder="Optional" />
+                        </div>
+                    </div>
+                    @foreach (['newRule.port_min', 'newRule.port_max', 'newRule.source'] as $field)
+                        @error($field) <p class="text-[12px] text-error">{{ $message }}</p> @enderror
                     @endforeach
                 </div>
+
+                @if ($nsgRules)
+                    <div class="data-table">
+                        <div class="data-table-header oci-nsg-grid">
+                            <span>Protocol</span>
+                            <span>Port</span>
+                            <span>Source</span>
+                            <span>Description</span>
+                            <span class="text-right">Actions</span>
+                        </div>
+                        @foreach ($nsgRules as $rule)
+                            <div wire:key="nsg-rule-{{ $rule['id'] }}" class="data-table-row oci-nsg-grid border-b border-neutral-200 last:border-b-0 dark:border-white/[0.07]">
+                                <div class="font-mono text-[12px]">{{ $rule['protocol_label'] ?? $rule['protocol'] }}</div>
+                                <div class="font-mono text-[12px]">
+                                    @if (isset($rule['port_min']))
+                                        {{ $rule['port_min'] }}{{ isset($rule['port_max']) && $rule['port_max'] !== $rule['port_min'] ? '-'.$rule['port_max'] : '' }}
+                                    @else
+                                        all
+                                    @endif
+                                </div>
+                                <div class="font-mono text-[12px]">{{ $rule['source'] ?? '-' }}</div>
+                                <div class="text-[12px] text-neutral-500 dark:text-fg-dim">{{ $rule['description'] ?: '-' }}</div>
+                                <div class="flex justify-end">
+                                    <button wire:click="removeNsgRule('{{ $rule['id'] }}')" wire:loading.attr="disabled"
+                                        class="inline-flex h-7 items-center rounded-md px-2 text-[11px] font-medium text-error transition-colors hover:bg-error/10">
+                                        Remove
+                                    </button>
+                                </div>
+                            </div>
+                        @endforeach
+                    </div>
+                @else
+                    <x-empty size="sm" title="No ingress rules" description="Add a rule above to allow traffic to this instance.">
+                        <x-slot:icon><x-reicon name="shield" class="size-8" /></x-slot:icon>
+                    </x-empty>
+                @endif
             @else
-                <x-empty size="sm" title="No ingress rules" description="Add a rule above to allow traffic to this instance.">
-                    <x-slot:icon><x-reicon name="shield" class="size-8" /></x-slot:icon>
-                </x-empty>
+                <p class="p-4 text-[12px] text-neutral-500 dark:text-fg-dim">
+                    This VM has no security group. Create one to open ports for this VM only, without touching the subnet security list shared with other VMs.
+                </p>
             @endif
+
+            @foreach ($firewall['security_lists'] ?? [] as $list)
+                <div class="border-t border-neutral-200 px-4 pt-3 pb-2 dark:border-white/[0.08]">
+                    <p class="text-[12px] font-medium">Subnet security list · {{ $list['display_name'] ?? $list['id'] }} <span class="font-normal text-neutral-500 dark:text-fg-dim">(read-only, shared by every VM in the subnet)</span></p>
+                    @if ($list['rules'])
+                        <ul class="mt-1 space-y-0.5 font-mono text-[12px] text-neutral-600 dark:text-neutral-300">
+                            @foreach ($list['rules'] as $rule)
+                                <li>
+                                    {{ $rule['protocol_label'] ?? $rule['protocol'] }}
+                                    {{ isset($rule['port_min']) ? $rule['port_min'].(($rule['port_max'] ?? null) !== $rule['port_min'] ? '-'.$rule['port_max'] : '') : 'all ports' }}
+                                    from {{ $rule['source'] ?? '-' }}
+                                </li>
+                            @endforeach
+                        </ul>
+                    @else
+                        <p class="mt-1 text-[12px] text-neutral-500 dark:text-fg-dim">No ingress rules.</p>
+                    @endif
+                </div>
+            @endforeach
         </x-application.settings-section>
     @endif
 

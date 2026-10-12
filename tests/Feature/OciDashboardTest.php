@@ -18,12 +18,29 @@ uses(RefreshDatabase::class);
  * Build a mock OciClient with safe defaults for all load methods.
  * Pass an array of method => value pairs to override specific return values.
  */
+function ociFirewall(array $nsgIds = ['ocid1.networksecuritygroup.oc1..example']): array
+{
+    return [
+        'vnic_id' => 'ocid1.vnic.oc1..v',
+        'vcn_id' => 'ocid1.vcn.oc1..n',
+        'compartment_id' => 'ocid1.compartment.oc1..example',
+        'nsg_ids' => $nsgIds,
+        'nsgs' => array_map(fn ($id) => ['id' => $id, 'display_name' => 'web-nsg'], $nsgIds),
+        'security_lists' => [[
+            'id' => 'ocid1.securitylist.oc1..s',
+            'display_name' => 'Default Security List',
+            'rules' => [['protocol' => '6', 'protocol_label' => 'TCP', 'source' => '0.0.0.0/0', 'port_min' => 22, 'port_max' => 22]],
+        ]],
+    ];
+}
+
 function mockClient(array $overrides = []): MockInterface
 {
     $defaults = [
         'getInstanceStatus' => ['lifecycle_state' => 'RUNNING'],
         'getInstanceMetrics' => ['cpu_percent' => null, 'memory_percent' => null, 'net_bytes_in' => null, 'net_bytes_out' => null],
         'listNsgRules' => [],
+        'getInstanceFirewall' => ociFirewall(),
         'listVolumeAttachments' => [],
         'listLoadBalancers' => [],
         'listAutonomousDatabases' => [],
@@ -306,4 +323,73 @@ it('loads each OCI resource once per page load', function () {
     app()->instance(OciClient::class, $mock);
 
     Livewire::test(OciDashboard::class, ['server_uuid' => $this->server->uuid])->assertStatus(200);
+});
+
+it('manages the security group found on the VM network interface, even without a stack', function (): void {
+    $this->stack->delete();
+    $mock = mockClient(['getInstanceFirewall' => ociFirewall(['ocid1.networksecuritygroup.oc1..imported'])]);
+    $mock->shouldReceive('addNsgRules')->once()
+        ->with(Mockery::any(), 'ocid1.networksecuritygroup.oc1..imported', Mockery::on(fn ($rules) => $rules[0]['port_min'] === '8080'), 'us-ashburn-1')
+        ->andReturn([['id' => 'r1']]);
+    app()->instance(OciClient::class, $mock);
+
+    Livewire::test(OciDashboard::class, ['server_uuid' => $this->server->uuid])
+        ->assertSee('web-nsg')
+        ->assertSee('Default Security List')
+        ->set('newRule.port_min', '8080')
+        ->call('addNsgRule')
+        ->assertHasNoErrors();
+});
+
+it('never edits a security group that is not attached to this VM', function (): void {
+    $mock = mockClient();
+    $mock->shouldReceive('addNsgRules')->with(Mockery::any(), 'ocid1.networksecuritygroup.oc1..someone-else', Mockery::any(), Mockery::any())->never();
+    $mock->shouldReceive('addNsgRules')->with(Mockery::any(), 'ocid1.networksecuritygroup.oc1..example', Mockery::any(), Mockery::any())->andReturn([['id' => 'r']]);
+    app()->instance(OciClient::class, $mock);
+
+    Livewire::test(OciDashboard::class, ['server_uuid' => $this->server->uuid])
+        ->set('selectedNsgId', 'ocid1.networksecuritygroup.oc1..someone-else')
+        ->assertSet('selectedNsgId', 'ocid1.networksecuritygroup.oc1..example')
+        ->set('newRule.port_min', '443')
+        ->call('addNsgRule');
+});
+
+it('validates rule ports', function (array $rule, string $field): void {
+    app()->instance(OciClient::class, mockClient());
+
+    Livewire::test(OciDashboard::class, ['server_uuid' => $this->server->uuid])
+        ->set('newRule', [...['protocol' => 'TCP', 'port_min' => '', 'port_max' => '', 'source' => '0.0.0.0/0', 'description' => ''], ...$rule])
+        ->call('addNsgRule')
+        ->assertHasErrors([$field]);
+})->with([
+    'tcp without port' => [['port_min' => ''], 'newRule.port_min'],
+    'reversed range' => [['port_min' => '9000', 'port_max' => '8000'], 'newRule.port_max'],
+]);
+
+it('creates and attaches a security group for a VM that has none', function (): void {
+    $mock = mockClient(['getInstanceFirewall' => ociFirewall([])]);
+    $mock->shouldReceive('createAttachedNsg')->once()
+        ->with(Mockery::any(), 'ocid1.compartment.oc1..example', 'ocid1.vcn.oc1..n', 'ocid1.vnic.oc1..v', [], Mockery::type('string'), 'us-ashburn-1')
+        ->andReturn(['id' => 'ocid1.networksecuritygroup.oc1..new']);
+    app()->instance(OciClient::class, $mock);
+
+    Livewire::test(OciDashboard::class, ['server_uuid' => $this->server->uuid])
+        ->assertSee('Create security group for this VM')
+        ->call('createNsg')
+        ->assertDispatched('success');
+});
+
+it('forbids members from changing firewall rules', function (): void {
+    $member = User::factory()->create();
+    $this->team->members()->attach($member, ['role' => 'member']);
+    $this->actingAs($member);
+    $mock = mockClient();
+    $mock->shouldNotReceive('addNsgRules');
+    $mock->shouldNotReceive('createAttachedNsg');
+    app()->instance(OciClient::class, $mock);
+
+    Livewire::test(OciDashboard::class, ['server_uuid' => $this->server->uuid])
+        ->set('newRule.port_min', '443')
+        ->call('addNsgRule')
+        ->assertForbidden();
 });

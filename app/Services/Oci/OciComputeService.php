@@ -2,6 +2,8 @@
 
 namespace App\Services\Oci;
 
+use Illuminate\Support\Sleep;
+
 /**
  * Compute + network + block volume + load balancer + autonomous DB inventory
  * and actions, mapped to snake_case arrays for the Livewire layer.
@@ -153,22 +155,104 @@ class OciComputeService
             'direction' => 'INGRESS',
         ]);
 
-        return array_map(function (array $r): array {
-            $rule = [
-                'id' => $r['id'],
-                'protocol' => $r['protocol'],
-                'source' => $r['source'] ?? null,
-                'source_type' => $r['sourceType'] ?? null,
-                'description' => $r['description'] ?? '',
-            ];
-            $range = $r['tcpOptions']['destinationPortRange'] ?? $r['udpOptions']['destinationPortRange'] ?? null;
-            if ($range) {
-                $rule['port_min'] = $range['min'] ?? null;
-                $rule['port_max'] = $range['max'] ?? null;
-            }
+        return array_map($this->mapIngressRule(...), $rows);
+    }
 
-            return $rule;
-        }, $rows);
+    /**
+     * Everything that filters inbound traffic to an instance: the NSGs on its primary VNIC and the
+     * security lists of its subnet. OCI allows a packet if any of them allows it.
+     *
+     * @param  array<string, mixed>  $config
+     * @return array{vnic_id: string|null, vcn_id: string|null, compartment_id: string|null, nsg_ids: list<string>, nsgs: list<array{id: string, display_name: string|null}>, security_lists: list<array{id: string, display_name: string|null, rules: list<array<string, mixed>>}>}
+     */
+    public function getInstanceFirewall(array $config, string $compartmentId, string $instanceId, string $region): array
+    {
+        $empty = ['vnic_id' => null, 'vcn_id' => null, 'compartment_id' => null, 'nsg_ids' => [], 'nsgs' => [], 'security_lists' => []];
+        $vnicId = $this->api->get($config, 'iaas', $region, self::IAAS.'/vnicAttachments', [
+            'compartmentId' => $compartmentId,
+            'instanceId' => $instanceId,
+        ])[0]['vnicId'] ?? null;
+        if (! $vnicId) {
+            return $empty;
+        }
+
+        $vnic = $this->api->get($config, 'iaas', $region, self::IAAS."/vnics/{$vnicId}");
+        $subnet = $this->api->get($config, 'iaas', $region, self::IAAS."/subnets/{$vnic['subnetId']}");
+        $nsgIds = array_values($vnic['nsgIds'] ?? []);
+
+        return [
+            'vnic_id' => $vnicId,
+            'vcn_id' => $subnet['vcnId'] ?? null,
+            'compartment_id' => $vnic['compartmentId'] ?? $compartmentId,
+            'nsg_ids' => $nsgIds,
+            'nsgs' => array_map(fn (string $id): array => [
+                'id' => $id,
+                'display_name' => $this->api->get($config, 'iaas', $region, self::IAAS."/networkSecurityGroups/{$id}")['displayName'] ?? null,
+            ], $nsgIds),
+            'security_lists' => array_map(function (string $id) use ($config, $region): array {
+                $list = $this->api->get($config, 'iaas', $region, self::IAAS."/securityLists/{$id}");
+
+                return [
+                    'id' => $id,
+                    'display_name' => $list['displayName'] ?? null,
+                    'rules' => array_map($this->mapIngressRule(...), $list['ingressSecurityRules'] ?? []),
+                ];
+            }, array_values($subnet['securityListIds'] ?? [])),
+        ];
+    }
+
+    /**
+     * Create an NSG in the instance's VCN and attach it to the VNIC, keeping the NSGs already attached.
+     *
+     * @param  array<string, mixed>  $config
+     * @param  list<string>  $attachedNsgIds
+     * @return array{id: string}
+     */
+    public function createAttachedNsg(array $config, string $compartmentId, string $vcnId, string $vnicId, array $attachedNsgIds, string $displayName, string $region): array
+    {
+        $nsg = $this->api->post($config, 'iaas', $region, self::IAAS.'/networkSecurityGroups', [
+            'compartmentId' => $compartmentId,
+            'vcnId' => $vcnId,
+            'displayName' => $displayName,
+            'freeformTags' => ['nimbus:managed_by' => 'panel'],
+        ]);
+
+        // A new NSG is PROVISIONING for a moment; the VNIC update is rejected until it is AVAILABLE.
+        foreach (range(1, 10) as $attempt) {
+            if (($nsg['lifecycleState'] ?? null) === 'AVAILABLE') {
+                break;
+            }
+            Sleep::for(2)->seconds();
+            $nsg = $this->api->get($config, 'iaas', $region, self::IAAS."/networkSecurityGroups/{$nsg['id']}");
+        }
+
+        $this->api->put($config, 'iaas', $region, self::IAAS."/vnics/{$vnicId}", [
+            'nsgIds' => array_values(array_unique([...$attachedNsgIds, $nsg['id']])),
+        ]);
+
+        return ['id' => $nsg['id']];
+    }
+
+    /**
+     * Ingress rule from an NSG rule or a security list entry, with readable protocol and ports.
+     *
+     * @param  array<string, mixed>  $r
+     * @return array<string, mixed>
+     */
+    private function mapIngressRule(array $r): array
+    {
+        $range = $r['tcpOptions']['destinationPortRange'] ?? $r['udpOptions']['destinationPortRange'] ?? null;
+
+        return array_filter([
+            'id' => $r['id'] ?? null,
+            'protocol' => $r['protocol'],
+            'protocol_label' => ['6' => 'TCP', '17' => 'UDP', '1' => 'ICMP', 'all' => 'ALL'][$r['protocol']] ?? $r['protocol'],
+            'source' => $r['source'] ?? null,
+            'source_type' => $r['sourceType'] ?? null,
+            'description' => $r['description'] ?? '',
+            'port_min' => $range['min'] ?? null,
+            'port_max' => $range['max'] ?? null,
+        ], fn ($v): bool => $v !== null);
     }
 
     /**

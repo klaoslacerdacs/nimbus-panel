@@ -127,6 +127,16 @@ class OciClient
         return $this->guard(fn (): array => $this->compute->getInstanceStatus($config, $instanceId, $region));
     }
 
+    public function getInstanceFirewall(array $config, string $compartmentId, string $instanceId, string $region): array
+    {
+        return $this->guard(fn (): array => $this->compute->getInstanceFirewall($config, $compartmentId, $instanceId, $region));
+    }
+
+    public function createAttachedNsg(array $config, string $compartmentId, string $vcnId, string $vnicId, array $attachedNsgIds, string $displayName, string $region): array
+    {
+        return $this->guard(fn (): array => $this->compute->createAttachedNsg($config, $compartmentId, $vcnId, $vnicId, $attachedNsgIds, $displayName, $region));
+    }
+
     public function getRegistryLogin(array $config): array
     {
         return $this->guard(fn (): array => $this->compute->getRegistryLogin($config));

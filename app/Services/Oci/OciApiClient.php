@@ -39,6 +39,18 @@ class OciApiClient
 
     /**
      * @param  array<string, mixed>  $config
+     * @param  array<string, mixed>  $body
+     * @return array<mixed>
+     */
+    public function put(array $config, string $service, string $region, string $path, array $body): array
+    {
+        $json = json_encode($body, JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
+
+        return $this->send($config, 'PUT', $service, $region, $path, [], $json)->json() ?? [];
+    }
+
+    /**
+     * @param  array<string, mixed>  $config
      * @param  array<string, mixed>  $query
      * @return array<mixed>
      */

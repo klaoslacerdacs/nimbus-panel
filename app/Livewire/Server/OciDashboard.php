@@ -23,6 +23,12 @@ class OciDashboard extends Component
 
     public array $nsgRules = [];
 
+    /** @var array{vnic_id?: string|null, vcn_id?: string|null, compartment_id?: string|null, nsg_ids?: list<string>, nsgs?: list<array<string, mixed>>, security_lists?: list<array<string, mixed>>} */
+    #[Locked]
+    public array $firewall = [];
+
+    public ?string $selectedNsgId = null;
+
     public bool $confirmingStop = false;
 
     public bool $confirmingReboot = false;
@@ -189,21 +195,95 @@ class OciDashboard extends Component
             : null;
     }
 
+    /**
+     * Discover what filters inbound traffic (NSGs on the VNIC + subnet security lists), then load the selected NSG rules.
+     */
     public function loadNsgRules(): void
     {
-        $ociStack = $this->server->ociStack()->first();
-        if (! $ociStack?->nsg_ocid) {
-            return;
-        }
-
         $connection = $this->server->ociConnection;
-        if (! $connection) {
+        if (! $connection || ! $this->server->oci_instance_id || ! $this->server->oci_compartment_id) {
             return;
         }
 
-        $client = app(OciClient::class);
-        $result = $client->listNsgRules($connection->toApiConfig(), $ociStack->nsg_ocid, $this->server->oci_region);
-        $this->nsgRules = isset($result['error']) ? [] : $result;
+        $firewall = app(OciClient::class)->getInstanceFirewall($this->apiConfig(), $this->server->oci_compartment_id, $this->server->oci_instance_id, $this->server->oci_region);
+        $this->firewall = empty($firewall['error']) ? $firewall : [];
+
+        $nsgIds = $this->firewall['nsg_ids'] ?? [];
+        if (! in_array($this->selectedNsgId, $nsgIds, true)) {
+            $stackNsg = $this->server->ociStack()->value('nsg_ocid');
+            $this->selectedNsgId = in_array($stackNsg, $nsgIds, true) ? $stackNsg : ($nsgIds[0] ?? null);
+        }
+
+        $this->nsgRules = [];
+        if ($this->selectedNsgId) {
+            $result = app(OciClient::class)->listNsgRules($this->apiConfig(), $this->selectedNsgId, $this->server->oci_region);
+            $this->nsgRules = empty($result['error']) ? $result : [];
+        }
+    }
+
+    public function updatedSelectedNsgId(): void
+    {
+        $this->loadNsgRules();
+    }
+
+    /**
+     * @param  'ssh'|'http'|'https'  $preset
+     */
+    public function applyRulePreset(string $preset): void
+    {
+        $port = ['ssh' => 22, 'http' => 80, 'https' => 443][$preset] ?? null;
+        if ($port) {
+            $this->newRule = ['protocol' => 'TCP', 'port_min' => (string) $port, 'port_max' => '', 'source' => '0.0.0.0/0', 'description' => strtoupper($preset)];
+        }
+    }
+
+    /**
+     * Imported VMs often have no NSG: create one in the VM's VCN and attach it to its VNIC.
+     */
+    public function createNsg(): void
+    {
+        $this->authorize('update', $this->server);
+        if (! $this->server->ociConnection || empty($this->firewall['vnic_id']) || empty($this->firewall['vcn_id'])) {
+            $this->dispatch('error', 'Could not find the network interface of this instance.');
+
+            return;
+        }
+
+        $result = app(OciClient::class)->createAttachedNsg(
+            $this->apiConfig(),
+            $this->firewall['compartment_id'],
+            $this->firewall['vcn_id'],
+            $this->firewall['vnic_id'],
+            $this->firewall['nsg_ids'] ?? [],
+            str($this->server->name)->slug()->limit(240, '')->append('-nsg')->toString(),
+            $this->server->oci_region,
+        );
+        if (! empty($result['error'])) {
+            $this->dispatch('error', 'Could not create the security group.', e($result['message'] ?? ''));
+
+            return;
+        }
+
+        auditLog('ui.oci_nsg.created', ['server_uuid' => $this->server->uuid]);
+        $this->selectedNsgId = $result['id'];
+        $this->loadNsgRules();
+        $this->dispatch('success', 'Security group created and attached to this VM.');
+    }
+
+    /**
+     * The NSG the user edits must be one attached to this VM, never an arbitrary OCID from the browser.
+     */
+    private function editableNsgId(): ?string
+    {
+        return in_array($this->selectedNsgId, $this->firewall['nsg_ids'] ?? [], true) ? $this->selectedNsgId : null;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function apiConfig(): array
+    {
+        return $this->server->ociConnection->toApiConfig($this->server->oci_region);
     }
 
     public function startInstance(): void
@@ -501,65 +581,57 @@ class OciDashboard extends Component
     {
         $this->authorize('update', $this->server);
 
-        foreach (['port_min', 'port_max'] as $portKey) {
-            if ($this->newRule[$portKey] === '') {
-                $this->newRule[$portKey] = null;
-            }
-        }
-
         $this->validate([
             'newRule.protocol' => 'required|in:TCP,UDP,ICMP,ALL',
-            'newRule.port_min' => 'nullable|integer|min:1|max:65535',
-            'newRule.port_max' => 'nullable|integer|min:1|max:65535',
+            'newRule.port_min' => 'nullable|required_if:newRule.protocol,TCP,UDP|integer|min:1|max:65535',
+            'newRule.port_max' => 'nullable|integer|min:1|max:65535|gte:newRule.port_min',
             'newRule.source' => ['required', 'string', 'regex:/^((25[0-5]|2[0-4]\d|[01]?\d\d?)\.){3}(25[0-5]|2[0-4]\d|[01]?\d\d?)\/(3[0-2]|[12]?\d)$/'],
+            'newRule.description' => 'nullable|string|max:255',
+        ], [
+            'newRule.port_min.required_if' => 'TCP and UDP rules need a port.',
+            'newRule.port_max.gte' => 'The last port must be greater than or equal to the first port.',
         ]);
 
-        $ociStack = $this->server->ociStack()->first();
-        if (! $ociStack?->nsg_ocid) {
-            $this->dispatch('error', 'No NSG linked to this server.');
+        $nsgId = $this->editableNsgId();
+        if (! $nsgId || ! $this->server->ociConnection) {
+            $this->dispatch('error', 'No security group attached to this VM. Create one first.');
 
-            return;
-        }
-
-        $connection = $this->server->ociConnection;
-        if (! $connection) {
             return;
         }
 
         $rule = array_filter($this->newRule, fn ($v): bool => $v !== '' && $v !== null);
-        $result = app(OciClient::class)->addNsgRules($connection->toApiConfig(), $ociStack->nsg_ocid, [$rule], $this->server->oci_region);
+        $result = app(OciClient::class)->addNsgRules($this->apiConfig(), $nsgId, [$rule], $this->server->oci_region);
 
-        if (isset($result['error'])) {
-            $this->dispatch('error', 'Failed to update firewall rules.');
+        if (! empty($result['error'])) {
+            $this->dispatch('error', 'Could not add the rule.', e($result['message'] ?? ''));
 
             return;
         }
 
+        auditLog('ui.oci_nsg.rule_added', ['server_uuid' => $this->server->uuid, 'rule' => $rule]);
         $this->newRule = ['protocol' => 'TCP', 'port_min' => '', 'port_max' => '', 'source' => '0.0.0.0/0', 'description' => ''];
         $this->loadNsgRules();
+        $this->dispatch('success', 'Rule added.');
     }
 
     public function removeNsgRule(string $ruleId): void
     {
         $this->authorize('update', $this->server);
-        $ociStack = $this->server->ociStack()->first();
-        if (! $ociStack?->nsg_ocid) {
+
+        $nsgId = $this->editableNsgId();
+        if (! $nsgId || ! $this->server->ociConnection) {
             return;
         }
 
-        $connection = $this->server->ociConnection;
-        if (! $connection) {
-            return;
-        }
+        $result = app(OciClient::class)->removeNsgRules($this->apiConfig(), $nsgId, [$ruleId], $this->server->oci_region);
 
-        $result = app(OciClient::class)->removeNsgRules($connection->toApiConfig(), $ociStack->nsg_ocid, [$ruleId], $this->server->oci_region);
-
-        if (isset($result['error'])) {
-            $this->dispatch('error', 'Failed to update firewall rules.');
+        if (! empty($result['error'])) {
+            $this->dispatch('error', 'Could not remove the rule.', e($result['message'] ?? ''));
 
             return;
         }
 
+        auditLog('ui.oci_nsg.rule_removed', ['server_uuid' => $this->server->uuid, 'rule_id' => $ruleId]);
         $this->loadNsgRules();
     }
 
