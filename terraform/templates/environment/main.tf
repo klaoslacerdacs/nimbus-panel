@@ -137,6 +137,47 @@ resource "oci_core_network_security_group" "new" {
   freeform_tags  = local.tags
 }
 
+locals {
+  # Keyed by content so reordering rules never recreates them.
+  ingress_rules = {
+    for rule in jsondecode(var.ingress_rules_json) :
+    "${rule.protocol}-${try(rule.port_min, "any")}-${try(rule.port_max, "any")}-${rule.source}" => rule
+  }
+  protocol_numbers = { TCP = "6", UDP = "17", ICMP = "1", ALL = "all" }
+}
+
+resource "oci_core_network_security_group_security_rule" "ingress" {
+  for_each = local.ingress_rules
+
+  network_security_group_id = local.nsg_id
+  direction                 = "INGRESS"
+  protocol                  = local.protocol_numbers[upper(each.value.protocol)]
+  source                    = each.value.source
+  source_type               = "CIDR_BLOCK"
+  stateless                 = false
+  description               = try(each.value.description, "")
+
+  dynamic "tcp_options" {
+    for_each = upper(each.value.protocol) == "TCP" && try(each.value.port_min, null) != null ? [1] : []
+    content {
+      destination_port_range {
+        min = each.value.port_min
+        max = coalesce(try(each.value.port_max, null), each.value.port_min)
+      }
+    }
+  }
+
+  dynamic "udp_options" {
+    for_each = upper(each.value.protocol) == "UDP" && try(each.value.port_min, null) != null ? [1] : []
+    content {
+      destination_port_range {
+        min = each.value.port_min
+        max = coalesce(try(each.value.port_max, null), each.value.port_min)
+      }
+    }
+  }
+}
+
 resource "oci_core_instance" "server" {
   compartment_id      = local.compartment_id
   availability_domain = var.availability_domain

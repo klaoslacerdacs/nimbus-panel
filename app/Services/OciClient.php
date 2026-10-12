@@ -137,6 +137,11 @@ class OciClient
         return $this->guard(fn (): array => $this->compute->createAttachedNsg($config, $compartmentId, $vcnId, $vnicId, $attachedNsgIds, $displayName, $region));
     }
 
+    public function updateStack(array $config, string $stackId, string $zipBase64, array $variables): array
+    {
+        return $this->guard(fn (): array => $this->resourceManager->updateStack($config, $stackId, $zipBase64, $variables));
+    }
+
     public function getRegistryLogin(array $config): array
     {
         return $this->guard(fn (): array => $this->compute->getRegistryLogin($config));

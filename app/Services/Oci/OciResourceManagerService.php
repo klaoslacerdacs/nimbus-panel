@@ -14,6 +14,22 @@ class OciResourceManagerService
     public function __construct(private readonly OciApiClient $api) {}
 
     /**
+     * Replace the stack's Terraform configuration and variables (keeps stacks on the current template version).
+     *
+     * @param  array<string, mixed>  $config
+     * @param  array<string, string>  $variables
+     */
+    public function updateStack(array $config, string $stackId, string $zipBase64, array $variables): array
+    {
+        $this->api->put($config, 'resourcemanager', $this->region($config), self::RM."/stacks/{$stackId}", [
+            'configSource' => ['configSourceType' => 'ZIP_UPLOAD', 'zipFileBase64Encoded' => $zipBase64],
+            'variables' => (object) $variables,
+        ]);
+
+        return ['stack_id' => $stackId];
+    }
+
+    /**
      * @param  array<string, mixed>  $config
      * @param  array<string, mixed>  $configSourceParams
      * @param  array<string, string>  $variables

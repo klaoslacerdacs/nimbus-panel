@@ -21,6 +21,7 @@ class OciStackJob extends BaseModel
         'operation',
         'job_ocid',
         'status',
+        'firewall_rules',
         'log',
         'started_at',
         'finished_at',
@@ -30,6 +31,7 @@ class OciStackJob extends BaseModel
     protected function casts(): array
     {
         return [
+            'firewall_rules' => 'array',
             'started_at' => 'datetime',
             'finished_at' => 'datetime',
         ];

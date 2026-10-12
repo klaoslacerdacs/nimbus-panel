@@ -42,3 +42,8 @@ output "nsg_id" {
   value       = local.nsg_id
   description = "NSG OCID attached to the instance"
 }
+
+output "ingress_rule_ids" {
+  value       = [for rule in oci_core_network_security_group_security_rule.ingress : rule.id]
+  description = "NSG rule OCIDs managed by Terraform"
+}

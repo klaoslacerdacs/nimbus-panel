@@ -1,14 +1,17 @@
 <?php
 
+use App\Jobs\OciStackFirewallJob;
 use App\Livewire\Server\OciDashboard;
 use App\Models\InstanceSettings;
 use App\Models\OciConnection;
 use App\Models\OciStack;
+use App\Models\OciStackJob;
 use App\Models\Server;
 use App\Models\Team;
 use App\Models\User;
 use App\Services\OciClient;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Queue;
 use Livewire\Livewire;
 use Mockery\MockInterface;
 
@@ -392,4 +395,40 @@ it('forbids members from changing firewall rules', function (): void {
         ->set('newRule.port_min', '443')
         ->call('addNsgRule')
         ->assertForbidden();
+});
+
+it('sends firewall changes of Terraform-managed VMs through plan and apply', function (): void {
+    Queue::fake();
+    $this->stack->update(['status' => 'provisioned', 'stack_ocid' => 'ocid1.ormstack.d', 'firewall_rules' => [['protocol' => 'TCP', 'port_min' => 22, 'source' => '0.0.0.0/0']]]);
+    $mock = mockClient();
+    $mock->shouldNotReceive('addNsgRules');
+    $mock->shouldNotReceive('removeNsgRules');
+    app()->instance(OciClient::class, $mock);
+
+    $component = Livewire::test(OciDashboard::class, ['server_uuid' => $this->server->uuid])
+        ->assertSee('Managed by Terraform')
+        ->set('newRule.port_min', '3000')
+        ->call('addNsgRule')
+        ->assertDispatched('success');
+
+    expect(collect($this->stack->fresh()->firewall_rules)->pluck('port_min')->all())->toBe([22, 3000]);
+    Queue::assertPushed(OciStackFirewallJob::class, 1);
+
+    $component->call('removeNsgRule', 'TCP-22-22-0.0.0.0/0');
+    expect(collect($this->stack->fresh()->firewall_rules)->pluck('port_min')->all())->toBe([3000]);
+});
+
+it('blocks a new firewall change while Terraform is still applying', function (): void {
+    Queue::fake();
+    $this->stack->update(['status' => 'provisioned', 'stack_ocid' => 'ocid1.ormstack.d', 'firewall_rules' => []]);
+    OciStackJob::factory()->create(['oci_stack_id' => $this->stack->id, 'status' => 'in_progress', 'finished_at' => null, 'started_at' => now()]);
+    app()->instance(OciClient::class, mockClient());
+
+    Livewire::test(OciDashboard::class, ['server_uuid' => $this->server->uuid])
+        ->set('newRule.port_min', '3000')
+        ->call('addNsgRule')
+        ->assertDispatched('error');
+
+    expect($this->stack->fresh()->firewall_rules)->toBe([]);
+    Queue::assertNothingPushed();
 });

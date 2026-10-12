@@ -137,8 +137,8 @@
         <x-application.settings-section title="Firewall"
             helper="Inbound traffic is allowed when any security group (NSG) on this VM or any security list of its subnet allows it." flush>
             <x-slot:actions>
-                @if ($firewall['nsgs'] ?? [])
-                    <button wire:click="addNsgRule" class="button button-highlighted">
+                @if ($terraformStack || ($firewall['nsgs'] ?? []))
+                    <button wire:click="addNsgRule" wire:loading.attr="disabled" @disabled($firewallApplying) class="button button-highlighted">
                         <x-reicon name="plus" class="size-3.5" />
                         Add rule
                     </button>
@@ -150,15 +150,27 @@
                 @endif
             </x-slot:actions>
 
-            @if ($firewall['nsgs'] ?? [])
-                <div class="grid gap-3 border-b border-neutral-200 p-4 dark:border-white/[0.08]">
-                    @if (count($firewall['nsgs']) > 1)
+            @if ($terraformStack || ($firewall['nsgs'] ?? []))
+                <div class="grid gap-3 border-b border-neutral-200 p-4 dark:border-white/[0.08]" @if ($firewallApplying) wire:poll.5000ms @endif>
+                    @if ($terraformStack)
+                        <div class="rounded-lg border border-neutral-200 bg-neutral-50 p-3 text-[12px] dark:border-white/[0.08] dark:bg-white/[0.03]">
+                            <span class="font-medium">Managed by Terraform.</span>
+                            Each change updates the stack and runs plan → apply, versioned in
+                            <a href="{{ route('security.oci-jobs', ['stack' => $terraformStack->uuid]) }}" class="underline" {{ wireNavigate() }}>Terraform Jobs</a>.
+                            @if ($firewallApplying)
+                                <span class="ml-1 font-medium text-warning">Applying the last change…</span>
+                            @endif
+                        </div>
+                    @elseif (count($firewall['nsgs']) > 1)
                         <div class="max-w-md">
                             <x-forms.listbox id="selectedNsgId" label="Security group" live
                                 :options="collect($firewall['nsgs'])->map(fn ($nsg) => ['value' => $nsg['id'], 'label' => $nsg['display_name'] ?? $nsg['id']])->all()" />
                         </div>
                     @else
-                        <p class="text-[12px] text-neutral-500 dark:text-fg-dim">Security group: <span class="font-mono">{{ $firewall['nsgs'][0]['display_name'] ?? $firewall['nsgs'][0]['id'] }}</span></p>
+                        <p class="text-[12px] text-neutral-500 dark:text-fg-dim">
+                            Security group: <span class="font-mono">{{ $firewall['nsgs'][0]['display_name'] ?? $firewall['nsgs'][0]['id'] }}</span>
+                            · this VM is not managed by Terraform, so changes apply directly and are not versioned.
+                        </p>
                     @endif
 
                     <div class="flex flex-wrap items-center gap-2 text-[12px]">
@@ -195,7 +207,8 @@
                     @endforeach
                 </div>
 
-                @if ($nsgRules)
+                @php $rulesToShow = $terraformStack ? $managedRules : $nsgRules; @endphp
+                @if ($rulesToShow)
                     <div class="data-table">
                         <div class="data-table-header oci-nsg-grid">
                             <span>Protocol</span>
@@ -204,7 +217,7 @@
                             <span>Description</span>
                             <span class="text-right">Actions</span>
                         </div>
-                        @foreach ($nsgRules as $rule)
+                        @foreach ($rulesToShow as $rule)
                             <div wire:key="nsg-rule-{{ $rule['id'] }}" class="data-table-row oci-nsg-grid border-b border-neutral-200 last:border-b-0 dark:border-white/[0.07]">
                                 <div class="font-mono text-[12px]">{{ $rule['protocol_label'] ?? $rule['protocol'] }}</div>
                                 <div class="font-mono text-[12px]">
@@ -217,7 +230,7 @@
                                 <div class="font-mono text-[12px]">{{ $rule['source'] ?? '-' }}</div>
                                 <div class="text-[12px] text-neutral-500 dark:text-fg-dim">{{ $rule['description'] ?: '-' }}</div>
                                 <div class="flex justify-end">
-                                    <button wire:click="removeNsgRule('{{ $rule['id'] }}')" wire:loading.attr="disabled"
+                                    <button wire:click="removeNsgRule('{{ $rule['id'] }}')" wire:loading.attr="disabled" @disabled($firewallApplying)
                                         class="inline-flex h-7 items-center rounded-md px-2 text-[11px] font-medium text-error transition-colors hover:bg-error/10">
                                         Remove
                                     </button>

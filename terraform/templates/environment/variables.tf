@@ -144,3 +144,9 @@ variable "existing_nsg_ocid" {
   default     = ""
   description = "OCID of an existing NSG to attach when not creating a new network. Leave empty for no NSG."
 }
+
+variable "ingress_rules_json" {
+  type        = string
+  default     = "[]"
+  description = "JSON list of NSG ingress rules managed by Nimbus Panel: [{protocol, port_min, port_max, source, description}]. Resource Manager variables are strings, hence JSON."
+}

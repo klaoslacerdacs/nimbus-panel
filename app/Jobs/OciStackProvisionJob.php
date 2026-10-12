@@ -71,18 +71,14 @@ class OciStackProvisionJob implements ShouldBeUnique, ShouldQueue
                 return;
             }
 
-            $tfVars = array_merge(
-                ['tenancy_ocid' => $stack->ociConnection->tenancy_ocid],
-                $stack->tf_vars ?? []
-            );
-
             $result = $oci->createStack(
                 $config,
                 $stack->name,
                 $stackCompartmentId,
                 'ZIP_UPLOAD',
                 ['zip_file_base64_encoded' => $zipBase64],
-                $tfVars
+                // Firewall rules are Terraform resources (ingress_rules_json), so they are versioned with the stack.
+                $stack->terraformVariables()
             );
 
             if (! isset($result['stack_id'])) {
@@ -95,7 +91,8 @@ class OciStackProvisionJob implements ShouldBeUnique, ShouldQueue
             OciStackStatusChanged::dispatch($stack->team_id);
         }
 
-        $plan = $this->runTrackedStackJob($oci, $config, $stack, 'plan');
+        $rules = OciStack::normalizeFirewallRules($stack->firewall_rules ?? []);
+        $plan = $this->runTrackedStackJob($oci, $config, $stack, 'plan', $rules);
         if (! $plan['ok']) {
             $this->markFailed($stack, 'Terraform plan failed', $this->logTail($plan['log']));
 
@@ -105,7 +102,7 @@ class OciStackProvisionJob implements ShouldBeUnique, ShouldQueue
         $stack->update(['status' => 'applying', 'last_plan_summary' => 'Applying Terraform — creating OCI resources (this can take up to 30 min)...']);
         OciStackStatusChanged::dispatch($stack->team_id);
 
-        $apply = $this->runTrackedStackJob($oci, $config, $stack, 'apply');
+        $apply = $this->runTrackedStackJob($oci, $config, $stack, 'apply', $rules);
         if (! $apply['ok']) {
             $this->markFailed($stack, 'Terraform apply failed', $this->logTail($apply['log']));
 
@@ -142,12 +139,6 @@ class OciStackProvisionJob implements ShouldBeUnique, ShouldQueue
         if ($nsgId) {
             $stack->update(['nsg_ocid' => $nsgId]);
         }
-        if ($nsgId && $stack->firewall_rules) {
-            $rules = $oci->addNsgRules($config, $nsgId, $stack->firewall_rules, $config['region']);
-            if (! empty($rules['error'])) {
-                $stack->update(['last_plan_summary' => 'Instance created, but firewall rules could not be applied: '.($rules['message'] ?? 'unknown error').'. Add them from the OCI dashboard.']);
-            }
-        }
 
         // The server may have been deleted while Terraform ran.
         $server = $stack->server;
@@ -165,17 +156,6 @@ class OciStackProvisionJob implements ShouldBeUnique, ShouldQueue
     {
         OciStackJob::failOpenJobs($this->ociStack, 'Provisioning stopped: '.$exception->getMessage());
         $this->markFailed($this->ociStack, 'Provisioning stopped: '.$exception->getMessage());
-    }
-
-    private function getTemplateZipBase64(): string
-    {
-        $path = base_path('terraform/templates/environment.zip');
-        $contents = file_get_contents($path);
-        if ($contents === false) {
-            throw new \RuntimeException("OCI template ZIP not found at {$path}");
-        }
-
-        return base64_encode($contents);
     }
 
     private function markFailed(OciStack $stack, string $reason, ?string $logs = null): void

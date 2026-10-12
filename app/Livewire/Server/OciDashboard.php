@@ -2,6 +2,9 @@
 
 namespace App\Livewire\Server;
 
+use App\Jobs\OciStackFirewallJob;
+use App\Models\OciStack;
+use App\Models\OciStackJob;
 use App\Models\Server;
 use App\Models\ServerSetting;
 use App\Services\OciClient;
@@ -268,6 +271,33 @@ class OciDashboard extends Component
         $this->selectedNsgId = $result['id'];
         $this->loadNsgRules();
         $this->dispatch('success', 'Security group created and attached to this VM.');
+    }
+
+    /**
+     * Stack-created VMs keep their firewall in Terraform: rule changes update the desired state and run plan → apply.
+     */
+    private function terraformStack(): ?OciStack
+    {
+        return $this->server->ociStack()->where('status', 'provisioned')->whereNotNull('stack_ocid')->first();
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $rules
+     */
+    private function applyFirewallThroughTerraform(OciStack $stack, array $rules, string $auditAction): void
+    {
+        if ($stack->jobs()->whereIn('status', OciStackJob::RUNNING)->get()->contains(fn (OciStackJob $job) => $job->isRunning())) {
+            $this->dispatch('error', 'Terraform is still applying the previous change. Try again when it finishes.');
+
+            return;
+        }
+
+        $stack->update(['firewall_rules' => OciStack::normalizeFirewallRules($rules)]);
+        OciStackFirewallJob::dispatch($stack);
+        auditLog('ui.oci_firewall.'.$auditAction, ['server_uuid' => $this->server->uuid, 'oci_stack_id' => $stack->id]);
+
+        $this->newRule = ['protocol' => 'TCP', 'port_min' => '', 'port_max' => '', 'source' => '0.0.0.0/0', 'description' => ''];
+        $this->dispatch('success', 'Firewall change queued: Terraform runs plan → apply (see Terraform Jobs).');
     }
 
     /**
@@ -592,6 +622,14 @@ class OciDashboard extends Component
             'newRule.port_max.gte' => 'The last port must be greater than or equal to the first port.',
         ]);
 
+        $rule = array_filter($this->newRule, fn ($v): bool => $v !== '' && $v !== null);
+
+        if ($stack = $this->terraformStack()) {
+            $this->applyFirewallThroughTerraform($stack, [...($stack->firewall_rules ?? []), $rule], 'rule_added');
+
+            return;
+        }
+
         $nsgId = $this->editableNsgId();
         if (! $nsgId || ! $this->server->ociConnection) {
             $this->dispatch('error', 'No security group attached to this VM. Create one first.');
@@ -599,7 +637,6 @@ class OciDashboard extends Component
             return;
         }
 
-        $rule = array_filter($this->newRule, fn ($v): bool => $v !== '' && $v !== null);
         $result = app(OciClient::class)->addNsgRules($this->apiConfig(), $nsgId, [$rule], $this->server->oci_region);
 
         if (! empty($result['error'])) {
@@ -617,6 +654,16 @@ class OciDashboard extends Component
     public function removeNsgRule(string $ruleId): void
     {
         $this->authorize('update', $this->server);
+
+        if ($stack = $this->terraformStack()) {
+            $rules = array_values(array_filter(
+                OciStack::normalizeFirewallRules($stack->firewall_rules ?? []),
+                fn (array $rule): bool => OciStack::firewallRuleKey($rule) !== $ruleId,
+            ));
+            $this->applyFirewallThroughTerraform($stack, $rules, 'rule_removed');
+
+            return;
+        }
 
         $nsgId = $this->editableNsgId();
         if (! $nsgId || ! $this->server->ociConnection) {
@@ -637,6 +684,17 @@ class OciDashboard extends Component
 
     public function render(): Factory|View
     {
-        return view('livewire.server.oci-dashboard');
+        $stack = $this->terraformStack();
+
+        return view('livewire.server.oci-dashboard', [
+            'terraformStack' => $stack,
+            // Desired rules in the table shape; the id is the Terraform resource key.
+            'managedRules' => $stack ? array_map(fn (array $rule): array => [
+                ...$rule,
+                'id' => OciStack::firewallRuleKey($rule),
+                'protocol_label' => $rule['protocol'],
+            ], OciStack::normalizeFirewallRules($stack->firewall_rules ?? [])) : [],
+            'firewallApplying' => (bool) $stack?->jobs()->whereIn('status', OciStackJob::RUNNING)->get()->contains(fn (OciStackJob $job) => $job->isRunning()),
+        ]);
     }
 }
