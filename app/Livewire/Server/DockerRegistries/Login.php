@@ -172,13 +172,14 @@ class Login extends Component
         $hostRules = $this->editRegistry === null && isset($preset['host_pattern']) ? ['regex:'.$preset['host_pattern']] : [];
         $this->validate([
             'registry' => ['required', 'string', 'max:255', 'regex:'.DockerRegistryLogins::REGISTRY_PATTERN, ...$hostRules],
-            'username' => ['required', 'string', 'max:255', 'regex:/^[^\\s]+$/'],
+            'username' => ['required', 'string', 'max:255', 'regex:/^[^\\s]+$/', ...($this->provider === 'oracle' ? ['not_regex:/\/$/'] : [])],
             'password' => ['required', 'string', 'max:20000'],
         ], [
             'registry.regex' => $hostRules
                 ? "Enter a valid {$preset['label']} host, for example {$preset['placeholder']}. Choose Other for a different registry."
                 : 'Enter a registry host, for example ghcr.io or registry.example.com:5000.',
             'username.regex' => 'The username must not contain spaces.',
+            'username.not_regex' => 'Complete the OCIR username after the namespace: <namespace>/<username>.',
         ]);
 
         $failures = [];

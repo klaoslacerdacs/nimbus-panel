@@ -97,3 +97,13 @@ it('logs the server in to OCIR with the auth token on stdin', function (): void 
         ->toContain("login --username 'axnamespace/klaos@nimbus' --password-stdin 'gru.ocir.io'")
         ->not->toContain('oci-auth-token');
 });
+
+it('asks to complete an OCIR username that stops at the namespace', function (): void {
+    Livewire::test(Login::class, ['server' => $this->server])
+        ->set('provider', 'oracle')
+        ->set('registry', 'gru.ocir.io')
+        ->set('username', 'gr20kqplx0hg/')
+        ->set('password', 'token')
+        ->call('login')
+        ->assertHasErrors(['username']);
+});

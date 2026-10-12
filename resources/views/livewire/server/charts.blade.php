@@ -23,8 +23,8 @@
                         helper="{{ $server->usesOciMonitoring() ? 'Inspect recent CPU and memory usage reported by OCI Monitoring (1-minute resolution, Oracle Cloud Agent required for memory).' : 'Inspect recent CPU and memory usage reported by Sentinel.' }}">
                         <x-slot:actions>
                             <div class="flex items-center gap-2">
-                                <x-status-badge :status="$poll ? 'Live updates' : 'Historical range'"
-                                    :type="$poll ? 'success' : 'neutral'" />
+                                <x-status-badge :status="$poll && ! $server->usesOciMonitoring() ? 'Live updates' : 'Historical range'"
+                                    :type="$poll && ! $server->usesOciMonitoring() ? 'success' : 'neutral'" />
                                 @unless ($server->usesOciMonitoring())
                                     <x-forms.button canGate="update" :canResource="$server" wire:click="toggleMetrics">
                                         Disable metrics

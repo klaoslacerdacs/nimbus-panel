@@ -166,3 +166,12 @@ it('waits until the new VM accepts SSH before validating it', function (): void 
     Sleep::assertSleptTimes(2);
     Queue::assertPushed(ValidateAndInstallServerJob::class, fn ($job) => $job->server->id === $server->id);
 });
+
+it('marks the stack failed when the worker kills the job', function (): void {
+    $stack = OciStack::factory()->create(['status' => 'applying']);
+
+    (new OciStackProvisionJob($stack))->failed(new RuntimeException('Job has timed out.'));
+
+    expect($stack->fresh()->status)->toBe('failed')
+        ->and($stack->fresh()->last_plan_summary)->toContain('timed out');
+});

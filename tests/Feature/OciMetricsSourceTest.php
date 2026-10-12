@@ -10,6 +10,7 @@ use App\Models\Team;
 use App\Models\User;
 use App\Services\OciClient;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Queue;
 
 uses(RefreshDatabase::class);
 
@@ -77,4 +78,15 @@ it('renders the metrics tab from OCI Monitoring without Sentinel controls', func
         ->assertSee('reported by OCI Monitoring')
         ->assertDontSee('Disable metrics')
         ->assertDontSee('Push interval');
+});
+
+it('stops an orphaned Sentinel that keeps pushing from an OCI Monitoring server', function (): void {
+    config(['app.maintenance.store' => 'array']);
+    Queue::fake();
+    $this->server->settings->update(['is_reachable' => true, 'is_usable' => true]);
+
+    $this->postJson('/api/v1/sentinel/push', ['containers' => []], ['Authorization' => 'Bearer '.$this->server->settings->sentinel_token])
+        ->assertNoContent();
+
+    StopSentinel::assertPushed(fn ($action, $args) => $args[0]->is($this->server));
 });

@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Actions\Server\StopSentinel;
 use App\Events\SentinelSynchronized;
 use App\Http\Controllers\Controller;
 use App\Jobs\CheckAndStartSentinelJob;
@@ -53,6 +54,13 @@ class SentinelController extends Controller
             ]);
 
             return response()->json(['message' => 'Server not found'], 404);
+        }
+
+        // Nimbus: servers on OCI Monitoring must not run Sentinel; stop containers left from before the switch.
+        if (! $server->isSentinelEnabled() && $server->usesOciMonitoring()) {
+            StopSentinel::dispatch($server);
+
+            return response()->noContent();
         }
 
         if (isCloud() && data_get($server->team->subscription, 'stripe_invoice_paid', false) === false && $server->team->id !== 0) {

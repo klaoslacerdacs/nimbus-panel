@@ -20,11 +20,12 @@ class OciStackProvisionJob implements ShouldBeUnique, ShouldQueue
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
     // ponytail: blocks queue worker for up to 30min — move to polling job if throughput matters
-    public int $timeout = 1800;
+    // Plan (≤30m) + apply (≤30m) + SSH wait (≤5m).
+    public int $timeout = 3900;
 
     public int $tries = 1;
 
-    public int $uniqueFor = 1800;
+    public int $uniqueFor = 3900;
 
     public function __construct(public OciStack $ociStack)
     {
@@ -160,11 +161,21 @@ class OciStackProvisionJob implements ShouldBeUnique, ShouldQueue
             }
         }
 
-        if ($stack->server && isset($outputs['public_ip'])) {
-            $this->waitForSsh($stack->server->refresh());
-            ValidateAndInstallServerJob::dispatch($stack->server);
-            Log::info('OciStackProvisionJob: dispatched SSH validation', ['server_id' => $stack->server->id]);
+        // The server may have been deleted while Terraform ran.
+        $server = $stack->server;
+        if ($server && isset($outputs['public_ip']) && Server::query()->whereKey($server->getKey())->exists()) {
+            $this->waitForSsh($server);
+            ValidateAndInstallServerJob::dispatch($server);
+            Log::info('OciStackProvisionJob: dispatched SSH validation', ['server_id' => $server->id]);
         }
+    }
+
+    /**
+     * Horizon kills the job on timeout without reaching markFailed(); never leave the stack "applying".
+     */
+    public function failed(\Throwable $exception): void
+    {
+        $this->markFailed($this->ociStack, 'Provisioning stopped: '.$exception->getMessage());
     }
 
     private function pollUntilDone(OciClient $oci, array $config, string $jobId, ?string &$errorLogs = null): bool
