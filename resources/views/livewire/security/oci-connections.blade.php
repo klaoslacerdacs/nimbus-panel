@@ -32,11 +32,15 @@
                                     class="button button-secondary text-sm" wire:navigate>
                                     Edit
                                 </a>
-                                <x-forms.button wire:click="deleteConnection({{ $connection->id }})"
-                                    wire:confirm="Are you sure? This cannot be undone."
-                                    class="button-error">
-                                    Delete
-                                </x-forms.button>
+                                <x-modal-confirmation title="Delete OCI connection?" isErrorButton buttonTitle="Delete"
+                                    submitAction="deleteConnection({{ $connection->id }})" :actions="[
+                                        'The connection and its stored API key will be permanently deleted.',
+                                        'Stack records using it are removed from Nimbus Panel; OCI resources are NOT destroyed.',
+                                    ]"
+                                    confirmationText="{{ $connection->name }}"
+                                    confirmationLabel="Enter the connection name to confirm"
+                                    shortConfirmationLabel="Connection name"
+                                    :confirmWithPassword="false" step2ButtonText="Delete connection" />
                             </div>
                         </div>
                     @endforeach

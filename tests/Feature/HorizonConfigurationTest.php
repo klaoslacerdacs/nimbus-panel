@@ -76,7 +76,7 @@ test('self-hosted keeps a single auto-scaling s6 supervisor in every environment
     expect(array_keys($parsed))->toBe(['production', 'local']);
 
     foreach ($parsed as $supervisors) {
-        expect(array_keys($supervisors))->toBe(['s6']);
+        expect(array_keys($supervisors))->toBe(['s6', 'oci-provision']);
 
         $s6 = $supervisors['s6'];
         expect($s6->queue)->toBe('high,default')
@@ -101,7 +101,7 @@ test('cloud production runs one fixed-size pool per queue with default process c
     ]));
 
     $production = $parsed['production'];
-    expect(array_keys($production))->toBe(['deployments', 'crons', 'high', 'default', 'maintenance', 'webhooks']);
+    expect(array_keys($production))->toBe(['deployments', 'crons', 'high', 'default', 'maintenance', 'webhooks', 'oci-provision']);
 
     foreach (['deployments' => 60, 'crons' => 60, 'high' => 60, 'default' => 40, 'maintenance' => 60, 'webhooks' => 10] as $queue => $processes) {
         $pool = $production[$queue];
@@ -115,7 +115,7 @@ test('cloud production runs one fixed-size pool per queue with default process c
             ->and($pool->timeout)->toBe($parsed['local']['s6']->timeout);
     }
 
-    expect(array_keys($parsed['local']))->toBe(['s6']);
+    expect(array_keys($parsed['local']))->toBe(['s6', 'oci-provision']);
 });
 
 test('cloud pool sizes come from env and invalid values fall back to defaults', function () {
@@ -165,7 +165,7 @@ test('self-hosted queue helpers route to a queue the s6 supervisor drains', func
     ]));
 
     foreach ($parsed as $supervisors) {
-        expect(array_keys($supervisors))->toBe(['s6'])
+        expect(array_keys($supervisors))->toBe(['s6', 'oci-provision'])
             ->and(explode(',', $supervisors['s6']->queue))
             ->toContain(deployment_queue(), crons_queue(), maintenance_queue(), webhooks_queue());
     }
@@ -207,3 +207,12 @@ test('server patch checks run on the maintenance queue on cloud and on high on s
     'cloud' => [false, 'maintenance'],
     'self-hosted' => [true, 'high'],
 ]);
+
+test('oci supervisor isolates the oci queue in every environment', function () {
+    foreach (['true', 'false'] as $selfHosted) {
+        foreach (horizonSupervisorsFor(loadHorizonConfigWithEnv(['SELF_HOSTED' => $selfHosted])) as $supervisors) {
+            expect($supervisors['oci-provision']->queue)->toBe('oci')
+                ->and($supervisors['oci-provision']->maxProcesses)->toBe(2);
+        }
+    }
+});
