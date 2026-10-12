@@ -159,10 +159,11 @@ it('restricts instance_principal auth to instance administrators', function (): 
     $this->assertDatabaseMissing('oci_connections', ['name' => 'Instance Principal Conn']);
 });
 
-it('lets instance administrators create an instance_principal connection without key material', function (): void {
+it('lets instance administrators create an instance_principal connection in the root team without key material', function (): void {
     $root = Team::factory()->create(['id' => 0]);
     $root->members()->attach($this->user, ['role' => 'admin']);
     $this->user->refresh();
+    session(['currentTeam' => $root]);
 
     $mock = Mockery::mock(OciClient::class);
     $mock->shouldReceive('validateConnection')
@@ -184,4 +185,27 @@ it('lets instance administrators create an instance_principal connection without
     expect($connection->tenancy_ocid)->toBe('ocid1.tenancy.oc1..host')
         ->and($connection->private_key)->toBeNull()
         ->and($connection->toApiConfig())->toBe(['auth_mode' => 'instance_principal', 'region' => 'sa-saopaulo-1']);
+});
+
+it('never lets an instance_principal connection belong to a customer team', function (): void {
+    $root = Team::factory()->create(['id' => 0]);
+    $root->members()->attach($this->user, ['role' => 'admin']);
+    $this->user->refresh();
+
+    Livewire::test(OciConnectionForm::class)
+        ->set('name', 'Leaked host identity')
+        ->set('authentication_method', 'instance_principal')
+        ->set('region', 'us-ashburn-1')
+        ->call('addConnection')
+        ->assertHasErrors(['authentication_method']);
+
+    $this->assertDatabaseMissing('oci_connections', ['name' => 'Leaked host identity']);
+});
+
+it('rejects regions outside the OCI region list', function (): void {
+    Livewire::test(OciConnectionForm::class)
+        ->set('name', 'Bad region')
+        ->set('region', 'evil.com/x?')
+        ->call('addConnection')
+        ->assertHasErrors(['region']);
 });

@@ -153,8 +153,9 @@ it('switching to instance_principal drops stored API key material', function ():
     $root = Team::factory()->create(['id' => 0]);
     $root->members()->attach($this->user, ['role' => 'admin']);
     $this->user->refresh();
+    session(['currentTeam' => $root]);
 
-    $connection = OciConnection::factory()->create(['team_id' => $this->team->id]);
+    $connection = OciConnection::factory()->create(['team_id' => $root->id]);
     $mock = Mockery::mock(OciClient::class);
     $mock->shouldReceive('validateConnection')->once()->andReturn(['ok' => true, 'tenancy_ocid' => 'ocid1.tenancy.oc1..host']);
     app()->instance(OciClient::class, $mock);
@@ -169,4 +170,22 @@ it('switching to instance_principal drops stored API key material', function ():
         ->and($connection->private_key)->toBeNull()
         ->and($connection->user_ocid)->toBeNull()
         ->and($connection->tenancy_ocid)->toBe('ocid1.tenancy.oc1..host');
+});
+
+it('lets team admins keep editing an existing instance_principal connection', function (): void {
+    $connection = OciConnection::factory()->create([
+        'team_id' => $this->team->id,
+        'authentication_method' => 'instance_principal',
+        'private_key' => null,
+    ]);
+    $mock = Mockery::mock(OciClient::class);
+    $mock->shouldReceive('validateConnection')->once()->andReturn(['ok' => true, 'tenancy_ocid' => 'ocid1.tenancy.oc1..host']);
+    app()->instance(OciClient::class, $mock);
+
+    Livewire::test(OciConnectionEdit::class, ['connection' => $connection])
+        ->set('name', 'Renamed')
+        ->call('updateConnection')
+        ->assertHasNoErrors();
+
+    expect($connection->fresh()->name)->toBe('Renamed');
 });

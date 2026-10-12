@@ -67,7 +67,7 @@ class Delete extends Component
             }
 
             $ociStack = $this->delete_from_oci ? $this->server->ociStack()->first() : null;
-            if ($ociStack && ! $ociStack->status !== 'destroying') {
+            if ($ociStack && $ociStack->status !== 'destroying') {
                 $ociStack->update(['status' => 'destroying', 'last_plan_summary' => 'Destroy queued.']);
                 OciStackDestroyJob::dispatch($ociStack);
             }

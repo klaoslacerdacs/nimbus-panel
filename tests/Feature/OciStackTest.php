@@ -30,8 +30,8 @@ it('scopes stack queries to the requested team', function (): void {
 
 it('team_id is fillable but enforced by the controller', function (): void {
     // team_id is fillable so OciStack::create(['team_id' => ...]) works.
-    // The security guarantee is that OciStackForm always uses currentTeam()->id,
-    // never accepts team_id from user input.
+    // The security guarantee is that stacks are only created by the OCI server wizard,
+    // which always uses currentTeam()->id and never accepts team_id from user input.
     $team = Team::factory()->create();
     $connection = OciConnection::factory()->for($team)->create();
     $stack = new OciStack(['team_id' => $team->id, 'oci_connection_id' => $connection->id, 'name' => 'x']);

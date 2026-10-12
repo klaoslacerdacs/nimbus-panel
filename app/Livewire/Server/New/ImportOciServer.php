@@ -177,7 +177,7 @@ class ImportOciServer extends Component
         return [
             1 => [
                 'oci_connection_id' => 'required|integer|exists:oci_connections,id,team_id,'.currentTeam()->id,
-                'region' => 'required|string',
+                'region' => ['required', 'string', Rule::in(config('oci.regions'))],
                 // Listed compartments are authoritative; when listing is not permitted the user types the OCID.
                 'compartment_id' => ['required', 'string', $this->compartments ? Rule::in(array_column($this->compartments, 'id')) : 'regex:/^ocid1\.(compartment|tenancy)\.oc1\./'],
             ],

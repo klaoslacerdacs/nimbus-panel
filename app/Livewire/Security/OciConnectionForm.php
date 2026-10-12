@@ -64,7 +64,7 @@ class OciConnectionForm extends Component
         $rules = [
             'name' => 'nullable|string|max:255',
             'authentication_method' => ['required', 'string', Rule::in(self::allowedAuthMethods())],
-            'region' => 'required|string|max:50',
+            'region' => ['required', 'string', Rule::in(config('oci.regions'))],
             'compartment_ocid' => 'nullable|string|max:255',
         ];
 
@@ -82,13 +82,14 @@ class OciConnectionForm extends Component
     }
 
     /**
-     * Instance Principal acts with the panel host's own OCI identity, so only instance admins may use it.
+     * Instance Principal acts with the panel host's own OCI identity, so only instance admins
+     * working in the root team may create it (it must never belong to a customer team).
      *
      * @return array<int, string>
      */
     public static function allowedAuthMethods(): array
     {
-        return isInstanceAdmin() ? ['api_key', 'instance_principal'] : ['api_key'];
+        return isInstanceAdmin() && currentTeam()?->id === 0 ? ['api_key', 'instance_principal'] : ['api_key'];
     }
 
     protected function messages(): array

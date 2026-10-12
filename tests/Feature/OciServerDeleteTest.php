@@ -83,3 +83,13 @@ it('marks the stack as destroying when queuing the destroy, and never queues it 
     expect($this->stack->fresh()->status)->toBe('destroying');
     Queue::assertPushed(OciStackDestroyJob::class, 1);
 });
+
+it('does not queue a second destroy for a stack that is already being destroyed', function (): void {
+    $this->stack->update(['status' => 'destroying', 'last_plan_summary' => 'Running Terraform destroy...']);
+
+    Livewire::test(Delete::class, ['server_uuid' => $this->server->uuid])
+        ->call('delete', 'password', ['delete_from_oci']);
+
+    Queue::assertNotPushed(OciStackDestroyJob::class);
+    expect($this->stack->fresh()->last_plan_summary)->toBe('Running Terraform destroy...');
+});

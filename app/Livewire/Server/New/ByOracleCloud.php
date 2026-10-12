@@ -14,6 +14,7 @@ use Illuminate\Contracts\View\Factory;
 use Illuminate\Contracts\View\View;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\Rule;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Locked;
 use Livewire\Component;
@@ -360,7 +361,7 @@ class ByOracleCloud extends Component
             1 => ['selected_connection_id' => $connectionRule],
             2 => [
                 'selected_connection_id' => $connectionRule,
-                'region' => 'required|string',
+                'region' => ['required', 'string', Rule::in(config('oci.regions'))],
                 'compartment_ocid' => $this->create_compartment ? 'nullable' : 'required|string',
                 'compartment_name' => $this->create_compartment ? 'required|string|max:100' : 'nullable',
             ],

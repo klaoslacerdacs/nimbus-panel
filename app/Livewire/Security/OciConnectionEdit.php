@@ -22,6 +22,9 @@ class OciConnectionEdit extends Component
 
     public string $authentication_method = 'api_key';
 
+    #[Locked]
+    public string $savedAuthenticationMethod = 'api_key';
+
     public string $region = 'us-ashburn-1';
 
     public ?string $compartment_ocid = null;
@@ -49,7 +52,7 @@ class OciConnectionEdit extends Component
 
         $this->connectionId = $connection->id;
         $this->name = $connection->name;
-        $this->authentication_method = $connection->authentication_method->value;
+        $this->authentication_method = $this->savedAuthenticationMethod = $connection->authentication_method->value;
         $this->region = $connection->region;
         $this->compartment_ocid = $connection->compartment_ocid;
         $this->tenancy_ocid = $connection->tenancy_ocid;
@@ -62,8 +65,8 @@ class OciConnectionEdit extends Component
     {
         $rules = [
             'name' => 'required|string|max:255',
-            'authentication_method' => ['required', 'string', Rule::in(OciConnectionForm::allowedAuthMethods())],
-            'region' => 'required|string|max:50',
+            'authentication_method' => ['required', 'string', Rule::in([...OciConnectionForm::allowedAuthMethods(), $this->savedAuthenticationMethod])],
+            'region' => ['required', 'string', Rule::in(config('oci.regions'))],
             'compartment_ocid' => 'nullable|string|max:255',
         ];
 
