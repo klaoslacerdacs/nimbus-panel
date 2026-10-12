@@ -114,11 +114,4 @@ class OciRequestSignerTest extends TestCase
         $this->assertStringNotContainsString('content-length', $string);
         $this->assertStringNotContainsString('x-content-sha256', $string);
     }
-
-    public function test_instance_principal_is_rejected(): void
-    {
-        $this->expectException(OciException::class);
-
-        (new OciRequestSigner)->signHeaders(['auth_mode' => 'instance_principal', 'region' => 'us-ashburn-1'], 'GET', 'https://iaas.us-ashburn-1.oraclecloud.com/x', null);
-    }
 }

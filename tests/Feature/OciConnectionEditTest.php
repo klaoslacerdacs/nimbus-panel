@@ -148,3 +148,25 @@ it('denies update to non-admin members', function () {
 
     $this->assertDatabaseHas('oci_connections', ['name' => 'Test Conn']);
 });
+
+it('switching to instance_principal drops stored API key material', function () {
+    $root = Team::factory()->create(['id' => 0]);
+    $root->members()->attach($this->user, ['role' => 'admin']);
+    $this->user->refresh();
+
+    $connection = OciConnection::factory()->create(['team_id' => $this->team->id]);
+    $mock = Mockery::mock(OciClient::class);
+    $mock->shouldReceive('validateConnection')->once()->andReturn(['ok' => true, 'tenancy_ocid' => 'ocid1.tenancy.oc1..host']);
+    app()->instance(OciClient::class, $mock);
+
+    Livewire::test(OciConnectionEdit::class, ['connection' => $connection])
+        ->set('authentication_method', 'instance_principal')
+        ->call('updateConnection')
+        ->assertHasNoErrors();
+
+    $connection->refresh();
+    expect($connection->authentication_method->value)->toBe('instance_principal')
+        ->and($connection->private_key)->toBeNull()
+        ->and($connection->user_ocid)->toBeNull()
+        ->and($connection->tenancy_ocid)->toBe('ocid1.tenancy.oc1..host');
+});

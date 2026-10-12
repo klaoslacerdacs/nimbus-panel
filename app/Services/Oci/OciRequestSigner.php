@@ -8,7 +8,8 @@ use SensitiveParameter;
 /**
  * Signs OCI REST requests with the draft-cavage v1 HTTP Signature scheme
  * (RSA-SHA256). Stateless: no key material is stored on the instance, logged,
- * or serialized. This is the only class that touches key_content/passphrase.
+ * or serialized. API keys are loaded here; Instance Principal session keys come
+ * from OciInstancePrincipal.
  */
 class OciRequestSigner
 {
@@ -22,17 +23,30 @@ class OciRequestSigner
      */
     public function signHeaders(#[SensitiveParameter] array $config, string $method, string $url, ?string $body): array
     {
-        $this->assertApiKeyConfig($config);
+        if (($config['auth_mode'] ?? 'api_key') === 'instance_principal') {
+            [$keyId, $key] = app(OciInstancePrincipal::class)->credentials();
 
+            return $this->sign($keyId, $key, $method, $url, $body);
+        }
+
+        $this->assertApiKeyConfig($config);
+        $key = $this->loadKey($config['key_content'] ?? '', $config['passphrase'] ?? null);
+
+        return $this->sign("{$config['tenancy_id']}/{$config['user_id']}/{$config['fingerprint']}", $key, $method, $url, $body);
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    public function sign(string $keyId, #[SensitiveParameter] OpenSSLAsymmetricKey $key, string $method, string $url, ?string $body): array
+    {
         $date = gmdate('D, d M Y H:i:s \G\M\T');
         $signingString = $this->buildSigningString($date, $method, $url, $body);
 
-        $key = $this->loadKey($config['key_content'] ?? '', $config['passphrase'] ?? null);
         if (! openssl_sign($signingString, $signature, $key, OPENSSL_ALGO_SHA256)) {
             throw new OciException('Failed to sign OCI request', 500, 'signing');
         }
 
-        $keyId = "{$config['tenancy_id']}/{$config['user_id']}/{$config['fingerprint']}";
         $headerNames = $this->isBodyMethod($method)
             ? 'date (request-target) host content-length content-type x-content-sha256'
             : 'date (request-target) host';
@@ -94,9 +108,6 @@ class OciRequestSigner
      */
     private function assertApiKeyConfig(array $config): void
     {
-        if (($config['auth_mode'] ?? 'api_key') !== 'api_key') {
-            throw new OciException('Instance Principal auth is not supported by the native OCI client', 501, 'config');
-        }
         if (! str_starts_with((string) ($config['tenancy_id'] ?? ''), 'ocid1.tenancy.')) {
             throw new OciException('OCI tenancy OCID is invalid', 422, 'config');
         }

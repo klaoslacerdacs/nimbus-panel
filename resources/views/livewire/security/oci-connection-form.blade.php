@@ -5,7 +5,7 @@
         <x-forms.listbox required live id="authentication_method" label="Authentication method"
             :options="[
                 ['value' => 'api_key', 'label' => 'API Key'],
-                ['value' => 'instance_principal', 'label' => 'Instance Principal (coming soon)', 'disabled' => true],
+                ['value' => 'instance_principal', 'label' => 'Instance Principal (panel host VM identity)', 'disabled' => ! isInstanceAdmin()],
             ]" />
 
         <x-forms.listbox required searchable id="region" label="Region"
@@ -35,6 +35,8 @@
                 <x-forms.input type="password" id="passphrase" label="Passphrase (optional)"
                     placeholder="Leave empty if none" />
             </div>
+        @else
+            <x-oci.instance-principal-help />
         @endif
 
         <x-forms.input id="compartment_ocid" label="Default compartment OCID (optional)"

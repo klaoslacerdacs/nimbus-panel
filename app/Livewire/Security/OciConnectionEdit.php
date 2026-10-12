@@ -5,6 +5,7 @@ namespace App\Livewire\Security;
 use App\Models\OciConnection;
 use App\Services\OciClient;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
+use Illuminate\Validation\Rule;
 use Livewire\Attributes\Locked;
 use Livewire\Component;
 
@@ -59,8 +60,7 @@ class OciConnectionEdit extends Component
     {
         $rules = [
             'name' => 'required|string|max:255',
-            // ponytail: only api_key until the native signer implements Instance Principal (OciRequestSigner throws 501).
-            'authentication_method' => 'required|string|in:api_key',
+            'authentication_method' => ['required', 'string', Rule::in(OciConnectionForm::allowedAuthMethods())],
             'region' => 'required|string|max:50',
             'compartment_ocid' => 'nullable|string|max:255',
         ];
@@ -83,6 +83,7 @@ class OciConnectionEdit extends Component
     {
         return [
             'name.required' => 'Connection name is required.',
+            'authentication_method.in' => 'Instance Principal is restricted to instance administrators.',
             'tenancy_ocid.required' => 'Tenancy OCID is required for API Key auth.',
             'user_ocid.required' => 'User OCID is required for API Key auth.',
             'fingerprint.required' => 'Fingerprint is required for API Key auth.',
@@ -184,8 +185,16 @@ class OciConnectionEdit extends Component
                 'fingerprint' => $this->fingerprint,
             ];
 
-            // Only update PEM columns when user supplied a new key.
-            if ($newKey) {
+            if ($this->authentication_method === 'instance_principal') {
+                // Identity comes from the host VM: drop any stored API key material.
+                $updateData = array_merge($updateData, [
+                    'tenancy_ocid' => $result['tenancy_ocid'] ?? null,
+                    'user_ocid' => null,
+                    'fingerprint' => null,
+                    'private_key' => null,
+                    'passphrase' => null,
+                ]);
+            } elseif ($newKey) {
                 $updateData['private_key'] = $newKey;
                 $updateData['passphrase'] = $newPassphrase;
             }

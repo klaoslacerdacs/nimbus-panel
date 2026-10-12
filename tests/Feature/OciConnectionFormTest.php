@@ -144,7 +144,7 @@ it('denies addConnection to non-admin team members', function () {
     $this->assertDatabaseMissing('oci_connections', ['name' => 'Sneaky Connection']);
 });
 
-it('rejects instance_principal auth until the native signer supports it', function () {
+it('restricts instance_principal auth to instance administrators', function () {
     $mock = Mockery::mock(OciClient::class);
     $mock->shouldNotReceive('validateConnection');
     app()->instance(OciClient::class, $mock);
@@ -157,4 +157,31 @@ it('rejects instance_principal auth until the native signer supports it', functi
         ->assertHasErrors(['authentication_method']);
 
     $this->assertDatabaseMissing('oci_connections', ['name' => 'Instance Principal Conn']);
+});
+
+it('lets instance administrators create an instance_principal connection without key material', function () {
+    $root = Team::factory()->create(['id' => 0]);
+    $root->members()->attach($this->user, ['role' => 'admin']);
+    $this->user->refresh();
+
+    $mock = Mockery::mock(OciClient::class);
+    $mock->shouldReceive('validateConnection')
+        ->once()
+        ->with(Mockery::on(fn ($config) => $config['auth_mode'] === 'instance_principal' && ! isset($config['key_content'])))
+        ->andReturn(['ok' => true, 'tenancy_ocid' => 'ocid1.tenancy.oc1..host']);
+    app()->instance(OciClient::class, $mock);
+
+    Livewire::test(OciConnectionForm::class)
+        ->set('name', 'Host identity')
+        ->set('authentication_method', 'instance_principal')
+        ->set('region', 'sa-saopaulo-1')
+        ->set('private_key', 'should-be-ignored')
+        ->call('addConnection')
+        ->assertHasNoErrors()
+        ->assertDispatched('connectionAdded');
+
+    $connection = OciConnection::where('name', 'Host identity')->firstOrFail();
+    expect($connection->tenancy_ocid)->toBe('ocid1.tenancy.oc1..host')
+        ->and($connection->private_key)->toBeNull()
+        ->and($connection->toApiConfig())->toBe(['auth_mode' => 'instance_principal', 'region' => 'sa-saopaulo-1']);
 });

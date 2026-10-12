@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Services\Oci\OciApiClient;
 use App\Services\Oci\OciComputeService;
 use App\Services\Oci\OciException;
+use App\Services\Oci\OciInstancePrincipal;
 use App\Services\Oci\OciMonitoringService;
 use App\Services\Oci\OciResourceManagerService;
 use Throwable;
@@ -34,9 +35,12 @@ class OciClient
     public function validateConnection(array $config): array
     {
         return $this->guard(function () use ($config): array {
-            $tenancy = $this->api->get($config, 'identity', $config['region'], "/20160918/tenancies/{$config['tenancy_id']}");
+            $tenancyId = ($config['auth_mode'] ?? null) === 'instance_principal'
+                ? app(OciInstancePrincipal::class)->tenancyId()
+                : $config['tenancy_id'];
+            $tenancy = $this->api->get($config, 'identity', $config['region'], "/20160918/tenancies/{$tenancyId}");
 
-            return ['ok' => true, 'tenancy_ocid' => $tenancy['id'] ?? $config['tenancy_id']];
+            return ['ok' => true, 'tenancy_ocid' => $tenancy['id'] ?? $tenancyId, 'tenancy_name' => $tenancy['name'] ?? null];
         });
     }
 

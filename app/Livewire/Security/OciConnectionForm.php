@@ -5,6 +5,7 @@ namespace App\Livewire\Security;
 use App\Models\OciConnection;
 use App\Services\OciClient;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
+use Illuminate\Validation\Rule;
 use Livewire\Component;
 
 class OciConnectionForm extends Component
@@ -60,8 +61,7 @@ class OciConnectionForm extends Component
     {
         $rules = [
             'name' => 'nullable|string|max:255',
-            // ponytail: only api_key until the native signer implements Instance Principal (OciRequestSigner throws 501).
-            'authentication_method' => 'required|string|in:api_key',
+            'authentication_method' => ['required', 'string', Rule::in(self::allowedAuthMethods())],
             'region' => 'required|string|max:50',
             'compartment_ocid' => 'nullable|string|max:255',
         ];
@@ -79,9 +79,20 @@ class OciConnectionForm extends Component
         return $rules;
     }
 
+    /**
+     * Instance Principal acts with the panel host's own OCI identity, so only instance admins may use it.
+     *
+     * @return array<int, string>
+     */
+    public static function allowedAuthMethods(): array
+    {
+        return isInstanceAdmin() ? ['api_key', 'instance_principal'] : ['api_key'];
+    }
+
     protected function messages(): array
     {
         return [
+            'authentication_method.in' => 'Instance Principal is restricted to instance administrators.',
             'name.required' => 'Connection name is required.',
             'tenancy_ocid.required' => 'Tenancy OCID is required for API Key auth.',
             'user_ocid.required' => 'User OCID is required for API Key auth.',
@@ -141,6 +152,9 @@ class OciConnectionForm extends Component
             if (empty($this->name) && ! empty($result['tenancy_name'])) {
                 $this->name = $result['tenancy_name'];
             }
+            if ($this->authentication_method === 'instance_principal') {
+                $this->tenancy_ocid = $result['tenancy_ocid'] ?? null;
+            }
             if (empty($this->compartment_ocid) && ! empty($result['tenancy_ocid'])) {
                 $this->compartment_ocid = $result['tenancy_ocid'];
             }
@@ -151,6 +165,7 @@ class OciConnectionForm extends Component
                 return;
             }
 
+            $isApiKey = $this->authentication_method === 'api_key';
             $connection = OciConnection::create([
                 'team_id' => currentTeam()->id,
                 'name' => $this->name,
@@ -158,10 +173,10 @@ class OciConnectionForm extends Component
                 'region' => $this->region,
                 'compartment_ocid' => $this->compartment_ocid,
                 'tenancy_ocid' => $this->tenancy_ocid,
-                'user_ocid' => $this->user_ocid,
-                'fingerprint' => $this->fingerprint,
-                'private_key' => $privateKey,
-                'passphrase' => $passphrase,
+                'user_ocid' => $isApiKey ? $this->user_ocid : null,
+                'fingerprint' => $isApiKey ? $this->fingerprint : null,
+                'private_key' => $isApiKey ? $privateKey : null,
+                'passphrase' => $isApiKey ? $passphrase : null,
             ]);
 
             auditLog('ui.oci_connection.created', [

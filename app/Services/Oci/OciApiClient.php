@@ -111,6 +111,14 @@ class OciApiClient
             }
 
             $status = $response->status();
+            if ($status === 401 && ($config['auth_mode'] ?? null) === 'instance_principal' && ! isset($refreshedToken)) {
+                // Security token revoked or expired early: re-federate once.
+                OciInstancePrincipal::forget();
+                $refreshedToken = true;
+
+                continue;
+            }
+
             if (($status === 429 || $status >= 500) && $attempt < $maxRetries) {
                 $attempt++;
                 usleep(100000 * (2 ** $attempt)); // exponential backoff, ~0.2s→3.2s
