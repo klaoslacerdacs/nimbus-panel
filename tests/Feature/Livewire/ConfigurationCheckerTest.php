@@ -402,3 +402,19 @@ it('shows environment values to a resource team owner whose session is on a team
 
     expect(data_get($envChange, 'new_display_value'))->not->toBe('••••••••');
 });
+
+it('opens the pending-changes notice with a restart button right after a service setting is saved', function () {
+    $server = Server::factory()->create(['team_id' => $this->team->id]);
+    $service = Service::factory()->create(['environment_id' => $this->environment->id, 'server_id' => $server->id]);
+    $service->applications()->create(['name' => 'web', 'status' => 'running:healthy', 'fqdn' => 'https://web.example.com']);
+    $service->forceFill(['config_hash' => 'stale-hash'])->save();
+
+    $component = Livewire::test(ConfigurationChecker::class, ['resource' => $service->fresh()])
+        ->assertSet('announce', false);
+
+    $component->dispatch('configurationChanged')
+        ->assertSet('isConfigurationChanged', true)
+        ->assertSet('announce', true)
+        ->assertSeeHtml('service-restart-trigger')
+        ->assertSee('Restart now');
+});

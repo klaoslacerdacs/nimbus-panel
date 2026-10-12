@@ -29,6 +29,9 @@ class ConfigurationChecker extends Component
 
     public array $missingRequiredEnvironmentVariableNames = [];
 
+    /** Nimbus: open the "changes pending" notice right after a save, instead of only showing a small icon. */
+    public bool $announce = false;
+
     public Application|Service|StandaloneRedis|StandalonePostgresql|StandaloneMongodb|StandaloneMysql|StandaloneMariadb|StandaloneKeydb|StandaloneDragonfly|StandaloneClickhouse|StandaloneSqlite $resource;
 
     public function getListeners(): array
@@ -44,7 +47,7 @@ class ConfigurationChecker extends Component
 
     public function mount(): void
     {
-        $this->configurationChanged();
+        $this->loadConfigurationState();
     }
 
     public function render(): View
@@ -88,6 +91,7 @@ class ConfigurationChecker extends Component
     public function configurationChanged(): void
     {
         $this->loadConfigurationState();
+        $this->announce = $this->isConfigurationChanged;
     }
 
     private function loadConfigurationState(): void
