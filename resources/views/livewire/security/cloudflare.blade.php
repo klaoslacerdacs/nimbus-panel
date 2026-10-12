@@ -23,7 +23,7 @@
                     <div class="mt-4 flex justify-end gap-2">
                         <a href="{{ route('cloudflare.connect') }}" class="button button-secondary text-sm">Reconnect</a>
                         <x-modal-confirmation title="Disconnect Cloudflare?" isErrorButton buttonTitle="Disconnect"
-                            submitAction="disconnect" :actions="['The OAuth grant is revoked. Existing tunnels keep running.']"
+                            submitAction="disconnect('{{ $connection->uuid }}')" :actions="['The OAuth grant is revoked. Existing tunnels keep running.']"
                             :confirmWithText="false" :confirmWithPassword="false" step2ButtonText="Disconnect" />
                     </div>
                 @endif

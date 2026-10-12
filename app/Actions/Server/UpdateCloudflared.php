@@ -33,7 +33,7 @@ class UpdateCloudflared
     /**
      * Older Coolify versions wrote the Compose file to /tmp, which some systems clear on reboot.
      */
-    private function findConfigurationDirectory(Server $server): string
+    public function findConfigurationDirectory(Server $server): string
     {
         $directory = instant_remote_process([
             'for dir in '.ConfigureCloudflared::DIRECTORY.' /tmp/cloudflared; do if [ -f "$dir/docker-compose.yml" ]; then echo "$dir"; break; fi; done',

@@ -50,7 +50,11 @@ class PublishCloudflareSshHostname
 
         $zoneId = $this->zoneFor($api, $hostname);
         $record = ['type' => 'CNAME', 'name' => $hostname, 'content' => "{$tunnelId}.cfargotunnel.com", 'proxied' => true];
-        $existing = $this->call($api->get("/zones/{$zoneId}/dns_records", ['name' => $hostname]))[0]['id'] ?? null;
+        $records = collect($this->call($api->get("/zones/{$zoneId}/dns_records", ['name' => $hostname])));
+        if ($other = $records->firstWhere(fn (array $record): bool => $record['type'] !== 'CNAME')) {
+            throw new RuntimeException("{$hostname} already has a {$other['type']} record in Cloudflare. Choose another hostname or remove that record.");
+        }
+        $existing = $records->first()['id'] ?? null;
         $existing
             ? $this->call($api->put("/zones/{$zoneId}/dns_records/{$existing}", $record))
             : $this->call($api->post("/zones/{$zoneId}/dns_records", $record));
@@ -63,7 +67,8 @@ class PublishCloudflareSshHostname
      */
     private function tunnelIdentity(Server $server): array
     {
-        $line = (string) instant_remote_process(['grep -m1 TUNNEL_TOKEN= '.ConfigureCloudflared::DIRECTORY.'/docker-compose.yml'], $server);
+        $directory = app(UpdateCloudflared::class)->findConfigurationDirectory($server);
+        $line = (string) instant_remote_process(["grep -m1 TUNNEL_TOKEN= {$directory}/docker-compose.yml || true"], $server);
         $token = trim((string) str($line)->after('TUNNEL_TOKEN=')->trim(" \t'\"-"));
         $identity = json_decode((string) base64_decode($token, true), true);
 

@@ -3,6 +3,7 @@
 namespace App\Livewire;
 
 use App\Models\InstanceSettings;
+use App\Services\CloudflareOAuth;
 use Illuminate\Contracts\View\Factory;
 use Illuminate\Contracts\View\View;
 use Livewire\Component;
@@ -77,7 +78,7 @@ class SettingsCloudflare extends Component
     {
         return view('livewire.settings-cloudflare', [
             'callbackUrl' => url('/auth/cloudflare/callback'),
-            'isConfigured' => filled($this->settings->cloudflare_oauth_client_id) && filled($this->settings->cloudflare_oauth_client_secret),
+            'isConfigured' => app(CloudflareOAuth::class)->isConfigured(),
         ]);
     }
 }

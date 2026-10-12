@@ -133,6 +133,7 @@ function cloudflareFixProcessFake(bool $sshThroughTunnelWorks): void
     $tunnelToken = base64_encode(json_encode(['a' => 'acc123', 't' => 'tun456', 's' => 'secret']));
     Process::fake(function ($process) use ($tunnelToken, $sshThroughTunnelWorks) {
         return match (true) {
+            str_contains($process->command, 'for dir in') => Process::result(output: '/data/coolify/cloudflared'),
             str_contains($process->command, 'TUNNEL_TOKEN') => Process::result(output: "      - TUNNEL_TOKEN={$tunnelToken}"),
             str_contains($process->command, 'coolify-cloudflared') => Process::result(output: 'healthy'),
             str_contains($process->command, 'cloudflared access ssh') && ! $sshThroughTunnelWorks => Process::result(output: '', errorOutput: 'websocket: bad handshake', exitCode: 255),
@@ -282,4 +283,24 @@ test('explains that the Cloudflare login needs scopes when the client has none',
     Livewire::test(CloudflareTunnel::class, ['server_uuid' => $this->server->uuid])
         ->assertSee('Login with Cloudflare needs the client scopes')
         ->assertSee('Cloudflare API token');
+});
+
+test('fix automatically refuses to replace a DNS record that is not a CNAME', function () {
+    actingAsCloudflareTunnelUpdateUser($this->team, 'owner');
+    $this->server->update(['ip' => '163.176.137.233']);
+    $this->server->settings->update(['is_cloudflare_tunnel' => false, 'is_reachable' => true, 'is_usable' => true]);
+    cloudflareFixProcessFake(sshThroughTunnelWorks: true);
+    Http::fake([
+        'api.cloudflare.com/client/v4/accounts/acc123/cfd_tunnel/tun456/configurations' => Http::response(['success' => true, 'result' => ['config' => ['ingress' => [['service' => 'http_status:404']]]]]),
+        'api.cloudflare.com/client/v4/zones?*' => Http::response(['success' => true, 'result' => [['id' => 'zone1']]]),
+        'api.cloudflare.com/client/v4/zones/zone1/dns_records*' => Http::response(['success' => true, 'result' => [['id' => 'rec1', 'type' => 'A']]]),
+    ]);
+
+    Livewire::test(CloudflareTunnel::class, ['server_uuid' => $this->server->uuid])
+        ->set('fixSshHostname', 'srv-oci-coolify.example.com')
+        ->update(calls: [['method' => 'fixSshThroughTunnel', 'params' => [], 'path' => '']], updates: ['cloudflareApiToken' => 'cf-api-token'])
+        ->assertDispatched('error');
+
+    Http::assertNotSent(fn ($request) => str_contains($request->url(), 'dns_records') && in_array($request->method(), ['PUT', 'POST']));
+    expect($this->server->fresh()->ip)->toBe('163.176.137.233');
 });

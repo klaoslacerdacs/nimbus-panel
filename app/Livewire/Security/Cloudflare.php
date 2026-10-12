@@ -23,12 +23,10 @@ class Cloudflare extends Component
         $this->flashSuccess = session('success');
     }
 
-    public function disconnect(CloudflareOAuth $oauth): void
+    public function disconnect(CloudflareOAuth $oauth, string $uuid): void
     {
-        $connection = CloudflareConnection::query()->where('team_id', currentTeam()->id)->first();
-        if (! $connection) {
-            return;
-        }
+        // By uuid, not the session team: the team may have been switched in another tab since the page loaded.
+        $connection = CloudflareConnection::query()->where('uuid', $uuid)->firstOrFail();
         abort_unless(auth()->user()->isAdminOfTeam($connection->team_id), 403);
 
         $oauth->revoke($connection);

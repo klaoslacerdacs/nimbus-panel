@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\CloudflareConnection;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
 use RuntimeException;
@@ -76,15 +77,25 @@ class CloudflareOAuth
         ]);
     }
 
+    /**
+     * Cloudflare rotates refresh tokens and revokes the grant when an old one is reused, so concurrent
+     * refreshes must not both send the same token.
+     */
     public function refresh(CloudflareConnection $connection): void
     {
-        $tokens = $this->tokenRequest(['grant_type' => 'refresh_token', 'refresh_token' => $connection->refresh_token]);
+        Cache::lock("cloudflare-refresh:{$connection->id}", 30)->block(20, function () use ($connection): void {
+            $connection->refresh();
+            if ($connection->expires_at?->isAfter(now()->addMinute())) {
+                return;
+            }
 
-        $connection->update([
-            'access_token' => $tokens['access_token'],
-            'refresh_token' => $tokens['refresh_token'] ?? $connection->refresh_token,
-            'expires_at' => $tokens['expires_at'],
-        ]);
+            $tokens = $this->tokenRequest(['grant_type' => 'refresh_token', 'refresh_token' => $connection->refresh_token]);
+            $connection->update([
+                'access_token' => $tokens['access_token'],
+                'refresh_token' => $tokens['refresh_token'] ?? $connection->refresh_token,
+                'expires_at' => $tokens['expires_at'],
+            ]);
+        });
     }
 
     /**

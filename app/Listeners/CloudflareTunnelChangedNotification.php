@@ -71,6 +71,7 @@ class CloudflareTunnelChangedNotification
             $this->server->settings->update(['is_cloudflare_tunnel' => false]);
             $this->server->update([
                 'ip' => $previousIp,
+                'ip_previous' => $this->server->fresh()->ip_previous,
                 'validation_logs' => "The tunnel container is running, but SSH through {$ssh_domain} failed, so Coolify kept using the direct address. Publish {$ssh_domain} in the tunnel as ssh://localhost:22 and run the setup again. Error: ".str((string) $check['error'])->limit(300),
             ]);
             SshMultiplexingHelper::removeMuxFile($this->server->fresh());
