@@ -9,8 +9,10 @@ use App\Models\PrivateKey;
 use App\Models\Server;
 use App\Models\Team;
 use App\Rules\ValidHostname;
+use App\Rules\ValidServerIp;
 use App\Services\OciClient;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
+use Illuminate\Validation\Rule;
 use Livewire\Attributes\Locked;
 use Livewire\Component;
 
@@ -31,13 +33,16 @@ class ImportOciServer extends Component
 
     public string $region = 'sa-saopaulo-1';
 
+    #[Locked]
     public array $regions = [];
 
     public string $compartment_id = '';
 
+    #[Locked]
     public array $compartments = [];
 
     // Step 2 — Instance selection
+    #[Locked]
     public array $instances = [];
 
     public string $oci_instance_id = '';
@@ -173,16 +178,16 @@ class ImportOciServer extends Component
             1 => [
                 'oci_connection_id' => 'required|integer|exists:oci_connections,id,team_id,'.currentTeam()->id,
                 'region' => 'required|string',
-                'compartment_id' => 'required|string',
+                'compartment_id' => ['required', 'string', Rule::in(array_column($this->compartments, 'id'))],
             ],
             2 => [
-                'oci_instance_id' => 'required|string',
+                'oci_instance_id' => ['required', 'string', Rule::in(array_column($this->instances, 'id'))],
             ],
             3 => [
                 'server_name' => ['required', 'string', 'max:253', new ValidHostname],
                 'ssh_username' => 'required|string|max:255',
                 'private_key_id' => 'required|integer|exists:private_keys,id,team_id,'.currentTeam()->id,
-                'ip' => 'required|string',
+                'ip' => ['required', 'string', new ValidServerIp],
                 'oci_metrics_source' => 'required|in:oci_monitoring,sentinel',
             ],
         ];
@@ -219,10 +224,6 @@ class ImportOciServer extends Component
         try {
             $this->authorize('create', Server::class);
 
-            if (Team::serverLimitReached()) {
-                return $this->dispatch('error', 'You have reached the server limit for your subscription.');
-            }
-
             $teamId = currentTeam()->id;
 
             if (Server::whereIp($this->ip)->whereTeamId($teamId)->exists()) {
@@ -235,7 +236,7 @@ class ImportOciServer extends Component
 
             $connection = OciConnection::ownedByCurrentTeam()->findOrFail($this->oci_connection_id);
 
-            $server = Server::create([
+            $server = Team::createServerWithinLimit($teamId, [
                 'name' => strtolower(trim($this->server_name)),
                 'ip' => $this->ip,
                 'port' => 22,

@@ -538,6 +538,7 @@ class ByOracleCloud extends Component
             ], fn ($v) => $v !== '');
 
             [$server, $ociStack] = DB::transaction(function () use ($compartmentOcid, $tfVars) {
+                Team::ensureServerCapacity(currentTeam()->id);
                 $server = Server::create([
                     'name' => strtolower(trim($this->server_name)),
                     'ip' => '', // ponytail: filled after Terraform apply

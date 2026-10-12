@@ -113,7 +113,7 @@ it('createServer links oci_stack to server via server_id', function () {
     expect($stack->server_id)->toBe($server->id);
 });
 
-it('oci_connection toBridgeConfig uses bridge-expected key names', function () {
+it('oci_connection toApiConfig uses API config key names', function () {
     $connection = OciConnection::factory()->create([
         'team_id' => $this->team->id,
         'tenancy_ocid' => 'ocid1.tenancy.oc1..aaa',
@@ -121,7 +121,7 @@ it('oci_connection toBridgeConfig uses bridge-expected key names', function () {
         'fingerprint' => 'aa:bb:cc',
     ]);
 
-    $cfg = $connection->toBridgeConfig();
+    $cfg = $connection->toApiConfig();
 
     expect($cfg)->toHaveKey('tenancy_id')
         ->and($cfg)->toHaveKey('user_id')
@@ -158,4 +158,30 @@ it('shows validation errors on empty submit in step 2', function () {
         'availability_domain',
         'image_id',
     ]);
+});
+
+it('does not create a server or stack when the team server limit is reached', function () {
+    Queue::fake();
+    config(['constants.coolify.self_hosted' => false]);
+    $this->team->update(['custom_server_limit' => '0']);
+
+    $connection = OciConnection::factory()->create(['team_id' => $this->team->id]);
+    $privateKey = PrivateKey::factory()->create(['team_id' => $this->team->id]);
+
+    Livewire::test(ByOracleCloud::class)
+        ->set('selected_connection_id', $connection->id)
+        ->set('server_name', 'over-limit')
+        ->set('region', 'us-ashburn-1')
+        ->set('compartment_ocid', 'ocid1.compartment.oc1..example')
+        ->set('availability_domain', 'MGTy:SA-SAOPAULO-1-AD-1')
+        ->set('vcn_ocid', 'ocid1.vcn.oc1..example')
+        ->set('subnet_ocid', 'ocid1.subnet.oc1..example')
+        ->set('shape', 'VM.Standard.A1.Flex')
+        ->set('image_id', 'ocid1.image.oc1..example')
+        ->set('private_key_id', $privateKey->id)
+        ->set('ssh_username', 'ubuntu')
+        ->call('createServer');
+
+    expect(Server::where('name', 'over-limit')->exists())->toBeFalse()
+        ->and(OciStack::where('name', 'over-limit')->exists())->toBeFalse();
 });

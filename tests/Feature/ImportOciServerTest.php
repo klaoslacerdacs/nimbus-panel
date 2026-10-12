@@ -11,6 +11,7 @@ use App\Models\User;
 use App\Services\OciClient;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Queue;
+use Livewire\Features\SupportLockedProperties\CannotUpdateLockedPropertyException;
 use Livewire\Livewire;
 use Mockery\MockInterface;
 
@@ -114,3 +115,35 @@ it('rejects import when the server limit is reached', function () {
 
     expect(Server::where('oci_instance_id', 'ocid1.instance.oc1..running')->exists())->toBeFalse();
 });
+
+it('rejects an instance OCID that was not listed for the selected compartment', function () {
+    Livewire::test(ImportOciServer::class)
+        ->set('oci_connection_id', $this->connection->id)
+        ->set('compartment_id', 'ocid1.compartment.oc1..c1')
+        ->call('nextStep')
+        ->set('oci_instance_id', 'ocid1.instance.oc1..someone-else')
+        ->call('nextStep')
+        ->assertHasErrors(['oci_instance_id']);
+});
+
+it('rejects a compartment that was not listed for the connection', function () {
+    Livewire::test(ImportOciServer::class)
+        ->set('oci_connection_id', $this->connection->id)
+        ->set('compartment_id', 'ocid1.compartment.oc1..unlisted')
+        ->call('nextStep')
+        ->assertHasErrors(['compartment_id']);
+});
+
+it('rejects an invalid server IP', function () {
+    driveToStep3()
+        ->set('ip', 'not an ip; rm -rf /')
+        ->call('createServer')
+        ->assertHasErrors(['ip']);
+
+    expect(Server::where('oci_instance_id', 'ocid1.instance.oc1..running')->exists())->toBeFalse();
+});
+
+it('cannot tamper with the listed instances from the browser', function () {
+    Livewire::test(ImportOciServer::class)
+        ->set('instances', [['id' => 'ocid1.instance.oc1..forged']]);
+})->throws(CannotUpdateLockedPropertyException::class);
