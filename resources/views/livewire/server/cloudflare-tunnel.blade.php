@@ -68,6 +68,16 @@
                     <x-application.settings-section id="server-cloudflare-fix-section" title="Fix SSH through the tunnel automatically"
                         description="Already ran the automated setup but SSH through the tunnel does not work? Coolify publishes the SSH hostname on your tunnel, creates its DNS record and only switches after SSH through it works.">
                         <form wire:submit="fixSshThroughTunnel" class="flex flex-col gap-3">
+                            @if ($cloudflareOAuthMissingScopes)
+                                <p class="text-sm text-warning">
+                                    Login with Cloudflare needs the client scopes.
+                                    @if (isInstanceAdmin())
+                                        Add them in <a href="{{ route('settings.cloudflare') }}" class="underline">Settings → Cloudflare</a>.
+                                    @else
+                                        Ask an instance admin to add them in Settings → Cloudflare.
+                                    @endif
+                                </p>
+                            @endif
                             <div class="grid gap-3 md:grid-cols-2">
                                 <x-forms.input id="fixSshHostname" label="SSH hostname" required placeholder="ssh-server.example.com"
                                     helper="A new hostname on a domain of your Cloudflare account. It will route to ssh://localhost:22." />

@@ -273,3 +273,13 @@ test('shows the Cloudflare login button when the OAuth client is configured and 
         ->assertSee(e(route('cloudflare.connect', ['return' => '/server/'.$this->server->uuid.'/cloudflare-tunnel'])), false)
         ->assertDontSee('Fix automatically');
 });
+
+test('explains that the Cloudflare login needs scopes when the client has none', function () {
+    actingAsCloudflareTunnelUpdateUser($this->team, 'owner');
+    $this->server->settings->update(['is_cloudflare_tunnel' => false, 'is_reachable' => true, 'is_usable' => true]);
+    InstanceSettings::get()->update(['cloudflare_oauth_client_id' => 'cf', 'cloudflare_oauth_client_secret' => 's', 'cloudflare_oauth_scopes' => null]);
+
+    Livewire::test(CloudflareTunnel::class, ['server_uuid' => $this->server->uuid])
+        ->assertSee('Login with Cloudflare needs the client scopes')
+        ->assertSee('Cloudflare API token');
+});
