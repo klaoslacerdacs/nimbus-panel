@@ -4,6 +4,7 @@ namespace App\Jobs;
 
 use App\Events\OciStackStatusChanged;
 use App\Models\OciStack;
+use App\Models\OciStackJob;
 use App\Models\Server;
 use App\Services\OciClient;
 use App\Traits\RunsOciStackJobs;
@@ -162,6 +163,7 @@ class OciStackProvisionJob implements ShouldBeUnique, ShouldQueue
      */
     public function failed(\Throwable $exception): void
     {
+        OciStackJob::failOpenJobs($this->ociStack, 'Provisioning stopped: '.$exception->getMessage());
         $this->markFailed($this->ociStack, 'Provisioning stopped: '.$exception->getMessage());
     }
 

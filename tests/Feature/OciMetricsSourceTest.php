@@ -10,6 +10,7 @@ use App\Models\Team;
 use App\Models\User;
 use App\Services\OciClient;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Queue;
 
 uses(RefreshDatabase::class);
@@ -89,4 +90,17 @@ it('stops an orphaned Sentinel that keeps pushing from an OCI Monitoring server'
         ->assertNoContent();
 
     StopSentinel::assertPushed(fn ($action, $args) => $args[0]->is($this->server));
+});
+
+it('queues StopSentinel at most once per window for repeated pushes', function (): void {
+    config(['app.maintenance.store' => 'array']);
+    Queue::fake();
+    Cache::flush();
+    $this->server->settings->update(['is_reachable' => true, 'is_usable' => true]);
+
+    foreach (range(1, 3) as $push) {
+        $this->postJson('/api/v1/sentinel/push', ['containers' => []], ['Authorization' => 'Bearer '.$this->server->settings->sentinel_token])->assertNoContent();
+    }
+
+    StopSentinel::assertPushed(1);
 });

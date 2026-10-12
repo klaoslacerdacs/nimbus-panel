@@ -18,23 +18,31 @@ class OciStackJobs extends Component
 {
     use AuthorizesRequests;
 
+    // Query-string values are untyped: keep them loose and normalize before use (?job=abc must not 500).
     #[Url]
-    public string $stack = '';
+    public mixed $stack = '';
 
     #[Url]
-    public string $operation = '';
+    public mixed $operation = '';
 
     #[Url(as: 'job')]
-    public ?int $selectedJobId = null;
+    public mixed $selectedJobId = null;
 
     public function mount(): void
     {
         $this->authorize('viewAny', OciStack::class);
+        $this->stack = is_string($this->stack) ? $this->stack : '';
+        $this->operation = in_array($this->operation, ['plan', 'apply', 'destroy'], true) ? $this->operation : '';
+        $this->selectedJobId = is_numeric($this->selectedJobId) ? (int) $this->selectedJobId : null;
     }
 
     public function selectJob(int $jobId): void
     {
-        $this->selectedJobId = $this->findJob($jobId)?->id;
+        $job = $this->findJob($jobId);
+        if ($job?->stack) {
+            $this->authorize('view', $job->stack);
+        }
+        $this->selectedJobId = $job?->id;
     }
 
     /**
@@ -42,7 +50,7 @@ class OciStackJobs extends Component
      */
     public function refreshLiveLog(): void
     {
-        $job = $this->selectedJobId ? $this->findJob($this->selectedJobId) : null;
+        $job = is_numeric($this->selectedJobId) ? $this->findJob((int) $this->selectedJobId) : null;
         if (! $job?->job_ocid || ! $job->stack?->ociConnection) {
             return;
         }
@@ -67,15 +75,15 @@ class OciStackJobs extends Component
     {
         $jobs = OciStackJob::ownedByCurrentTeam()
             ->with('stack:id,uuid,name,region')
-            ->when($this->operation !== '', fn ($query) => $query->where('operation', $this->operation))
-            ->when($this->stack !== '', fn ($query) => $query->whereHas('stack', fn ($stack) => $stack->where('uuid', $this->stack)))
+            ->when(in_array($this->operation, ['plan', 'apply', 'destroy'], true), fn ($query) => $query->where('operation', $this->operation))
+            ->when(is_string($this->stack) && $this->stack !== '', fn ($query) => $query->whereHas('stack', fn ($stack) => $stack->where('uuid', $this->stack)))
             ->latest('id')
             ->limit(100)
             ->get();
 
         return view('livewire.security.oci-stack-jobs', [
             'jobs' => $jobs,
-            'selectedJob' => $this->selectedJobId ? $this->findJob($this->selectedJobId) : null,
+            'selectedJob' => is_numeric($this->selectedJobId) ? $this->findJob((int) $this->selectedJobId) : null,
             'stackOptions' => OciStack::ownedByCurrentTeam()->orderBy('name')->get(['uuid', 'name'])
                 ->map(fn (OciStack $stack): array => ['value' => $stack->uuid, 'label' => $stack->name])->all(),
         ]);

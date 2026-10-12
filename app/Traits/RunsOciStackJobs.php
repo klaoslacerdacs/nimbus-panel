@@ -15,7 +15,7 @@ trait RunsOciStackJobs
 {
     /**
      * @param  array<string, mixed>  $config
-     * @return array{ok: bool, job_id: string|null, log: string|null}
+     * @return array{ok: bool, status: string, job_id: string|null, log: string|null}
      */
     protected function runTrackedStackJob(OciClient $oci, array $config, OciStack $stack, string $operation): array
     {
@@ -27,18 +27,18 @@ trait RunsOciStackJobs
             $reason = 'OCI did not accept the '.$operation.' job'.(isset($result['message']) ? ': '.$result['message'] : '.');
             $this->recordStackJob($stack, $operation, ['status' => 'failed', 'log' => $reason, 'finished_at' => now()]);
 
-            return ['ok' => false, 'job_id' => null, 'log' => $reason];
+            return ['ok' => false, 'status' => 'failed', 'job_id' => null, 'log' => $reason];
         }
 
         $record = $this->recordStackJob($stack, $operation, ['job_ocid' => $result['job_id'], 'status' => 'accepted']);
         $status = $this->waitForStackJob($oci, $config, $record);
 
-        // ponytail: last 2000 log lines per job; the OCI console keeps the full log
+        // ponytail: last 2000 log lines per job, kept until the stack record is removed; add pruning (e.g. >90 days) if the table grows
         $lines = $oci->getJobLogs($config, $record->job_ocid, 2000)['lines'] ?? [];
         $log = $lines === [] ? null : implode("\n", $lines);
         $record->update(['status' => $status, 'log' => $log, 'finished_at' => now()]);
 
-        return ['ok' => $status === 'succeeded', 'job_id' => $record->job_ocid, 'log' => $log];
+        return ['ok' => $status === 'succeeded', 'status' => $status, 'job_id' => $record->job_ocid, 'log' => $log];
     }
 
     /**

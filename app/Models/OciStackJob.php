@@ -40,9 +40,21 @@ class OciStackJob extends BaseModel
         return $this->belongsTo(OciStack::class, 'oci_stack_id');
     }
 
+    /**
+     * A record still "running" well past the job deadline was abandoned by a killed worker (SIGKILL skips failed()).
+     */
     public function isRunning(): bool
     {
-        return in_array($this->status, self::RUNNING, true);
+        return in_array($this->status, self::RUNNING, true)
+            && ($this->started_at === null || $this->started_at->isAfter(now()->subMinutes(35)));
+    }
+
+    /**
+     * Close the records a killed provisioning/destroy job left open.
+     */
+    public static function failOpenJobs(OciStack $stack, string $reason): void
+    {
+        $stack->jobs()->whereIn('status', self::RUNNING)->update(['status' => 'failed', 'finished_at' => now(), 'log' => $reason]);
     }
 
     public static function ownedByCurrentTeam(): Builder

@@ -4,6 +4,7 @@ namespace App\Jobs;
 
 use App\Events\OciStackStatusChanged;
 use App\Models\OciStack;
+use App\Models\OciStackJob;
 use App\Services\OciClient;
 use App\Traits\RunsOciStackJobs;
 use Illuminate\Bus\Queueable;
@@ -74,7 +75,8 @@ class OciStackDestroyJob implements ShouldBeUnique, ShouldQueue
                 'last_plan_summary' => 'Terraform destroy succeeded at '.now()->toDateTimeString().' UTC. OCI resources removed.',
             ]);
         } else {
-            $stack->update(['status' => 'destroy_failed', 'last_plan_summary' => "Terraform destroy failed.\n\n".($this->logTail($destroy['log']) ?? '')]);
+            $outcome = $destroy['status'] === 'timed_out' ? 'timed out after 30 minutes' : 'failed';
+            $stack->update(['status' => 'destroy_failed', 'last_plan_summary' => "Terraform destroy {$outcome}.\n\n".($this->logTail($destroy['log']) ?? '')]);
         }
 
         OciStackStatusChanged::dispatch($stack->team_id);
@@ -85,6 +87,7 @@ class OciStackDestroyJob implements ShouldBeUnique, ShouldQueue
      */
     public function failed(\Throwable $exception): void
     {
+        OciStackJob::failOpenJobs($this->ociStack, 'Destroy stopped: '.$exception->getMessage());
         $this->ociStack->update(['status' => 'destroy_failed', 'last_plan_summary' => 'Destroy stopped: '.$exception->getMessage()]);
         OciStackStatusChanged::dispatch($this->ociStack->team_id);
     }

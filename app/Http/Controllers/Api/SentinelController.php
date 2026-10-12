@@ -57,8 +57,11 @@ class SentinelController extends Controller
         }
 
         // Nimbus: servers on OCI Monitoring must not run Sentinel; stop containers left from before the switch.
-        if (! $server->isSentinelEnabled() && $server->usesOciMonitoring()) {
-            StopSentinel::dispatch($server);
+        if ($server->usesOciMonitoring()) {
+            // Sentinel pushes every few seconds; one stop attempt per 5 minutes is enough.
+            if (Cache::add("nimbus:stop-sentinel:{$server->id}", true, 300)) {
+                StopSentinel::dispatch($server);
+            }
 
             return response()->noContent();
         }

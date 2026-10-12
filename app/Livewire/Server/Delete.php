@@ -128,7 +128,7 @@ class Delete extends Component
             ];
         }
 
-        if ($this->server->ociStack()->exists()) {
+        if ($this->server->ociStack()->whereNotIn('status', ['destroying', 'destroyed'])->exists()) {
             $checkboxes[] = [
                 'id' => 'delete_from_oci',
                 'label' => 'Also destroy OCI stack (Terraform destroy — removes VM and all OCI resources)',

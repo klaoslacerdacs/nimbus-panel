@@ -93,3 +93,9 @@ it('does not queue a second destroy for a stack that is already being destroyed'
     Queue::assertNotPushed(OciStackDestroyJob::class);
     expect($this->stack->fresh()->last_plan_summary)->toBe('Running Terraform destroy...');
 });
+
+it('does not offer to destroy a stack that is already destroyed', function (): void {
+    $this->stack->update(['status' => 'destroyed']);
+
+    Livewire::test(Delete::class, ['server_uuid' => $this->server->uuid])->assertDontSee('Also destroy OCI stack');
+});

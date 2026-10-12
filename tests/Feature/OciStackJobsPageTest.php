@@ -1,5 +1,7 @@
 <?php
 
+use App\Jobs\OciStackDestroyJob;
+use App\Jobs\OciStackProvisionJob;
 use App\Livewire\Security\OciStackJobs;
 use App\Models\InstanceSettings;
 use App\Models\OciStack;
@@ -69,4 +71,26 @@ it('refreshes the log of a running job live from OCI', function (): void {
         ->assertSee('oci_core_instance.server: Destroying...');
 
     expect($running->fresh()->log)->toContain('Destroying...');
+});
+
+it('closes job records when the worker kills the provisioning or destroy job', function (string $jobClass): void {
+    $running = OciStackJob::factory()->create(['oci_stack_id' => $this->stack->id, 'status' => 'in_progress', 'finished_at' => null, 'log' => null]);
+
+    (new $jobClass($this->stack))->failed(new RuntimeException('Job has timed out.'));
+
+    expect($running->fresh()->status)->toBe('failed')
+        ->and($running->fresh()->finished_at)->not->toBeNull()
+        ->and($running->fresh()->isRunning())->toBeFalse();
+})->with([OciStackProvisionJob::class, OciStackDestroyJob::class]);
+
+it('treats a job record abandoned by a killed worker as not running', function (): void {
+    $stale = OciStackJob::factory()->create(['oci_stack_id' => $this->stack->id, 'status' => 'in_progress', 'started_at' => now()->subHours(2), 'finished_at' => null]);
+
+    expect($stale->isRunning())->toBeFalse();
+});
+
+it('ignores malformed job ids in the URL', function (): void {
+    Livewire::withQueryParams(['job' => 'abc', 'stack' => ['x']])
+        ->test(OciStackJobs::class)
+        ->assertOk();
 });
