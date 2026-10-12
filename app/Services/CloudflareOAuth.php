@@ -19,13 +19,16 @@ class CloudflareOAuth
 
     public const string TOKEN_URL = 'https://dash.cloudflare.com/oauth2/token';
 
+    /** What tunnels + DNS need; Settings → Cloudflare overrides it only when a client was created with other scopes. */
+    public const string DEFAULT_SCOPES = 'account-settings.read zone.read dns.read dns.write teams.read teams.write';
+
     public const string REVOKE_URL = 'https://dash.cloudflare.com/oauth2/revoke';
 
     public function isConfigured(): bool
     {
         $settings = instanceSettings();
 
-        return filled($settings->cloudflare_oauth_client_id) && filled($settings->cloudflare_oauth_client_secret) && filled($settings->cloudflare_oauth_scopes);
+        return filled($settings->cloudflare_oauth_client_id) && filled($settings->cloudflare_oauth_client_secret);
     }
 
     public function redirectUri(): string
@@ -38,7 +41,7 @@ class CloudflareOAuth
      */
     public function scopes(): string
     {
-        $scopes = preg_split('/[\s,]+/', (string) instanceSettings()->cloudflare_oauth_scopes, -1, PREG_SPLIT_NO_EMPTY);
+        $scopes = preg_split('/[\s,]+/', instanceSettings()->cloudflare_oauth_scopes ?: self::DEFAULT_SCOPES, -1, PREG_SPLIT_NO_EMPTY);
 
         return implode(' ', array_unique([...$scopes, 'offline_access']));
     }

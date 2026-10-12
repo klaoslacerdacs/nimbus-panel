@@ -5,6 +5,7 @@ use App\Models\CloudflareConnection;
 use App\Models\InstanceSettings;
 use App\Models\Team;
 use App\Models\User;
+use App\Services\CloudflareOAuth;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
@@ -197,4 +198,10 @@ it('keeps the stored tokens when the refresh is rejected', function (): void {
 
     expect(fn () => $connection->api())->toThrow(RuntimeException::class, 'invalid_grant');
     expect($connection->fresh()->refresh_token)->toBe('cf-refresh-token');
+});
+
+it('uses the default scopes when none are configured', function (): void {
+    InstanceSettings::get()->update(['cloudflare_oauth_scopes' => null]);
+
+    expect(startCloudflareFlow()['scope'])->toBe(CloudflareOAuth::DEFAULT_SCOPES.' offline_access');
 });

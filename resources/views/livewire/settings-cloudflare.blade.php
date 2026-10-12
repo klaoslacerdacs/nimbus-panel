@@ -20,8 +20,8 @@
                     </div>
 
                     <div class="mt-4">
-                        <x-forms.input id="scopes" label="Scopes" required placeholder="Scope names exactly as listed on the OAuth client, separated by spaces"
-                            helper="offline_access is always added so the connection can refresh its token." />
+                        <x-forms.input id="scopes" label="Scopes (optional)" :placeholder="$defaultScopes"
+                            helper="Leave blank to use the default shown. Change only if your client was created with other scopes; offline_access is always added." />
                     </div>
 
                     <div class="mt-4">

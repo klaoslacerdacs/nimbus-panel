@@ -185,7 +185,6 @@ class CloudflareTunnel extends Component
         return view('livewire.server.cloudflare-tunnel', [
             'cloudflareConnection' => $this->cloudflareConnection(),
             'cloudflareOAuthConfigured' => app(CloudflareOAuth::class)->isConfigured(),
-            'cloudflareOAuthMissingScopes' => filled(instanceSettings()->cloudflare_oauth_client_id) && blank(instanceSettings()->cloudflare_oauth_scopes),
         ]);
     }
 

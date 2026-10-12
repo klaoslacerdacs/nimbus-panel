@@ -46,14 +46,14 @@ class SettingsCloudflare extends Component
 
         $this->validate([
             'clientId' => ['required', 'string', 'max:255', 'regex:/^[A-Za-z0-9._-]+$/'],
-            'scopes' => ['required', 'string', 'max:1000', 'regex:/^[A-Za-z0-9._:\-\s,]+$/'],
+            'scopes' => ['nullable', 'string', 'max:1000', 'regex:/^[A-Za-z0-9._:\-\s,]+$/'],
             'clientSecret' => [$hasStoredSecret ? 'nullable' : 'required', 'string', 'max:1024'],
         ], [
             'clientSecret.required' => 'Paste the client secret shown when you created the OAuth client.',
         ]);
 
         $this->settings->cloudflare_oauth_client_id = $this->clientId;
-        $this->settings->cloudflare_oauth_scopes = trim($this->scopes);
+        $this->settings->cloudflare_oauth_scopes = filled($this->scopes) ? trim($this->scopes) : null;
         if (filled($this->clientSecret)) {
             $this->settings->cloudflare_oauth_client_secret = $this->clientSecret;
         }
@@ -79,6 +79,7 @@ class SettingsCloudflare extends Component
         return view('livewire.settings-cloudflare', [
             'callbackUrl' => url('/auth/cloudflare/callback'),
             'isConfigured' => app(CloudflareOAuth::class)->isConfigured(),
+            'defaultScopes' => CloudflareOAuth::DEFAULT_SCOPES,
         ]);
     }
 }
