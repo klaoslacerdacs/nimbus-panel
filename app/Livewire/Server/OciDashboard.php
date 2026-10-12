@@ -300,13 +300,12 @@ class OciDashboard extends Component
             return;
         }
 
-        $ads = app(OciClient::class)->listAvailabilityDomains(
+        // Block volumes are AD-local: they must live in the instance's AD to be attachable.
+        $ad = $this->instanceStatus['availability_domain'] ?? app(OciClient::class)->getInstanceStatus(
             $connection->toApiConfig(),
-            $compartmentId,
+            $this->server->oci_instance_id,
             $this->server->oci_region,
-        );
-
-        $ad = $ads[0]['name'] ?? null;
+        )['availability_domain'] ?? null;
         if (! $ad) {
             $this->dispatch('error', 'Could not determine availability domain.');
 

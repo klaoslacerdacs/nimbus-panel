@@ -228,6 +228,7 @@ class OciComputeService
             'display_name' => $i['displayName'] ?? null,
             'lifecycle_state' => $i['lifecycleState'] ?? null,
             'shape' => $i['shape'] ?? null,
+            'availability_domain' => $i['availabilityDomain'] ?? null,
             'region' => $region,
             'time_created' => $i['timeCreated'] ?? null,
         ];

@@ -270,3 +270,18 @@ it('denies block volume actions to non-admin members', function () {
         ->call('attachVolume')
         ->assertForbidden();
 });
+
+it('creates block volumes in the instance availability domain', function () {
+    $mock = mockClient(['getInstanceStatus' => ['lifecycle_state' => 'RUNNING', 'availability_domain' => 'Uocm:US-ASHBURN-AD-2']]);
+    $mock->shouldNotReceive('listAvailabilityDomains');
+    $mock->shouldReceive('createVolume')->once()
+        ->with(Mockery::any(), 'ocid1.compartment.oc1..example', 'Uocm:US-ASHBURN-AD-2', 'data', 100, 'us-ashburn-1')
+        ->andReturn(['id' => 'ocid1.volume.oc1..v', 'display_name' => 'data']);
+    app()->instance(OciClient::class, $mock);
+
+    Livewire::test(OciDashboard::class, ['server_uuid' => $this->server->uuid])
+        ->set('newVolumeName', 'data')
+        ->set('newVolumeSize', 100)
+        ->call('createVolume')
+        ->assertHasNoErrors();
+});
