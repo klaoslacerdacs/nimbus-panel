@@ -20,7 +20,7 @@ class CloudflareOAuth
     public const string TOKEN_URL = 'https://dash.cloudflare.com/oauth2/token';
 
     /** What tunnels + DNS need; Settings → Cloudflare overrides it only when a client was created with other scopes. */
-    public const string DEFAULT_SCOPES = 'account-settings.read zone.read dns.read dns.write argotunnel.read argotunnel.write';
+    public const string DEFAULT_SCOPES = 'account-settings.read zone.read dns.read dns.write argotunnel.write';
 
     public const string REVOKE_URL = 'https://dash.cloudflare.com/oauth2/revoke';
 
