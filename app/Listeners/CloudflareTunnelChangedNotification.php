@@ -26,11 +26,13 @@ class CloudflareTunnelChangedNotification
 
         for ($i = 1; $i <= $attempts; $i++) {
             \Log::debug("Cloudflare health check attempt {$i}/{$attempts}", ['server_id' => $server_id]);
-            $result = instant_remote_process_with_timeout(['docker inspect coolify-cloudflared | jq -e ".[0].State.Health.Status == \"healthy\""'], $this->server, false, 10);
+            // The 4th argument of instant_remote_process_with_timeout is $no_sudo: passing a timeout there skipped sudo
+            // and failed for non-root SSH users. --format also avoids depending on jq being installed.
+            $result = instant_remote_process_with_timeout(["docker inspect --format '{{.State.Health.Status}}' coolify-cloudflared"], $this->server, false);
 
             if (blank($result)) {
                 \Log::debug("Cloudflare Tunnels container not found on attempt {$i}", ['server_id' => $server_id]);
-            } elseif ($result === 'true') {
+            } elseif ($result === 'healthy') {
                 \Log::debug("Cloudflare Tunnels container healthy on attempt {$i}", ['server_id' => $server_id]);
                 $cloudflareHealthy = true;
                 break;
