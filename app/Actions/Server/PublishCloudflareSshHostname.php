@@ -33,7 +33,7 @@ class PublishCloudflareSshHostname
             ? $credential->api()
             : Http::withToken($credential)->acceptJson()->timeout(20)->baseUrl(self::API);
 
-        $config = $this->call($api->get("/accounts/{$accountId}/cfd_tunnel/{$tunnelId}/configurations"))['config'] ?? null;
+        $config = $this->call($api->get("/accounts/{$accountId}/cfd_tunnel/{$tunnelId}/configurations"), 'Cloudflare Tunnel Write')['config'] ?? null;
         if (! is_array($config)) {
             throw new RuntimeException('This tunnel is configured by a local file, not in the Cloudflare dashboard. Add the SSH hostname to that file instead.');
         }
@@ -46,7 +46,7 @@ class PublishCloudflareSshHostname
             ['hostname' => $hostname, 'service' => 'ssh://localhost:22'],
             $catchAll,
         ];
-        $this->call($api->put("/accounts/{$accountId}/cfd_tunnel/{$tunnelId}/configurations", ['config' => $config]));
+        $this->call($api->put("/accounts/{$accountId}/cfd_tunnel/{$tunnelId}/configurations", ['config' => $config]), 'Cloudflare Tunnel Write');
 
         $zoneId = $this->zoneFor($api, $hostname);
         $record = ['type' => 'CNAME', 'name' => $hostname, 'content' => "{$tunnelId}.cfargotunnel.com", 'proxied' => true];
@@ -95,11 +95,14 @@ class PublishCloudflareSshHostname
     /**
      * @return array<mixed>
      */
-    private function call(Response $response): array
+    private function call(Response $response, string $permission = 'DNS Write and Zone Read'): array
     {
         $body = $response->json();
         if (! $response->successful() || ! ($body['success'] ?? false)) {
             $message = collect($body['errors'] ?? [])->pluck('message')->implode('; ') ?: 'HTTP '.$response->status();
+            if (in_array($response->status(), [401, 403], true)) {
+                $message .= ". The Cloudflare login or token needs the {$permission} permission; add it to the OAuth client (or token) and reconnect";
+            }
 
             throw new RuntimeException("Cloudflare API: {$message}");
         }

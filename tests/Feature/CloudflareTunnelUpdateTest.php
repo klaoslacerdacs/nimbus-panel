@@ -330,3 +330,16 @@ test('leaves the SSH hostname empty when the zones cannot be listed', function (
     Livewire::test(CloudflareTunnel::class, ['server_uuid' => $this->server->uuid])
         ->assertSet('fixSshHostname', '');
 });
+
+test('names the missing Cloudflare Tunnel permission when the tunnel API refuses', function () {
+    actingAsCloudflareTunnelUpdateUser($this->team, 'owner');
+    $this->server->update(['ip' => '163.176.137.233']);
+    $this->server->settings->update(['is_cloudflare_tunnel' => false, 'is_reachable' => true, 'is_usable' => true]);
+    cloudflareFixProcessFake(sshThroughTunnelWorks: true);
+    Http::fake(['api.cloudflare.com/*' => Http::response(['success' => false, 'errors' => [['code' => 1001, 'message' => 'Not authorized']]], 401)]);
+
+    Livewire::test(CloudflareTunnel::class, ['server_uuid' => $this->server->uuid])
+        ->set('fixSshHostname', 'srv-oci-coolify.example.com')
+        ->update(calls: [['method' => 'fixSshThroughTunnel', 'params' => [], 'path' => '']], updates: ['cloudflareApiToken' => 'cf-api-token'])
+        ->assertDispatched('error', fn (string $event, array $params): bool => str_contains(json_encode($params), 'Cloudflare Tunnel Write'));
+});
