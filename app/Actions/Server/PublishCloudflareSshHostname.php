@@ -33,7 +33,9 @@ class PublishCloudflareSshHostname
             ? $credential->api()
             : Http::withToken($credential)->acceptJson()->timeout(20)->baseUrl(self::API);
 
-        $config = $this->call($api->get("/accounts/{$accountId}/cfd_tunnel/{$tunnelId}/configurations"), 'Cloudflare Tunnel Write')['config'] ?? null;
+        $current = $this->call($api->get("/accounts/{$accountId}/cfd_tunnel/{$tunnelId}/configurations"), 'Cloudflare Tunnel Write');
+        // A dashboard-managed tunnel that never had a hostname comes back with config: null (version 0).
+        $config = $current['config'] ?? (($current['source'] ?? 'cloudflare') === 'cloudflare' ? ['ingress' => []] : null);
         if (! is_array($config)) {
             throw new RuntimeException('This tunnel is configured by a local file, not in the Cloudflare dashboard. Add the SSH hostname to that file instead.');
         }

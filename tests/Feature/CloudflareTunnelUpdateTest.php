@@ -343,3 +343,42 @@ test('names the missing Cloudflare Tunnel permission when the tunnel API refuses
         ->update(calls: [['method' => 'fixSshThroughTunnel', 'params' => [], 'path' => '']], updates: ['cloudflareApiToken' => 'cf-api-token'])
         ->assertDispatched('error', fn (string $event, array $params): bool => str_contains(json_encode($params), 'Cloudflare Tunnel Write'));
 });
+
+test('fix automatically publishes on a dashboard tunnel that has no hostnames yet', function () {
+    actingAsCloudflareTunnelUpdateUser($this->team, 'owner');
+    $this->server->update(['ip' => '163.176.137.233']);
+    $this->server->settings->update(['is_cloudflare_tunnel' => false, 'is_reachable' => true, 'is_usable' => true]);
+    cloudflareFixProcessFake(sshThroughTunnelWorks: true);
+    Http::fake([
+        'api.cloudflare.com/client/v4/accounts/acc123/cfd_tunnel/tun456/configurations' => Http::sequence()
+            ->push(['success' => true, 'result' => ['version' => 0, 'config' => null, 'source' => 'cloudflare']])
+            ->push(['success' => true, 'result' => []]),
+        'api.cloudflare.com/client/v4/zones?*' => Http::response(['success' => true, 'result' => [['id' => 'zone1']]]),
+        'api.cloudflare.com/client/v4/zones/zone1/dns_records*' => Http::response(['success' => true, 'result' => []]),
+    ]);
+
+    Livewire::test(CloudflareTunnel::class, ['server_uuid' => $this->server->uuid])
+        ->set('fixSshHostname', 'srv-oci-coolify.example.com')
+        ->update(calls: [['method' => 'fixSshThroughTunnel', 'params' => [], 'path' => '']], updates: ['cloudflareApiToken' => 'cf-api-token'])
+        ->assertDispatched('success');
+
+    Http::assertSent(fn ($request) => $request->method() === 'PUT' && str_contains($request->url(), 'configurations')
+        && $request['config']['ingress'] === [
+            ['hostname' => 'srv-oci-coolify.example.com', 'service' => 'ssh://localhost:22'],
+            ['service' => 'http_status:404'],
+        ]);
+});
+
+test('fix automatically refuses a tunnel configured by a local file', function () {
+    actingAsCloudflareTunnelUpdateUser($this->team, 'owner');
+    $this->server->settings->update(['is_cloudflare_tunnel' => false, 'is_reachable' => true, 'is_usable' => true]);
+    cloudflareFixProcessFake(sshThroughTunnelWorks: true);
+    Http::fake(['api.cloudflare.com/client/v4/accounts/acc123/cfd_tunnel/tun456/configurations' => Http::response(['success' => true, 'result' => ['config' => null, 'source' => 'local']])]);
+
+    Livewire::test(CloudflareTunnel::class, ['server_uuid' => $this->server->uuid])
+        ->set('fixSshHostname', 'srv-oci-coolify.example.com')
+        ->update(calls: [['method' => 'fixSshThroughTunnel', 'params' => [], 'path' => '']], updates: ['cloudflareApiToken' => 'cf-api-token'])
+        ->assertDispatched('error');
+
+    Http::assertNotSent(fn ($request) => $request->method() === 'PUT');
+});
