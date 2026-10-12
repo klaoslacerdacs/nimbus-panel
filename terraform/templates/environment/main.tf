@@ -160,7 +160,7 @@ resource "oci_core_instance" "server" {
   create_vnic_details {
     subnet_id        = local.subnet_id
     assign_public_ip = true
-    display_name     = "${var.instance_display_name}-vnic"
+    display_name     = var.instance_display_name # OCI derives the OS hostname from the VNIC name
     nsg_ids          = [local.nsg_id]
   }
 
