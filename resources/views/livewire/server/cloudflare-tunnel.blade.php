@@ -71,12 +71,31 @@
                             <div class="grid gap-3 md:grid-cols-2">
                                 <x-forms.input id="fixSshHostname" label="SSH hostname" required placeholder="ssh-server.example.com"
                                     helper="A new hostname on a domain of your Cloudflare account. It will route to ssh://localhost:22." />
-                                <x-forms.input id="cloudflareApiToken" type="password" label="Cloudflare API token" required
-                                    helper="Permissions: Account → Cloudflare Tunnel → Edit, and Zone → DNS → Edit. Used once, never stored." />
+                                @if ($cloudflareConnection)
+                                    <x-forms.input id="cloudflareApiToken" type="password" label="Cloudflare API token (optional)"
+                                        placeholder="Using {{ $cloudflareConnection->account_name }}"
+                                        helper="Your team's connected Cloudflare account is used. Paste a token only if this tunnel is in another account." />
+                                @elseif ($cloudflareOAuthConfigured)
+                                    <div class="flex flex-col justify-end gap-1">
+                                        <a href="{{ route('cloudflare.connect', ['return' => '/server/'.$server->uuid.'/cloudflare-tunnel']) }}"
+                                            class="button button-highlighted text-sm">Login with Cloudflare</a>
+                                        <span class="text-xs text-neutral-500 dark:text-fg-dim">Authorize once for your team; no API token needed.</span>
+                                    </div>
+                                @else
+                                    <x-forms.input id="cloudflareApiToken" type="password" label="Cloudflare API token" required
+                                        helper="Permissions: Account → Cloudflare Tunnel → Edit, and Zone → DNS → Edit. Used once, never stored. Or connect your account in Security → Cloudflare." />
+                                @endif
                             </div>
-                            <div class="flex justify-end">
-                                <x-forms.button type="submit" class="button-highlighted" wire:loading.attr="disabled">Fix automatically</x-forms.button>
-                            </div>
+                            @if (session('success'))
+                                <p class="text-sm text-success">{{ session('success') }}</p>
+                            @elseif (session('error'))
+                                <p class="text-sm text-error">{{ session('error') }}</p>
+                            @endif
+                            @if ($cloudflareConnection || ! $cloudflareOAuthConfigured)
+                                <div class="flex justify-end">
+                                    <x-forms.button type="submit" class="button-highlighted" wire:loading.attr="disabled">Fix automatically</x-forms.button>
+                                </div>
+                            @endif
                         </form>
                     </x-application.settings-section>
                 @endcan

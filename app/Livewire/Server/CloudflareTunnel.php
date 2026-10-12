@@ -6,7 +6,9 @@ use App\Actions\Server\ConfigureCloudflared;
 use App\Actions\Server\PublishCloudflareSshHostname;
 use App\Actions\Server\UpdateCloudflared;
 use App\Events\CloudflareTunnelChanged;
+use App\Models\CloudflareConnection;
 use App\Models\Server;
+use App\Services\CloudflareOAuth;
 use App\Traits\ListensToTeamChannel;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Livewire\Attributes\Validate;
@@ -135,15 +137,16 @@ class CloudflareTunnel extends Component
         $this->fixSshHostname = trim(str_replace(['https://', 'http://', '/'], '', strtolower($this->fixSshHostname)));
         $this->validate([
             'fixSshHostname' => ['required', 'string', 'max:253', 'regex:/^(?=.{4,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/'],
-            'cloudflareApiToken' => ['required', 'string', 'max:255'],
+            'cloudflareApiToken' => [$this->cloudflareConnection() ? 'nullable' : 'required', 'string', 'max:255'],
         ], [
             'fixSshHostname.regex' => 'Enter a full hostname on a domain of your Cloudflare account, e.g. ssh-server.example.com.',
         ]);
-        $apiToken = $this->cloudflareApiToken;
+        // A pasted token wins, so a tunnel in another account can still be fixed while the team is connected.
+        $credential = filled($this->cloudflareApiToken) ? $this->cloudflareApiToken : $this->cloudflareConnection();
 
         try {
             $this->authorize('update', $this->server);
-            PublishCloudflareSshHostname::run($this->server, $this->fixSshHostname, $apiToken);
+            PublishCloudflareSshHostname::run($this->server, $this->fixSshHostname, $credential);
             auditLog('ui.server.cloudflare_tunnel.ssh_hostname_published', $this->auditContext(['ssh_domain' => $this->fixSshHostname]));
 
             CloudflareTunnelChanged::dispatch(['server_id' => $this->server->id, 'ssh_domain' => $this->fixSshHostname]);
@@ -171,9 +174,18 @@ class CloudflareTunnel extends Component
         }
     }
 
+    /** The Cloudflare account connected by the server's team (Security → Cloudflare). */
+    private function cloudflareConnection(): ?CloudflareConnection
+    {
+        return once(fn () => CloudflareConnection::query()->where('team_id', $this->server->team_id)->first());
+    }
+
     public function render()
     {
-        return view('livewire.server.cloudflare-tunnel');
+        return view('livewire.server.cloudflare-tunnel', [
+            'cloudflareConnection' => $this->cloudflareConnection(),
+            'cloudflareOAuthConfigured' => app(CloudflareOAuth::class)->isConfigured(),
+        ]);
     }
 
     /**

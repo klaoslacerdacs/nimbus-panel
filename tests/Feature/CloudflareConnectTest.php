@@ -114,3 +114,18 @@ it('refreshes an expiring token before calling the API', function (): void {
     expect($connection->fresh()->access_token)->toBe('at-new')
         ->and($connection->fresh()->refresh_token)->toBe('cf-refresh-token');
 });
+
+it('returns to the page that started the login, but only for local paths', function (string $return, string $expected): void {
+    Http::fake([
+        'dash.cloudflare.com/oauth2/token' => Http::response(['access_token' => 'at-1', 'expires_in' => 3600]),
+        'api.cloudflare.com/client/v4/accounts*' => Http::response(['result' => [['id' => 'acc-1', 'name' => 'Nimbus']]]),
+    ]);
+    $location = $this->get(route('cloudflare.connect', ['return' => $return]))->headers->get('Location');
+    parse_str(parse_url($location, PHP_URL_QUERY), $query);
+
+    $this->get(route('cloudflare.callback', ['code' => 'c', 'state' => $query['state']]))->assertRedirect($expected);
+})->with([
+    'server page' => ['/server/abc123/cloudflare-tunnel', '/server/abc123/cloudflare-tunnel'],
+    'protocol-relative' => ['//evil.example.com/x', '/security/cloudflare'],
+    'absolute url' => ['https://evil.example.com', '/security/cloudflare'],
+]);

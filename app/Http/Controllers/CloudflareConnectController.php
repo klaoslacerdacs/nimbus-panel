@@ -30,6 +30,7 @@ class CloudflareConnectController extends Controller
             'state' => $authorization['state'],
             'verifier' => $authorization['verifier'],
             'team_id' => $teamId,
+            'return_to' => $this->safeReturnPath($request->query('return')),
         ]);
 
         return redirect()->away($authorization['url']);
@@ -46,7 +47,7 @@ class CloudflareConnectController extends Controller
         abort_unless($request->user()->isAdminOfTeam($pending['team_id']), 403);
 
         if (! is_string($request->query('code'))) {
-            return $this->back('Cloudflare did not authorize the connection'.($request->query('error') ? ': '.$request->query('error') : '.'));
+            return $this->back('Cloudflare did not authorize the connection'.($request->query('error') ? ': '.$request->query('error') : '.'), $pending['return_to'] ?? null);
         }
 
         try {
@@ -57,13 +58,13 @@ class CloudflareConnectController extends Controller
         } catch (\Throwable $e) {
             Log::warning('Cloudflare OAuth callback failed.', ['team_id' => $pending['team_id'], 'exception_class' => $e::class, 'message' => $e->getMessage()]);
 
-            return $this->back('Could not connect to Cloudflare: '.$e->getMessage());
+            return $this->back('Could not connect to Cloudflare: '.$e->getMessage(), $pending['return_to'] ?? null);
         }
 
         // ponytail: first account the token can see; add a picker when someone authorizes several accounts.
         $account = $accounts[0] ?? null;
         if (! $account) {
-            return $this->back('The authorization did not grant access to any Cloudflare account. Check the client scopes.');
+            return $this->back('The authorization did not grant access to any Cloudflare account. Check the client scopes.', $pending['return_to'] ?? null);
         }
 
         CloudflareConnection::query()->updateOrCreate(['team_id' => $pending['team_id']], [
@@ -78,11 +79,23 @@ class CloudflareConnectController extends Controller
 
         auditLog('ui.team.cloudflare.connected', ['team_id' => $pending['team_id'], 'account_id' => $account['id']]);
 
-        return redirect()->route('security.cloudflare')->with('success', 'Cloudflare account '.($account['name'] ?? $account['id']).' connected.');
+        $message = 'Cloudflare account '.($account['name'] ?? $account['id']).' connected.';
+
+        return ($pending['return_to'] ?? null)
+            ? redirect($pending['return_to'])->with('success', $message)
+            : redirect()->route('security.cloudflare')->with('success', $message);
     }
 
-    private function back(string $error): RedirectResponse
+    /**
+     * Only a local path, so the callback can never become an open redirect.
+     */
+    private function safeReturnPath(mixed $path): ?string
     {
-        return redirect()->route('security.cloudflare')->with('error', $error);
+        return is_string($path) && preg_match('#^/(?!/)[A-Za-z0-9/_-]*$#', $path) ? $path : null;
+    }
+
+    private function back(string $error, ?string $returnTo = null): RedirectResponse
+    {
+        return ($returnTo ? redirect($returnTo) : redirect()->route('security.cloudflare'))->with('error', $error);
     }
 }

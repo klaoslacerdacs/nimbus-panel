@@ -3,6 +3,7 @@
 use App\Actions\Server\ConfigureCloudflared;
 use App\Jobs\CoolifyTask;
 use App\Livewire\Server\CloudflareTunnel;
+use App\Models\CloudflareConnection;
 use App\Models\InstanceSettings;
 use App\Models\PrivateKey;
 use App\Models\Server;
@@ -223,4 +224,52 @@ test('members cannot run the automatic tunnel fix', function () {
         ->update(calls: [['method' => 'fixSshThroughTunnel', 'params' => [], 'path' => '']], updates: ['cloudflareApiToken' => 'cf-api-token']);
 
     Http::assertNothingSent();
+});
+
+test('fix automatically uses the team Cloudflare login instead of an API token', function () {
+    actingAsCloudflareTunnelUpdateUser($this->team, 'owner');
+    $this->server->update(['ip' => '163.176.137.233']);
+    $this->server->settings->update(['is_cloudflare_tunnel' => false, 'is_reachable' => true, 'is_usable' => true]);
+    CloudflareConnection::factory()->create(['team_id' => $this->team->id, 'account_id' => 'acc123', 'access_token' => 'oauth-token']);
+    cloudflareFixProcessFake(sshThroughTunnelWorks: true);
+    cloudflareFixHttpFake();
+
+    Livewire::test(CloudflareTunnel::class, ['server_uuid' => $this->server->uuid])
+        ->assertSee('Using Nimbus Network')
+        ->set('fixSshHostname', 'srv-oci-coolify.example.com')
+        ->call('fixSshThroughTunnel')
+        ->assertHasNoErrors()
+        ->assertDispatched('success');
+
+    Http::assertSent(fn ($request) => $request->method() === 'PUT'
+        && str_contains($request->url(), 'cfd_tunnel/tun456/configurations')
+        && $request->header('Authorization')[0] === 'Bearer oauth-token');
+});
+
+test('fix automatically refuses a login of another Cloudflare account than the tunnel', function () {
+    actingAsCloudflareTunnelUpdateUser($this->team, 'owner');
+    $this->server->update(['ip' => '163.176.137.233']);
+    $this->server->settings->update(['is_cloudflare_tunnel' => false, 'is_reachable' => true, 'is_usable' => true]);
+    CloudflareConnection::factory()->create(['team_id' => $this->team->id, 'account_id' => 'other-account']);
+    cloudflareFixProcessFake(sshThroughTunnelWorks: true);
+    Http::fake();
+
+    Livewire::test(CloudflareTunnel::class, ['server_uuid' => $this->server->uuid])
+        ->set('fixSshHostname', 'srv-oci-coolify.example.com')
+        ->call('fixSshThroughTunnel')
+        ->assertDispatched('error');
+
+    Http::assertNothingSent();
+    expect($this->server->fresh()->ip)->toBe('163.176.137.233');
+});
+
+test('shows the Cloudflare login button when the OAuth client is configured and the team is not connected', function () {
+    actingAsCloudflareTunnelUpdateUser($this->team, 'owner');
+    $this->server->settings->update(['is_cloudflare_tunnel' => false, 'is_reachable' => true, 'is_usable' => true]);
+    InstanceSettings::get()->update(['cloudflare_oauth_client_id' => 'cf', 'cloudflare_oauth_client_secret' => 's', 'cloudflare_oauth_scopes' => 'tunnel:edit']);
+
+    Livewire::test(CloudflareTunnel::class, ['server_uuid' => $this->server->uuid])
+        ->assertSee('Login with Cloudflare')
+        ->assertSee(e(route('cloudflare.connect', ['return' => '/server/'.$this->server->uuid.'/cloudflare-tunnel'])), false)
+        ->assertDontSee('Fix automatically');
 });

@@ -2,6 +2,7 @@
 
 namespace App\Actions\Server;
 
+use App\Models\CloudflareConnection;
 use App\Models\Server;
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Http\Client\Response;
@@ -12,7 +13,8 @@ use SensitiveParameter;
 
 /**
  * Publishes `hostname → ssh://localhost:22` on the server's Cloudflare Tunnel and points the hostname's DNS at
- * the tunnel, so Coolify can SSH through `cloudflared access ssh`. The API token is used once and never stored.
+ * the tunnel, so Coolify can SSH through `cloudflared access ssh`. Uses the team's OAuth connection, or a pasted API
+ * token that is used once and never stored.
  */
 class PublishCloudflareSshHostname
 {
@@ -20,10 +22,16 @@ class PublishCloudflareSshHostname
 
     private const string API = 'https://api.cloudflare.com/client/v4';
 
-    public function handle(Server $server, string $hostname, #[SensitiveParameter] string $apiToken): void
+    public function handle(Server $server, string $hostname, #[SensitiveParameter] CloudflareConnection|string $credential): void
     {
         ['a' => $accountId, 't' => $tunnelId] = $this->tunnelIdentity($server);
-        $api = Http::withToken($apiToken)->acceptJson()->timeout(20)->baseUrl(self::API);
+
+        if ($credential instanceof CloudflareConnection && $credential->account_id !== $accountId) {
+            throw new RuntimeException("This server's tunnel belongs to another Cloudflare account than the one connected ({$credential->account_name}). Paste an API token of the tunnel's account instead.");
+        }
+        $api = $credential instanceof CloudflareConnection
+            ? $credential->api()
+            : Http::withToken($credential)->acceptJson()->timeout(20)->baseUrl(self::API);
 
         $config = $this->call($api->get("/accounts/{$accountId}/cfd_tunnel/{$tunnelId}/configurations"))['config'] ?? null;
         if (! is_array($config)) {
