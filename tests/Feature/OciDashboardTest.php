@@ -298,3 +298,12 @@ it('lists buckets of the server compartment', function (): void {
         ->assertSet('buckets', [$bucket])
         ->assertSee('assets');
 });
+
+it('loads each OCI resource once per page load', function () {
+    $mock = mockClient(['listBuckets' => false, 'listLoadBalancers' => false]);
+    $mock->shouldReceive('listBuckets')->once()->andReturn([]);
+    $mock->shouldReceive('listLoadBalancers')->once()->andReturn([]);
+    app()->instance(OciClient::class, $mock);
+
+    Livewire::test(OciDashboard::class, ['server_uuid' => $this->server->uuid])->assertStatus(200);
+});

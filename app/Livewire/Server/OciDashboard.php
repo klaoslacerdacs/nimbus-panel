@@ -77,16 +77,26 @@ class OciDashboard extends Component
             $server->load('settings');
         }
         $this->loadProvisioningStatus();
+        // Imported servers have no stack; provisioned ones were already loaded by loadProvisioningStatus().
         if (! $this->isProvisioning) {
-            $this->loadStatus();
-            $this->loadMetrics();
-            $this->loadNsgRules();
-            $this->loadVolumeAttachments();
-            $this->loadLoadBalancers();
-            $this->loadAutonomousDatabases();
-            $this->loadRouteTables();
-            $this->loadBuckets();
+            $this->loadResources();
         }
+    }
+
+    private function loadResources(): void
+    {
+        if ($this->statusLoadAttempted) {
+            return;
+        }
+        $this->statusLoadAttempted = true;
+        $this->loadStatus();
+        $this->loadMetrics();
+        $this->loadNsgRules();
+        $this->loadVolumeAttachments();
+        $this->loadLoadBalancers();
+        $this->loadAutonomousDatabases();
+        $this->loadRouteTables();
+        $this->loadBuckets();
     }
 
     public function loadProvisioningStatus(): void
@@ -100,16 +110,8 @@ class OciDashboard extends Component
         $this->stackMessage = $ociStack->last_plan_summary;
         $this->isProvisioning = $ociStack->isActive();
 
-        if ($ociStack->status === 'provisioned' && ! $this->statusLoadAttempted) {
-            $this->statusLoadAttempted = true;
-            $this->loadStatus();
-            $this->loadMetrics();
-            $this->loadNsgRules();
-            $this->loadVolumeAttachments();
-            $this->loadLoadBalancers();
-            $this->loadAutonomousDatabases();
-            $this->loadRouteTables();
-            $this->loadBuckets();
+        if ($ociStack->status === 'provisioned') {
+            $this->loadResources();
         }
     }
 

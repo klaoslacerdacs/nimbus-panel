@@ -81,3 +81,16 @@ it('does not touch the OS hostname when saving fails validation', function (): v
         ->set('serverTimezone', 'Not/AZone')
         ->call('submit');
 });
+
+it('forbids members without update rights from changing the OCI metrics source', function () {
+    $member = User::factory()->create();
+    $this->team->members()->attach($member->id, ['role' => 'member']);
+    $this->actingAs($member);
+
+    Livewire::test(Show::class, ['server_uuid' => $this->server->uuid])
+        ->set('oci_metrics_source', 'sentinel')
+        ->call('saveOciMetricsSource')
+        ->assertForbidden();
+
+    expect($this->server->fresh()->oci_metrics_source)->not->toBe('sentinel');
+});
