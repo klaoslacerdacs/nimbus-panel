@@ -260,7 +260,7 @@ test('fix automatically refuses a login of another Cloudflare account than the t
         ->call('fixSshThroughTunnel')
         ->assertDispatched('error');
 
-    Http::assertNothingSent();
+    Http::assertNotSent(fn ($request) => str_contains($request->url(), 'cfd_tunnel') || str_contains($request->url(), 'dns_records'));
     expect($this->server->fresh()->ip)->toBe('163.176.137.233');
 });
 
@@ -293,4 +293,40 @@ test('fix automatically refuses to replace a DNS record that is not a CNAME', fu
 
     Http::assertNotSent(fn ($request) => str_contains($request->url(), 'dns_records') && in_array($request->method(), ['PUT', 'POST']));
     expect($this->server->fresh()->ip)->toBe('163.176.137.233');
+});
+
+test('suggests an SSH hostname from the server name and preselects the panel domain zone', function () {
+    actingAsCloudflareTunnelUpdateUser($this->team, 'owner');
+    InstanceSettings::get()->update(['fqdn' => 'https://painel.nimbus.dev']);
+    $this->server->update(['name' => 'Uptight Unicorn']);
+    $this->server->settings->update(['is_cloudflare_tunnel' => false, 'is_reachable' => true, 'is_usable' => true]);
+    CloudflareConnection::factory()->create(['team_id' => $this->team->id, 'account_id' => 'acc123']);
+    Http::fake(['api.cloudflare.com/client/v4/zones*' => Http::response(['success' => true, 'result' => [['name' => 'nimbus.dev'], ['name' => 'example.com']]])]);
+
+    Livewire::test(CloudflareTunnel::class, ['server_uuid' => $this->server->uuid])
+        ->assertSet('fixSshLabel', 'ssh-uptight-unicorn')
+        ->assertSet('fixSshZone', 'nimbus.dev');
+});
+
+test('only accepts a domain of the connected account', function () {
+    actingAsCloudflareTunnelUpdateUser($this->team, 'owner');
+    $this->server->settings->update(['is_cloudflare_tunnel' => false, 'is_reachable' => true, 'is_usable' => true]);
+    CloudflareConnection::factory()->create(['team_id' => $this->team->id, 'account_id' => 'acc123']);
+    Http::fake(['api.cloudflare.com/client/v4/zones*' => Http::response(['success' => true, 'result' => [['name' => 'example.com']]])]);
+
+    Livewire::test(CloudflareTunnel::class, ['server_uuid' => $this->server->uuid])
+        ->set('fixSshLabel', 'ssh-x')
+        ->set('fixSshZone', 'evil.com')
+        ->call('fixSshThroughTunnel')
+        ->assertHasErrors(['fixSshZone']);
+});
+
+test('leaves the SSH hostname empty when the zones cannot be listed', function () {
+    actingAsCloudflareTunnelUpdateUser($this->team, 'owner');
+    $this->server->settings->update(['is_cloudflare_tunnel' => false, 'is_reachable' => true, 'is_usable' => true]);
+    CloudflareConnection::factory()->create(['team_id' => $this->team->id]);
+    Http::fake(['api.cloudflare.com/*' => Http::response(['success' => false], 403)]);
+
+    Livewire::test(CloudflareTunnel::class, ['server_uuid' => $this->server->uuid])
+        ->assertSet('fixSshHostname', '');
 });

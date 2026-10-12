@@ -11,6 +11,7 @@ use App\Models\Server;
 use App\Services\CloudflareOAuth;
 use App\Traits\ListensToTeamChannel;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
+use Illuminate\Validation\Rule;
 use Livewire\Attributes\Validate;
 use Livewire\Component;
 
@@ -32,6 +33,11 @@ class CloudflareTunnel extends Component
 
     /** Nimbus "fix automatically": SSH hostname to publish on the tunnel. */
     public string $fixSshHostname = '';
+
+    /** Label and zone used instead of fixSshHostname when the team's Cloudflare account is connected. */
+    public string $fixSshLabel = '';
+
+    public string $fixSshZone = '';
 
     /** Used once for the Cloudflare API, never stored or sent back to the browser. */
     public ?string $cloudflareApiToken = null;
@@ -62,9 +68,32 @@ class CloudflareTunnel extends Component
                 return redirect()->route('server.show', ['server_uuid' => $server_uuid]);
             }
             $this->isCloudflareTunnelsEnabled = $this->server->settings->is_cloudflare_tunnel;
+            $this->suggestSshHostname();
         } catch (\Throwable $e) {
             return handleError($e, $this);
         }
+    }
+
+    /**
+     * With a connected account the hostname is split into a label (ssh-<server name>) and a zone picked from the
+     * account; the zone of the panel's own domain is preselected when the account has it.
+     */
+    private function suggestSshHostname(): void
+    {
+        $zones = $this->cloudflareZones();
+        if ($zones === []) {
+            return;
+        }
+
+        $this->fixSshLabel = 'ssh-'.str($this->server->name)->slug()->limit(55, '')->trim('-');
+        $panelHost = (string) parse_url((string) (instanceSettings()->fqdn ?: config('app.url')), PHP_URL_HOST);
+        $this->fixSshZone = collect($zones)->first(fn (string $zone): bool => $panelHost === $zone || str_ends_with($panelHost, ".{$zone}")) ?? '';
+    }
+
+    /** @return list<string> */
+    private function cloudflareZones(): array
+    {
+        return once(fn (): array => $this->cloudflareConnection() ? rescue(fn () => $this->cloudflareConnection()->zoneNames(), [], report: false) : []);
     }
 
     public function toggleCloudflareTunnels()
@@ -134,6 +163,15 @@ class CloudflareTunnel extends Component
      */
     public function fixSshThroughTunnel()
     {
+        if ($this->cloudflareZones() !== []) {
+            $this->validate([
+                'fixSshLabel' => ['required', 'string', 'max:63', 'regex:/^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$/'],
+                'fixSshZone' => ['required', Rule::in($this->cloudflareZones())],
+            ], [
+                'fixSshLabel.regex' => 'Use lowercase letters, numbers and dashes, e.g. ssh-my-server.',
+            ]);
+            $this->fixSshHostname = "{$this->fixSshLabel}.{$this->fixSshZone}";
+        }
         $this->fixSshHostname = trim(str_replace(['https://', 'http://', '/'], '', strtolower($this->fixSshHostname)));
         $this->validate([
             'fixSshHostname' => ['required', 'string', 'max:253', 'regex:/^(?=.{4,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/'],
@@ -185,6 +223,7 @@ class CloudflareTunnel extends Component
         return view('livewire.server.cloudflare-tunnel', [
             'cloudflareConnection' => $this->cloudflareConnection(),
             'cloudflareOAuthConfigured' => app(CloudflareOAuth::class)->isConfigured(),
+            'cloudflareZones' => $this->cloudflareZones(),
         ]);
     }
 

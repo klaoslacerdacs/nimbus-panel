@@ -6,6 +6,7 @@ use App\Services\CloudflareOAuth;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Http\Client\PendingRequest;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use RuntimeException;
 
@@ -33,6 +34,18 @@ class CloudflareConnection extends BaseModel
     public function team(): BelongsTo
     {
         return $this->belongsTo(Team::class);
+    }
+
+    /**
+     * Active zone names of the connected account, cached briefly so page loads do not hit the API.
+     *
+     * @return list<string>
+     */
+    public function zoneNames(): array
+    {
+        return Cache::remember("cloudflare-zones:{$this->id}", 600, fn (): array => collect(
+            $this->api()->get('/zones', ['account.id' => $this->account_id, 'status' => 'active', 'per_page' => 50])->throw()->json('result') ?? []
+        )->pluck('name')->sort()->values()->all());
     }
 
     /**

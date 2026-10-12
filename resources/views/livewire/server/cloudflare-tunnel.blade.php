@@ -69,8 +69,17 @@
                         description="Already ran the automated setup but SSH through the tunnel does not work? Coolify publishes the SSH hostname on your tunnel, creates its DNS record and only switches after SSH through it works.">
                         <form wire:submit="fixSshThroughTunnel" class="flex flex-col gap-3">
                             <div class="grid gap-3 md:grid-cols-2">
-                                <x-forms.input id="fixSshHostname" label="SSH hostname" required placeholder="ssh-server.example.com"
-                                    helper="A new hostname on a domain of your Cloudflare account. It will route to ssh://localhost:22." />
+                                @if ($cloudflareZones !== [])
+                                    <div class="grid grid-cols-2 gap-2">
+                                        <x-forms.input id="fixSshLabel" label="SSH hostname" required placeholder="ssh-server"
+                                            helper="Routes to ssh://localhost:22 on this server." />
+                                        <x-forms.listbox id="fixSshZone" label="Domain" searchable portal placeholder="Choose a domain"
+                                            :options="collect($cloudflareZones)->map(fn ($zone) => ['value' => $zone, 'label' => $zone])->all()" />
+                                    </div>
+                                @else
+                                    <x-forms.input id="fixSshHostname" label="SSH hostname" required placeholder="ssh-server.example.com"
+                                        helper="A new hostname on a domain of your Cloudflare account. It will route to ssh://localhost:22." />
+                                @endif
                                 @if ($cloudflareConnection)
                                     <x-forms.input id="cloudflareApiToken" type="password" label="Cloudflare API token (optional)"
                                         placeholder="Using {{ $cloudflareConnection->account_name }}"
