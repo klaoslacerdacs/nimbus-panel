@@ -39,6 +39,6 @@ output "subnet_id" {
 }
 
 output "nsg_id" {
-  value       = var.create_network ? oci_core_network_security_group.new[0].id : var.existing_nsg_ocid
-  description = "NSG OCID attached to the instance (empty if no NSG)"
+  value       = local.nsg_id
+  description = "NSG OCID attached to the instance"
 }

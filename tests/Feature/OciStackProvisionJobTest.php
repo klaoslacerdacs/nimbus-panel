@@ -96,3 +96,31 @@ it('talks to OCI in the stack region, not the connection home region', function 
 
     expect($stack->fresh()->status)->toBe('failed');
 });
+
+it('stores the NSG even without firewall rules and reports failed rule application', function (array $rules, ?string $summary) {
+    $stack = OciStack::factory()->create(['status' => 'pending', 'stack_ocid' => 'ocid1.stack.n', 'firewall_rules' => $rules]);
+
+    $mock = Mockery::mock(OciClient::class);
+    $mock->shouldReceive('runStackJob')->andReturn(['job_id' => 'job']);
+    $mock->shouldReceive('getStackJob')->andReturn(['status' => 'SUCCEEDED']);
+    $mock->shouldReceive('getStackOutputs')->andReturn(['instance_id' => 'ocid1.instance.n', 'nsg_id' => 'ocid1.networksecuritygroup.n']);
+    $mock->shouldReceive('addNsgRules')->andReturn(['error' => true, 'message' => 'quota']);
+
+    (new OciStackProvisionJob($stack))->handle($mock);
+
+    expect($stack->fresh()->nsg_ocid)->toBe('ocid1.networksecuritygroup.n')
+        ->and($stack->fresh()->last_plan_summary)->toBe($summary);
+})->with([
+    'no rules' => [[], null],
+    'rules fail' => [[['protocol' => 'TCP', 'port_min' => 80, 'port_max' => 80, 'source' => '0.0.0.0/0']], 'Instance created, but firewall rules could not be applied: quota. Add them from the OCI dashboard.'],
+]);
+
+it('ships an environment.zip identical to the Terraform template sources', function () {
+    $zip = new ZipArchive;
+    expect($zip->open(base_path('terraform/templates/environment.zip')))->toBeTrue();
+
+    foreach (glob(base_path('terraform/templates/environment/*.tf')) as $file) {
+        expect($zip->getFromName(basename($file)))->toBe(file_get_contents($file), basename($file).' is out of sync — rebuild environment.zip');
+    }
+    expect($zip->numFiles)->toBe(count(glob(base_path('terraform/templates/environment/*.tf'))));
+});

@@ -148,9 +148,14 @@ class OciStackProvisionJob implements ShouldBeUnique, ShouldQueue
         OciStackStatusChanged::dispatch($stack->team_id);
 
         $nsgId = $outputs['nsg_id'] ?? null;
-        if ($nsgId && $stack->firewall_rules) {
+        if ($nsgId) {
             $stack->update(['nsg_ocid' => $nsgId]);
-            $oci->addNsgRules($config, $nsgId, $stack->firewall_rules, $config['region']);
+        }
+        if ($nsgId && $stack->firewall_rules) {
+            $rules = $oci->addNsgRules($config, $nsgId, $stack->firewall_rules, $config['region']);
+            if (! empty($rules['error'])) {
+                $stack->update(['last_plan_summary' => 'Instance created, but firewall rules could not be applied: '.($rules['message'] ?? 'unknown error').'. Add them from the OCI dashboard.']);
+            }
         }
 
         if ($stack->server && isset($outputs['public_ip'])) {

@@ -28,9 +28,9 @@ locals {
     "nimbus:version"     = var.nimbus_version
   }
 
-  nsg_ids = var.create_network ? [oci_core_network_security_group.new[0].id] : (
-    var.existing_nsg_ocid != "" ? [var.existing_nsg_ocid] : []
-  )
+  # Every instance gets an NSG (created here unless one is supplied) so firewall rules
+  # from the wizard and dashboard work on existing VCNs too.
+  nsg_id = var.existing_nsg_ocid != "" ? var.existing_nsg_ocid : oci_core_network_security_group.new[0].id
 }
 
 resource "oci_identity_compartment" "new" {
@@ -129,11 +129,11 @@ resource "oci_core_subnet" "new" {
 }
 
 resource "oci_core_network_security_group" "new" {
-  count = var.create_network ? 1 : 0
+  count = var.existing_nsg_ocid == "" ? 1 : 0
 
   compartment_id = local.compartment_id
   vcn_id         = local.vcn_id
-  display_name   = "${local.resolved_vcn_display_name}-nsg"
+  display_name   = "${var.instance_display_name}-nsg"
   freeform_tags  = local.tags
 }
 
@@ -161,7 +161,7 @@ resource "oci_core_instance" "server" {
     subnet_id        = local.subnet_id
     assign_public_ip = true
     display_name     = "${var.instance_display_name}-vnic"
-    nsg_ids          = local.nsg_ids
+    nsg_ids          = [local.nsg_id]
   }
 
   metadata = {
