@@ -9,6 +9,10 @@
         @if ($editRegistry === null)
             <x-forms.listbox id="provider" label="Provider" live portal :options="$providerOptions" />
         @endif
+        @if ($ociConnections->isNotEmpty() && $editRegistry === null)
+            <x-forms.listbox id="ociConnectionId" label="Fill from OCI connection" live portal placeholder="Choose a connection (optional)"
+                :options="$ociConnections->map(fn ($c) => ['value' => $c->id, 'label' => $c->name.' ('.$c->region.')'])->all()" />
+        @endif
         @if ($preset['hint'])
             <p class="text-[12px] text-neutral-500 dark:text-fg-dim">{{ $preset['hint'] }}</p>
         @endif

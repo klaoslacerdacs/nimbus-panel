@@ -457,6 +457,29 @@ class OciComputeService
     }
 
     /**
+     * OCI Container Registry login defaults: `<region-key>.ocir.io` and `<tenancy-namespace>/<user>`.
+     * Instance Principal has no IAM user, so the username stops at the namespace prefix.
+     *
+     * @param  array<string, mixed>  $config
+     * @return array{registry: string, username: string}
+     */
+    public function getRegistryLogin(array $config): array
+    {
+        $region = (string) $config['region'];
+        $namespace = trim($this->api->rawGet($config, 'objectstorage', $region, '/n'), "\" \n");
+        $regionKey = collect($this->api->get($config, 'identity', $region, self::IAAS.'/regions'))
+            ->firstWhere('name', $region)['key'] ?? null;
+        $user = ($config['auth_mode'] ?? 'api_key') === 'api_key'
+            ? ($this->api->get($config, 'identity', $region, self::IAAS."/users/{$config['user_id']}")['name'] ?? '')
+            : '';
+
+        return [
+            'registry' => $regionKey ? strtolower($regionKey).'.ocir.io' : "ocir.{$region}.oci.oraclecloud.com",
+            'username' => "{$namespace}/{$user}",
+        ];
+    }
+
+    /**
      * @param  array<string, mixed>  $config
      * @return array<int, array<string, mixed>>
      */

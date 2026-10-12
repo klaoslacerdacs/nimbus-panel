@@ -514,7 +514,7 @@ it('sends only registry names and usernames to the browser, never secrets from t
     $form = Livewire::test(Login::class, ['server' => $this->server, 'editRegistry' => 'ghcr.io', 'currentUsername' => 'octocat']);
 
     expect(array_keys($card->snapshot['data']))->toBe(['server', 'registries', 'error', 'loginChecks'])
-        ->and(array_keys($form->snapshot['data']))->toBe(['server', 'selectedServers', 'provider', 'editRegistry', 'registry', 'username', 'password'])
+        ->and(array_keys($form->snapshot['data']))->toBe(['server', 'selectedServers', 'provider', 'editRegistry', 'registry', 'username', 'password', 'ociConnectionId'])
         ->and($form->snapshot['data']['password'])->toBe('');
 
     foreach ([$card, $form] as $component) {

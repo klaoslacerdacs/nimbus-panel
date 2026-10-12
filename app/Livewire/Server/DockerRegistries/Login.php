@@ -2,8 +2,10 @@
 
 namespace App\Livewire\Server\DockerRegistries;
 
+use App\Models\OciConnection;
 use App\Models\Server;
 use App\Services\DockerRegistryLogins;
+use App\Services\OciClient;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Illuminate\Support\Collection;
 use Livewire\Attributes\Locked;
@@ -26,6 +28,7 @@ class Login extends Component
         'gitlab' => ['label' => 'GitLab Container Registry', 'registry' => 'registry.gitlab.com', 'username' => '', 'placeholder' => 'registry.gitlab.com', 'hint' => 'Use a deploy token or a personal access token with the read_registry scope.'],
         'google' => ['label' => 'Google Artifact Registry', 'registry' => '', 'username' => '_json_key', 'placeholder' => 'europe-west1-docker.pkg.dev', 'hint' => 'Paste the JSON key of a service account with the Artifact Registry Reader role.', 'host_pattern' => '/(^|\.)gcr\.io$|-docker\.pkg\.dev$/'],
         'azure' => ['label' => 'Azure Container Registry', 'registry' => '', 'username' => '', 'placeholder' => 'myregistry.azurecr.io', 'hint' => 'Use a service principal ID and secret, or a repository-scoped token.', 'host_pattern' => '/\.azurecr\.(io|cn|us)$/'],
+        'oracle' => ['label' => 'Oracle Cloud Container Registry (OCIR)', 'registry' => '', 'username' => '', 'placeholder' => 'gru.ocir.io', 'hint' => 'Username is <tenancy-namespace>/<username> (federated users: <namespace>/oracleidentitycloudservice/<email>). Password is an OCI auth token from your user profile.', 'host_pattern' => '/^[a-z0-9-]+\.ocir\.io$|^ocir\.[a-z0-9-]+\.oci\.oraclecloud\.com$/'],
         'aws' => ['label' => 'AWS ECR', 'registry' => '', 'username' => 'AWS', 'placeholder' => '123456789012.dkr.ecr.eu-west-1.amazonaws.com', 'hint' => 'Paste the output of aws ecr get-login-password. This token expires after 12 hours.', 'host_pattern' => '/^[0-9]{12}\.dkr\.ecr(-fips)?\.[a-z0-9-]+\.amazonaws\.com(\.cn)?$/'],
         'custom' => ['label' => 'Other', 'registry' => '', 'username' => '', 'placeholder' => 'registry.example.com', 'hint' => ''],
     ];
@@ -48,6 +51,9 @@ class Login extends Component
     public string $username = '';
 
     public string $password = '';
+
+    /** Nimbus: OCI connection used to prefill the OCIR host and namespace username. */
+    public ?int $ociConnectionId = null;
 
     /**
      * The server parameter has no type hint on purpose: with one, Livewire would inject an empty Server model on the overview page.
@@ -133,6 +139,30 @@ class Login extends Component
         $this->password = '';
     }
 
+    public function updatedOciConnectionId(): void
+    {
+        // Same team as the target: the card server's team, or the session team on the overview page.
+        $connection = OciConnection::query()
+            ->where('team_id', $this->server?->team_id ?? currentTeam()->id)
+            ->find($this->ociConnectionId);
+        if (! $connection) {
+            $this->ociConnectionId = null;
+
+            return;
+        }
+        $this->authorize('view', $connection);
+
+        $defaults = app(OciClient::class)->getRegistryLogin($connection->toApiConfig());
+        if (! empty($defaults['error'])) {
+            $this->dispatch('error', 'Could not read the OCIR namespace.', e($defaults['message'] ?? ''));
+
+            return;
+        }
+
+        $this->registry = $defaults['registry'];
+        $this->username = $defaults['username'];
+    }
+
     public function login(): void
     {
         $servers = $this->targetServers();
@@ -188,6 +218,9 @@ class Login extends Component
         return view('livewire.server.docker-registries.login', [
             'serverOptions' => $this->server === null ? $this->availableServers() : collect(),
             'preset' => $this->preset(),
+            'ociConnections' => $this->provider === 'oracle'
+                ? OciConnection::query()->where('team_id', $this->server?->team_id ?? currentTeam()->id)->get(['id', 'name', 'region'])
+                : collect(),
             'providerOptions' => collect(self::PROVIDERS)
                 ->map(fn (array $preset, string $value) => ['value' => $value, 'label' => $preset['label']])
                 ->values()
