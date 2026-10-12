@@ -129,19 +129,6 @@ class OciComputeService
      * @param  array<string, mixed>  $config
      * @return array<int, array<string, mixed>>
      */
-    public function listSubnetsByCompartment(array $config, string $compartmentId, string $region): array
-    {
-        $rows = $this->api->paginate($config, 'iaas', $region, self::IAAS.'/subnets', [
-            'compartmentId' => $compartmentId,
-        ]);
-
-        return $this->mapSubnets($rows);
-    }
-
-    /**
-     * @param  array<string, mixed>  $config
-     * @return array<int, array<string, mixed>>
-     */
     public function listVcns(array $config, string $compartmentId, string $region): array
     {
         $rows = $this->api->paginate($config, 'iaas', $region, self::IAAS.'/vcns', [

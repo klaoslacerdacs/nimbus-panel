@@ -32,8 +32,10 @@ class OciStacks extends Component
     #[\Override]
     public function getListeners(): array
     {
+        $teamId = currentTeam()->id;
+
         return [
-            'stackCreated' => 'loadStacks',
+            "echo-private:team.{$teamId},OciStackStatusChanged" => 'loadStacks',
         ];
     }
 

@@ -22,18 +22,14 @@ class OciStack extends BaseModel
         'nsg_ocid',
         'firewall_rules',
         'region',
-        'config_source',
-        'config_url',
         'tf_vars',
         'status',
-        'managed_by',
         'last_plan_summary',
         'oci_instance_id',
     ];
 
     protected $attributes = [
         'status' => 'pending',
-        'managed_by' => 'terraform',
     ];
 
     #[\Override]

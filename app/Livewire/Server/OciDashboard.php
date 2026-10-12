@@ -27,8 +27,6 @@ class OciDashboard extends Component
 
     public bool $confirmingReboot = false;
 
-    public bool $actionLoading = false;
-
     public array $newRule = ['protocol' => 'TCP', 'port_min' => '', 'port_max' => '', 'source' => '0.0.0.0/0', 'description' => ''];
 
     public ?string $stackStatus = null;
@@ -119,8 +117,7 @@ class OciDashboard extends Component
     public function getListeners(): array
     {
         return [
-            "echo-private:team.{$this->server->team_id},.ServerStatusChanged" => 'loadStatus',
-            "echo-private:team.{$this->server->team_id},.OciStackStatusChanged" => 'loadProvisioningStatus',
+            "echo-private:team.{$this->server->team_id},OciStackStatusChanged" => 'loadProvisioningStatus',
         ];
     }
 
@@ -488,7 +485,6 @@ class OciDashboard extends Component
             return;
         }
 
-        $this->actionLoading = true;
         $client = app(OciClient::class);
         $result = $client->instanceAction($connection->toApiConfig(), $instanceId, $this->server->oci_region, $action);
 
@@ -498,7 +494,6 @@ class OciDashboard extends Component
             $this->dispatch('error', 'Action failed. Check OCI console.');
         }
 
-        $this->actionLoading = false;
         $this->loadStatus();
     }
 

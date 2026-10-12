@@ -43,8 +43,7 @@ it('team_id is fillable but enforced by the controller', function (): void {
 it('defaults status to pending', function (): void {
     $stack = new OciStack;
 
-    expect($stack->status)->toBe('pending')
-        ->and($stack->managed_by)->toBe('terraform');
+    expect($stack->status)->toBe('pending');
 });
 
 it('casts tf_vars to array', function (): void {

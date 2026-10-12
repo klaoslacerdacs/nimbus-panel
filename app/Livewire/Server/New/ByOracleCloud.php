@@ -33,8 +33,6 @@ class ByOracleCloud extends Component
     // Step 1 — Connection
     public ?int $selected_connection_id = null;
 
-    public ?string $selectedConnectionUuid = null;
-
     public bool $from_onboarding = false;
 
     // Step 2 — Region + Compartment
@@ -105,20 +103,14 @@ class ByOracleCloud extends Component
 
     public string $oci_metrics_source = 'oci_monitoring';
 
-    public function mount(?string $selectedConnectionUuid = null): void
+    public function mount(): void
     {
         $this->authorize('viewAny', OciConnection::class);
-        $this->selectConnectionFromUrl($selectedConnectionUuid);
         $this->server_name = generate_random_name();
         $this->private_keys = PrivateKey::ownedAndOnlySShKeys()->where('id', '!=', 0)->get();
 
         if ($this->private_keys->count() > 0) {
             $this->private_key_id = $this->private_keys->first()->id;
-        }
-
-        if ($this->selectedConnectionUuid) {
-            $this->current_step = 2;
-            $this->loadCompartments();
         }
 
         $this->limit_reached = Team::serverLimitReached();
@@ -129,7 +121,6 @@ class ByOracleCloud extends Component
     public function getListeners(): array
     {
         return [
-            'ociConnectionCreated' => 'handleConnectionCreated',
             'privateKeyCreated' => 'handlePrivateKeyCreated',
             'modalClosed' => 'resetSelection',
         ];
@@ -354,12 +345,6 @@ class ByOracleCloud extends Component
         }
     }
 
-    public function handleConnectionCreated(?int $connectionId): void
-    {
-        $this->selected_connection_id = $connectionId;
-        $this->nextStep();
-    }
-
     public function handlePrivateKeyCreated(?int $keyId): void
     {
         $this->private_keys = PrivateKey::ownedAndOnlySShKeys()->where('id', '!=', 0)->get();
@@ -420,22 +405,6 @@ class ByOracleCloud extends Component
         ];
     }
 
-    private function selectConnectionFromUrl(?string $selectedConnectionUuid): void
-    {
-        if (! $selectedConnectionUuid) {
-            return;
-        }
-
-        $connection = OciConnection::ownedByCurrentTeam()->where('uuid', $selectedConnectionUuid)->first();
-
-        if (! $connection) {
-            return;
-        }
-
-        $this->selectedConnectionUuid = $selectedConnectionUuid;
-        $this->selected_connection_id = $connection->id;
-    }
-
     public function selectConnection(int $connectionId): mixed
     {
         $this->selected_connection_id = $connectionId;
@@ -472,19 +441,11 @@ class ByOracleCloud extends Component
         return null;
     }
 
-    public function previousStep(): mixed
+    public function previousStep(): void
     {
-        if ($this->current_step <= 0) {
-            if ($this->selectedConnectionUuid) {
-                return $this->redirectRoute('server.create.type', ['type' => 'oracle-cloud'], navigate: true);
-            }
-
-            return null;
+        if ($this->current_step > 0) {
+            $this->current_step--;
         }
-
-        $this->current_step--;
-
-        return null;
     }
 
     public function createServer(): mixed
@@ -563,7 +524,6 @@ class ByOracleCloud extends Component
                     'name' => $this->server_name,
                     'compartment_ocid' => $compartmentOcid,
                     'region' => $this->region,
-                    'config_source' => 'template_zip',
                     'status' => 'pending',
                     'tf_vars' => $tfVars,
                     'firewall_rules' => $this->firewall_rules,

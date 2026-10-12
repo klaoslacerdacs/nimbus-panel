@@ -5,17 +5,16 @@
         <x-application.settings-section title="OCI Stacks"
             description="Terraform stacks that provision and manage Oracle Cloud compute infrastructure." flush>
             <x-slot:actions>
-                <x-modal-input title="Add OCI Stack">
-                    <x-slot:content>
-                        <x-forms.button class="button-highlighted">Add stack</x-forms.button>
-                    </x-slot:content>
-                    <livewire:security.oci-stack-form />
-                </x-modal-input>
+                @can('create', App\Models\Server::class)
+                    <a href="{{ route('server.new.oracle-cloud') }}" {{ wireNavigate() }} class="button button-highlighted">
+                        New OCI server
+                    </a>
+                @endcan
             </x-slot:actions>
 
             @if (empty($stacks) || $stacks->isEmpty())
                 <x-empty title="No OCI stacks yet"
-                    description="Create a stack to provision a server on Oracle Cloud via Terraform."
+                    description="Stacks are created when you provision a server on Oracle Cloud."
                     icon-name="layers" />
             @else
                 <div class="flex flex-col" @if($stacks->contains(fn($s) => $s->isActive())) wire:poll.5000ms="loadStacks" @endif>

@@ -31,11 +31,8 @@ class OciStackFactory extends Factory
             'nsg_ocid' => null,
             'firewall_rules' => null,
             'region' => 'sa-saopaulo-1',
-            'config_source' => 'template_zip',
-            'config_url' => null,
             'tf_vars' => null,
             'status' => 'pending',
-            'managed_by' => 'terraform',
             'last_plan_summary' => null,
         ];
     }

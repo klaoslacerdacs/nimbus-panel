@@ -77,9 +77,9 @@
                     <button wire:click="rebootInstance" class="button button-danger">Confirm</button>
                     <button wire:click="cancelConfirm" class="button">Cancel</button>
                 @else
-                    <button wire:click="startInstance" :disabled="$actionLoading || '{{ $state }}' === 'RUNNING'" class="button">Start</button>
-                    <button wire:click="confirmStop" :disabled="$actionLoading || '{{ $state }}' !== 'RUNNING'" class="button">Stop</button>
-                    <button wire:click="confirmReboot" :disabled="$actionLoading || '{{ $state }}' !== 'RUNNING'" class="button">Reboot</button>
+                    <button wire:click="startInstance" wire:loading.attr="disabled" @disabled($state === 'RUNNING') class="button">Start</button>
+                    <button wire:click="confirmStop" wire:loading.attr="disabled" @disabled($state !== 'RUNNING') class="button">Stop</button>
+                    <button wire:click="confirmReboot" wire:loading.attr="disabled" @disabled($state !== 'RUNNING') class="button">Reboot</button>
                 @endif
             @endif
         </x-slot:actions>

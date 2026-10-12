@@ -52,9 +52,7 @@ use App\Livewire\Security\CloudProviderToken\Show as SecurityCloudProviderTokenS
 use App\Livewire\Security\CloudTokens;
 use App\Livewire\Security\IntegrationTokens;
 use App\Livewire\Security\OciConnectionEdit;
-use App\Livewire\Security\OciConnectionForm;
 use App\Livewire\Security\OciConnections;
-use App\Livewire\Security\OciStackForm;
 use App\Livewire\Security\OciStacks;
 use App\Livewire\Security\OciStackShow;
 use App\Livewire\Security\PrivateKey\Index as SecurityPrivateKeyIndex;
@@ -389,7 +387,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('/servers/new/{type}/{token_uuid}', ServerCreatePage::class)->name('server.create.token')->middleware('can:create,'.Server::class)->whereIn('type', ['hetzner', 'vultr', 'digital-ocean']);
     Route::get('/servers/new/oracle-cloud', ByOracleCloud::class)->name('server.new.oracle-cloud')->middleware('can:create,'.Server::class);
     Route::get('/servers/new/oracle-cloud/import', ImportOciServer::class)->name('server.new.oracle-cloud.import')->middleware('can:create,'.Server::class);
-    Route::get('/servers/new/{type}', ServerCreatePage::class)->name('server.create.type')->middleware('can:create,'.Server::class)->whereIn('type', ['hetzner', 'vultr', 'digital-ocean', 'manual', 'oracle-cloud']);
+    Route::get('/servers/new/{type}', ServerCreatePage::class)->name('server.create.type')->middleware('can:create,'.Server::class)->whereIn('type', ['hetzner', 'vultr', 'digital-ocean', 'manual']);
 
     Route::prefix('server/{server_uuid}')->group(function () {
         Route::get('/', ServerShow::class)->name('server.show');
@@ -436,12 +434,10 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('/security/integration-tokens', IntegrationTokens::class)->name('security.integration-tokens');
     Route::get('/security/cloud-tokens/{cloud_token_uuid}', SecurityCloudProviderTokenShow::class)->name('security.cloud-tokens.show');
     Route::get('/security/oci-connections', OciConnections::class)->name('security.oci-connections');
-    Route::get('/security/oci-connections/new', OciConnectionForm::class)->name('security.oci-connections.new');
     Route::get('/security/oci-connections/{connection}', OciConnectionEdit::class)->name('security.oci-connections.edit');
     Route::get('/security/cloud-init-scripts', CloudInitScripts::class)->name('security.cloud-init-scripts');
     Route::get('/security/cloud-init-scripts/{cloud_init_script_uuid}', SecurityCloudInitScriptShow::class)->name('security.cloud-init-scripts.show');
     Route::get('/security/oci-stacks', OciStacks::class)->name('security.oci-stacks');
-    Route::get('/security/oci-stacks/new', OciStackForm::class)->name('security.oci-stacks.new');
     Route::get('/security/oci-stacks/{stack}', OciStackShow::class)->name('security.oci-stacks.show');
     Route::get('/security/api-tokens', ApiTokens::class)->name('security.api-tokens');
 });

@@ -79,11 +79,6 @@ class OciClient
         return $this->guard(fn (): array => $this->compute->listSubnets($config, $vcnId, $compartmentId, $region));
     }
 
-    public function listSubnetsByCompartment(array $config, string $compartmentId, string $region): array
-    {
-        return $this->guard(fn (): array => $this->compute->listSubnetsByCompartment($config, $compartmentId, $region));
-    }
-
     public function listVcns(array $config, string $compartmentId, string $region): array
     {
         return $this->guard(fn (): array => $this->compute->listVcns($config, $compartmentId, $region));
