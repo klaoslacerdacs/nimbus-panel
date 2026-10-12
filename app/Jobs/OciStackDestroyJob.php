@@ -55,7 +55,7 @@ class OciStackDestroyJob implements ShouldBeUnique, ShouldQueue
             return;
         }
 
-        $config = $stack->ociConnection->toApiConfig();
+        $config = $stack->ociConnection->toApiConfig($stack->region);
         $stack->update(['status' => 'destroying', 'last_plan_summary' => 'Running Terraform destroy...']);
         OciStackStatusChanged::dispatch($stack->team_id);
 

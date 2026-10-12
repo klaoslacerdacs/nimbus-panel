@@ -82,3 +82,17 @@ it('is dispatched when createServer succeeds', function () {
 
     Queue::assertPushed(OciStackProvisionJob::class);
 });
+
+it('talks to OCI in the stack region, not the connection home region', function () {
+    $stack = OciStack::factory()->create(['status' => 'pending', 'stack_ocid' => 'ocid1.stack.r', 'region' => 'sa-saopaulo-1']);
+    $stack->ociConnection->update(['region' => 'us-ashburn-1']);
+
+    $mock = Mockery::mock(OciClient::class);
+    $mock->shouldReceive('runStackJob')->once()
+        ->with(Mockery::on(fn ($config) => $config['region'] === 'sa-saopaulo-1'), 'ocid1.stack.r', 'PLAN')
+        ->andReturn(['error' => true]);
+
+    (new OciStackProvisionJob($stack))->handle($mock);
+
+    expect($stack->fresh()->status)->toBe('failed');
+});

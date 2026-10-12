@@ -50,7 +50,7 @@ class OciStackProvisionJob implements ShouldBeUnique, ShouldQueue
             return;
         }
 
-        $config = $stack->ociConnection->toApiConfig();
+        $config = $stack->ociConnection->toApiConfig($stack->region);
 
         // When creating a new compartment, the RM stack itself lives in parent/tenancy root
         $stackCompartmentId = $stack->compartment_ocid

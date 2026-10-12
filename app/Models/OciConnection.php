@@ -43,10 +43,15 @@ class OciConnection extends BaseModel
         ];
     }
 
-    public function toApiConfig(): array
+    /**
+     * @param  string|null  $region  Target region; defaults to the connection's home region.
+     */
+    public function toApiConfig(?string $region = null): array
     {
+        $region = $region ?: $this->region;
+
         if ($this->authentication_method === OciAuthenticationMethod::INSTANCE_PRINCIPAL) {
-            return ['auth_mode' => 'instance_principal', 'region' => $this->region];
+            return ['auth_mode' => 'instance_principal', 'region' => $region];
         }
 
         return [
@@ -56,7 +61,7 @@ class OciConnection extends BaseModel
             'fingerprint' => $this->fingerprint,
             'key_content' => $this->private_key,
             'passphrase' => $this->passphrase,
-            'region' => $this->region,
+            'region' => $region,
         ];
     }
 

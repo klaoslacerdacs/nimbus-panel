@@ -125,7 +125,7 @@ it('adds NSG rule via OCI client', function () {
     $mock = mockClient();
     $mock->shouldReceive('addNsgRules')
         ->once()
-        ->with(Mockery::any(), 'ocid1.networksecuritygroup.oc1..example', Mockery::on(fn ($rules) => $rules[0]['protocol'] === 'TCP' && $rules[0]['port_min'] === '443'), Mockery::any())
+        ->with(Mockery::any(), 'ocid1.networksecuritygroup.oc1..example', Mockery::on(fn ($rules) => $rules[0]['protocol'] === 'TCP' && $rules[0]['port_min'] === '443'), 'us-ashburn-1')
         ->andReturn(['success' => true]);
     app()->instance(OciClient::class, $mock);
 
@@ -142,7 +142,7 @@ it('removes NSG rule via OCI client', function () {
     $mock = mockClient();
     $mock->shouldReceive('removeNsgRules')
         ->once()
-        ->with(Mockery::any(), 'ocid1.networksecuritygroup.oc1..example', ['rule-abc'], Mockery::any())
+        ->with(Mockery::any(), 'ocid1.networksecuritygroup.oc1..example', ['rule-abc'], 'us-ashburn-1')
         ->andReturn(['success' => true]);
     app()->instance(OciClient::class, $mock);
 
