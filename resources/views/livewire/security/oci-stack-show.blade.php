@@ -20,6 +20,7 @@
                     'destroying'     => ['text' => 'Destroying…',   'class' => 'text-orange-600 dark:text-orange-400 bg-orange-50 dark:bg-orange-900/20'],
                     'destroy_failed' => ['text' => 'Destroy failed','class' => 'text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20'],
                     'failed'         => ['text' => 'Failed',        'class' => 'text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20'],
+                    'destroyed'      => ['text' => 'Destroyed on OCI', 'class' => 'text-neutral-600 dark:text-neutral-300 bg-neutral-100 dark:bg-neutral-800'],
                     default          => ['text' => ucfirst($stack->status), 'class' => 'text-neutral-500 bg-neutral-100 dark:bg-neutral-800'],
                 };
             @endphp
@@ -51,9 +52,11 @@
         </div>
     </div>
 
-    @if ($stack->last_plan_summary && in_array($stack->status, ['failed', 'destroy_failed']))
-        <div class="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700 dark:border-red-800 dark:bg-red-900/20 dark:text-red-400">
-            {{ $stack->last_plan_summary }}
+    @if ($stack->last_plan_summary)
+        @php $failedStatus = in_array($stack->status, ['failed', 'destroy_failed']); @endphp
+        <div class="rounded-lg border p-3 text-sm {{ $failedStatus ? 'border-red-200 bg-red-50 text-red-700 dark:border-red-800 dark:bg-red-900/20 dark:text-red-400' : 'border-neutral-200 bg-neutral-50 text-neutral-700 dark:border-white/[0.08] dark:bg-white/[0.03] dark:text-neutral-300' }}">
+            <div class="mb-1 text-xs font-medium opacity-75">Last Terraform result · {{ $stack->updated_at?->diffForHumans() }}</div>
+            <pre class="whitespace-pre-wrap break-words font-mono text-xs">{{ $stack->last_plan_summary }}</pre>
         </div>
     @endif
 

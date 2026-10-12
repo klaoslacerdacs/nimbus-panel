@@ -73,3 +73,15 @@ it('denies access to other team members', function (): void {
     Livewire::test(OciStackShow::class, ['stack' => $this->stack])
         ->assertForbidden();
 });
+
+it('shows the Terraform result of destroyed and in-progress stacks too', function (string $status, string $badge, string $summary): void {
+    $this->stack->update(['status' => $status, 'last_plan_summary' => $summary]);
+
+    Livewire::test(OciStackShow::class, ['stack' => $this->stack])
+        ->assertSee($badge)
+        ->assertSee('Last Terraform result')
+        ->assertSee($summary);
+})->with([
+    ['destroyed', 'Destroyed on OCI', 'Terraform destroy succeeded. OCI resources removed.'],
+    ['applying', 'Applying', 'Running Terraform apply...'],
+]);
