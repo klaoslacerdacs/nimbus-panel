@@ -19,7 +19,7 @@ class CheckForUpdatesJob implements ShouldBeEncrypted, ShouldQueue
     public function handle(): void
     {
         try {
-            if (isDev() || isCloud()) {
+            if (isDev() || isCloud() || ! config('constants.nimbus.allow_upstream_update')) {
                 return;
             }
             $settings = instanceSettings();

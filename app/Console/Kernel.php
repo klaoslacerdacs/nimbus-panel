@@ -162,6 +162,10 @@ class Kernel extends ConsoleKernel
 
     private function scheduleUpdates(): void
     {
+        if (! config('constants.nimbus.allow_upstream_update')) {
+            return;
+        }
+
         $this->scheduleInstance->job(new CheckForUpdatesJob)
             ->cron($this->updateCheckFrequency)
             ->timezone($this->instanceTimezone)

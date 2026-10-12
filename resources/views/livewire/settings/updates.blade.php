@@ -8,6 +8,12 @@
             {{-- Exclude is_auto_update_enabled (instantSave) so the bar does not flash. --}}
             <x-unsaved-bar action="submit" targets="update_check_frequency,auto_update_frequency" />
 
+            @if (! config('constants.nimbus.allow_upstream_update'))
+                <div class="rounded-lg border border-neutral-200 bg-neutral-50 p-4 text-sm dark:border-white/[0.08] dark:bg-white/[0.03]">
+                    Nimbus Panel is updated through Nimbus releases. Automatic and manual updates from upstream Coolify are disabled
+                    because they would replace this panel with the original Coolify image.
+                </div>
+            @else
             <x-application.settings-section title="Update Coolify"
                 helper="Install the latest Coolify version manually when an update is available.">
                 <livewire:upgrade :full-button="true" key="settings-upgrade" />
@@ -50,6 +56,7 @@
                     @endif
                 </div>
             </x-application.settings-section>
+            @endif
 
             <x-application.settings-section title="Image registry">
                 <div class="max-w-md">

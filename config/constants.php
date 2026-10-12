@@ -4,6 +4,12 @@
 $sshCommandTimeout = (int) env('SSH_COMMAND_TIMEOUT', 3600);
 
 return [
+    // Nimbus Panel ships its own releases: the built-in updater would replace it with upstream Coolify
+    // (cdn.coollabs.io upgrade.sh + coollabsio/coolify image). Only enable for a Nimbus-controlled update channel.
+    'nimbus' => [
+        'allow_upstream_update' => (bool) env('NIMBUS_ALLOW_UPSTREAM_UPDATE', false),
+    ],
+
     'coolify' => [
         'version' => env('COOLIFY_VERSION') ?: '4.4.6',
         'helper_version' => '1.0.17',

@@ -21,6 +21,9 @@ class UpdateCoolify
 
     public function handle($manual_update = false)
     {
+        if (! config('constants.nimbus.allow_upstream_update')) {
+            throw new \Exception('Nimbus Panel: upstream Coolify updates are disabled. Update through a Nimbus Panel release.');
+        }
         if (isDev()) {
             Sleep::for(10)->seconds();
 
