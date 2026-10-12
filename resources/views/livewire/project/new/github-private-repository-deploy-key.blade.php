@@ -1,4 +1,4 @@
-<div class="mt-8 flex w-full max-w-[1180px] flex-col gap-6 lg:mt-3">
+<div class="mt-8 flex w-full max-w-none flex-col gap-6 lg:mt-3">
     @if ($current_step === 'private_keys')
         <section class="application-settings-section">
             <div class="application-settings-section-header">
@@ -57,7 +57,7 @@
                         <x-forms.input id="branch" required label="Branch" />
                         <x-forms.listbox id="build_pack" label="Build pack" required live :options="[
                             ['value' => 'railpack', 'label' => 'Railpack'],
-                            ['value' => 'nixpacks', 'label' => 'Nixpacks'],
+                            ['value' => 'nixpacks', 'label' => 'Nixpacks (deprecated)'],
                             ['value' => 'static', 'label' => 'Static'],
                             ['value' => 'dockerfile', 'label' => 'Dockerfile'],
                             ['value' => 'dockercompose', 'label' => 'Docker Compose'],
@@ -75,6 +75,10 @@
                             <x-forms.input id="publish_directory" required label="Publish directory" />
                         @endif
                     </div>
+
+                    @if ($build_pack === 'nixpacks')
+                        <x-nixpacks-deprecated-callout />
+                    @endif
 
                     @if ($build_pack === 'dockercompose')
                         <div x-data="{

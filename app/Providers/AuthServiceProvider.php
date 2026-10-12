@@ -15,12 +15,14 @@ use App\Models\EnvironmentVariable;
 use App\Models\GithubApp;
 use App\Models\GitlabApp;
 use App\Models\InstanceSettings;
+use App\Models\IntegrationToken;
 use App\Models\OciConnection;
 use App\Models\OciStack;
 use App\Models\PrivateKey;
 use App\Models\Project;
 use App\Models\PushoverNotificationSettings;
 use App\Models\S3Storage;
+use App\Models\ScheduledTask;
 use App\Models\Server;
 use App\Models\Service;
 use App\Models\ServiceApplication;
@@ -36,14 +38,11 @@ use App\Models\StandaloneMongodb;
 use App\Models\StandaloneMysql;
 use App\Models\StandalonePostgresql;
 use App\Models\StandaloneRedis;
+use App\Models\StandaloneSqlite;
 use App\Models\SwarmDocker;
 use App\Models\Tag;
 use App\Models\Team;
 use App\Models\TelegramNotificationSettings;
-use App\Models\V5\Application as V5Application;
-use App\Models\V5\Cluster as V5Cluster;
-use App\Models\V5\ResourceConnection as V5ResourceConnection;
-use App\Models\V5\Server as V5Server;
 use App\Models\WebhookNotificationSettings;
 use App\Policies\ApiTokenPolicy;
 use App\Policies\ApplicationPolicy;
@@ -57,6 +56,7 @@ use App\Policies\EnvironmentVariablePolicy;
 use App\Policies\GithubAppPolicy;
 use App\Policies\GitlabAppPolicy;
 use App\Policies\InstanceSettingsPolicy;
+use App\Policies\IntegrationTokenPolicy;
 use App\Policies\NotificationPolicy;
 use App\Policies\OciConnectionPolicy;
 use App\Policies\OciStackPolicy;
@@ -64,6 +64,7 @@ use App\Policies\PrivateKeyPolicy;
 use App\Policies\ProjectPolicy;
 use App\Policies\ResourceCreatePolicy;
 use App\Policies\S3StoragePolicy;
+use App\Policies\ScheduledTaskPolicy;
 use App\Policies\ServerPolicy;
 use App\Policies\ServiceApplicationPolicy;
 use App\Policies\ServiceDatabasePolicy;
@@ -73,10 +74,6 @@ use App\Policies\StandaloneDockerPolicy;
 use App\Policies\SwarmDockerPolicy;
 use App\Policies\TagPolicy;
 use App\Policies\TeamPolicy;
-use App\Policies\V5\ApplicationPolicy as V5ApplicationPolicy;
-use App\Policies\V5\ClusterPolicy as V5ClusterPolicy;
-use App\Policies\V5\ResourceConnectionPolicy as V5ResourceConnectionPolicy;
-use App\Policies\V5\ServerPolicy as V5ServerPolicy;
 use Illuminate\Foundation\Support\Providers\AuthServiceProvider as ServiceProvider;
 use Illuminate\Support\Facades\Gate;
 use Laravel\Sanctum\PersonalAccessToken;
@@ -112,6 +109,7 @@ class AuthServiceProvider extends ServiceProvider
         StandaloneKeydb::class => DatabasePolicy::class,
         StandaloneDragonfly::class => DatabasePolicy::class,
         StandaloneClickhouse::class => DatabasePolicy::class,
+        StandaloneSqlite::class => DatabasePolicy::class,
 
         // Notification policies - all use the shared NotificationPolicy
         EmailNotificationSettings::class => NotificationPolicy::class,
@@ -130,6 +128,9 @@ class AuthServiceProvider extends ServiceProvider
         // S3 storage policy
         S3Storage::class => S3StoragePolicy::class,
 
+        // Scheduled task policy
+        ScheduledTask::class => ScheduledTaskPolicy::class,
+
         // Team policy
         Team::class => TeamPolicy::class,
 
@@ -139,16 +140,11 @@ class AuthServiceProvider extends ServiceProvider
 
         // Cloud provider policies
         CloudProviderToken::class => CloudProviderTokenPolicy::class,
+        IntegrationToken::class => IntegrationTokenPolicy::class,
         CloudInitScript::class => CloudInitScriptPolicy::class,
         OciConnection::class => OciConnectionPolicy::class,
         OciStack::class => OciStackPolicy::class,
         Tag::class => TagPolicy::class,
-
-        // V5 policies - scoped to the current team resolved from the request
-        V5Application::class => V5ApplicationPolicy::class,
-        V5Cluster::class => V5ClusterPolicy::class,
-        V5ResourceConnection::class => V5ResourceConnectionPolicy::class,
-        V5Server::class => V5ServerPolicy::class,
 
     ];
 

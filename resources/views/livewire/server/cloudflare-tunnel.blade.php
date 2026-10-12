@@ -6,22 +6,22 @@
     <livewire:server.navbar :server="$server" />
 
     <div
-        class="server-settings-workspace application-settings-workspace mt-4 grid w-full max-w-[1180px] min-w-0 gap-8 lg:mt-0 xl:grid-cols-[210px_minmax(0,1fr)] xl:gap-10">
+        class="server-settings-workspace application-settings-workspace mt-4 grid w-full max-w-none min-w-0 gap-8 lg:mt-0 xl:grid-cols-[210px_minmax(0,1fr)] xl:gap-8">
         <x-server.sidebar :server="$server" activeMenu="cloudflare-tunnel" />
 
         <div class="application-settings-form flex w-full flex-col gap-6">
             <x-application.settings-section id="server-cloudflare-overview-section" title="Cloudflare Tunnel"
                 helper="Proxy SSH traffic through Cloudflare so the server SSH port can remain closed.">
                 <x-slot:actions>
-                    <x-status-badge :status="$isCloudflareTunnelsEnabled ? 'Enabled' : 'Disabled'"
-                        :type="$isCloudflareTunnelsEnabled ? 'success' : 'neutral'" />
-                </x-slot:actions>
-
-                @if ($isCloudflareTunnelsEnabled)
-                    <x-callout type="warning" title="Disabling the tunnel can interrupt server access">
-                        The server IP must be restored to its direct address after disabling the tunnel.
-                    </x-callout>
-                    <div class="mt-4">
+                    @if ($isCloudflareTunnelsEnabled && auth()->user()->can('update', $server))
+                        <x-forms.button wire:click="updateCloudflareTunnel">Update Cloudflare Tunnel</x-forms.button>
+                        <x-process-dialog @cloudflare-tunnel-update-started.window="processDialogOpen = true"
+                            closeWithX size="xl">
+                            <x-slot:title>Cloudflare Tunnel Update</x-slot:title>
+                            <x-slot:content>
+                                <livewire:activity-monitor header="Logs" fullHeight />
+                            </x-slot:content>
+                        </x-process-dialog>
                         <x-modal-confirmation title="Disable Cloudflare Tunnel?"
                             buttonTitle="Disable Cloudflare Tunnel" isErrorButton
                             submitAction="toggleCloudflareTunnels" :actions="$server->ip_previous
@@ -37,7 +37,16 @@
                             confirmationText="DISABLE CLOUDFLARE TUNNEL"
                             confirmationLabel="Type the confirmation text to disable Cloudflare Tunnel."
                             shortConfirmationLabel="Confirmation text" />
-                    </div>
+                    @else
+                        <x-status-badge :status="$isCloudflareTunnelsEnabled ? 'Enabled' : 'Disabled'"
+                            :type="$isCloudflareTunnelsEnabled ? 'success' : 'neutral'" />
+                    @endif
+                </x-slot:actions>
+
+                @if ($isCloudflareTunnelsEnabled)
+                    <x-callout type="warning" title="Disabling the tunnel can interrupt server access">
+                        The server IP must be restored to its direct address after disabling the tunnel.
+                    </x-callout>
                 @elseif (!$server->isFunctional())
                     <x-callout type="info" title="Validate the server for automated setup">
                         Automated configuration requires a validated server, a Cloudflare token, and an SSH domain.

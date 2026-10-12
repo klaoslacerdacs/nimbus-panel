@@ -34,20 +34,6 @@ it('initializes latest version during mount from cached versions data', function
         ->assertSee('4.0.0-beta.999');
 });
 
-it('uses sidebar state css instead of nested alpine state for upgrade labels', function () {
-    $upgradeView = file_get_contents(resource_path('views/livewire/upgrade.blade.php'));
-    $utilitiesCss = file_get_contents(resource_path('css/utilities.css'));
-
-    expect($upgradeView)
-        ->toContain('class="text-left menu-item-label sidebar-collapsed-label"')
-        ->toContain('>In progress</span>')
-        ->toContain('>Upgrade</span>')
-        ->not->toContain(':class="collapsed && \'lg:hidden\'"')
-        ->and($utilitiesCss)
-        ->toContain('.sidebar-collapsed .sidebar-collapsed-label')
-        ->toContain('display: none;');
-});
-
 it('falls back to 0.0.0 during mount when cached versions data is unavailable', function () {
     InstanceSettings::forceCreate([
         'id' => 0,

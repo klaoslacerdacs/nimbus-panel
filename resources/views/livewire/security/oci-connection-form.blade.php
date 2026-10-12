@@ -8,11 +8,8 @@
                 ['value' => 'instance_principal', 'label' => 'Instance Principal'],
             ]" />
 
-        <x-forms.select required id="region" label="Region" wire:model="region">
-            @foreach(config('oci.regions') as $r)
-                <option value="{{ $r }}">{{ $r }}</option>
-            @endforeach
-        </x-forms.select>
+        <x-forms.listbox required searchable id="region" label="Region"
+            :options="collect(config('oci.regions'))->map(fn ($r) => ['value' => $r, 'label' => $r])->all()" />
 
         @if ($authentication_method === 'api_key')
             <x-forms.textarea monospace rows="5" id="config_snippet" label="OCI config snippet (optional — auto-fills fields below)"

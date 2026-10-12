@@ -17,20 +17,18 @@ use App\Http\Middleware\EnsureTeamMcpEnabled;
 use App\Http\Middleware\EnsureTokenBelongsToCurrentTeamMember;
 use App\Http\Middleware\PreventRequestsDuringMaintenance;
 use App\Http\Middleware\RedirectIfAuthenticated;
+use App\Http\Middleware\RequirePassword;
 use App\Http\Middleware\TrimStrings;
-use App\Http\Middleware\TrustHosts;
 use App\Http\Middleware\TrustProxies;
-use App\Http\Middleware\V5\EnsureCurrentTeam as V5EnsureCurrentTeam;
-use App\Http\Middleware\V5\HandleInertiaRequests as V5HandleInertiaRequests;
 use App\Http\Middleware\ValidateSignature;
 use App\Http\Middleware\VerifyCsrfToken;
 use Illuminate\Auth\Middleware\AuthenticateWithBasicAuth;
 use Illuminate\Auth\Middleware\Authorize;
 use Illuminate\Auth\Middleware\EnsureEmailIsVerified;
-use Illuminate\Auth\Middleware\RequirePassword;
 use Illuminate\Cookie\Middleware\AddQueuedCookiesToResponse;
 use Illuminate\Foundation\Http\Kernel as HttpKernel;
 use Illuminate\Foundation\Http\Middleware\ConvertEmptyStringsToNull;
+use Illuminate\Foundation\Http\Middleware\InvokeDeferredCallbacks;
 use Illuminate\Foundation\Http\Middleware\ValidatePostSize;
 use Illuminate\Http\Middleware\HandleCors;
 use Illuminate\Http\Middleware\SetCacheHeaders;
@@ -54,13 +52,13 @@ class Kernel extends HttpKernel
     protected $middleware = [
         // Outermost so Server-Timing includes the full middleware + app cost.
         AddServerTimingHeaders::class,
-        TrustHosts::class,
         TrustProxies::class,
         HandleCors::class,
         PreventRequestsDuringMaintenance::class,
         ValidatePostSize::class,
         TrimStrings::class,
         ConvertEmptyStringsToNull::class,
+        InvokeDeferredCallbacks::class,
 
     ];
 
@@ -80,23 +78,6 @@ class Kernel extends HttpKernel
             CheckForcePasswordReset::class,
             DecideWhatToDoWithUser::class,
 
-        ],
-
-        'v5.web' => [
-            EncryptCookies::class,
-            AddQueuedCookiesToResponse::class,
-            StartSession::class,
-            ShareErrorsFromSession::class,
-            VerifyCsrfToken::class,
-            SubstituteBindings::class,
-            V5HandleInertiaRequests::class,
-        ],
-
-        'v5.authenticated' => [
-            'auth',
-            'verified',
-            'throttle:v5',
-            V5EnsureCurrentTeam::class,
         ],
 
         'api' => [

@@ -6,6 +6,13 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class ScheduledDatabaseBackupExecution extends BaseModel
 {
+    protected static function booted(): void
+    {
+        static::created(function (ScheduledDatabaseBackupExecution $execution): void {
+            $execution->scheduledDatabaseBackup()->update(['last_execution_at' => $execution->created_at ?? now()]);
+        });
+    }
+
     protected $fillable = [
         'uuid',
         'scheduled_database_backup_id',
@@ -24,6 +31,7 @@ class ScheduledDatabaseBackupExecution extends BaseModel
     {
         return [
             'size' => 'integer',
+            'finished_at' => 'datetime',
             's3_uploaded' => 'boolean',
             'local_storage_deleted' => 'boolean',
             's3_storage_deleted' => 'boolean',

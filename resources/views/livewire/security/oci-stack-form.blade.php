@@ -2,12 +2,8 @@
     <form class="flex w-full flex-col gap-4" wire:submit="createStack">
         <x-forms.input required id="name" label="Stack name" placeholder="Production Stack" wire:model="name" />
 
-        <x-forms.select required id="oci_connection_id" label="OCI Connection" wire:model="oci_connection_id">
-            <option value="0" disabled>Select a connection</option>
-            @foreach ($connections as $connection)
-                <option value="{{ $connection->id }}">{{ $connection->name }} ({{ $connection->region }})</option>
-            @endforeach
-        </x-forms.select>
+        <x-forms.listbox required id="oci_connection_id" label="OCI Connection" placeholder="Select a connection"
+            :options="$connections->map(fn ($c) => ['value' => $c->id, 'label' => $c->name.' ('.$c->region.')'])->all()" />
 
         <x-forms.listbox required id="config_source" label="Config Source" wire:model="config_source"
             :options="[

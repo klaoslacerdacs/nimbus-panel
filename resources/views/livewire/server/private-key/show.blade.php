@@ -6,7 +6,7 @@
     <livewire:server.navbar :server="$server" />
 
     <div
-        class="server-settings-workspace application-settings-workspace mt-4 grid w-full max-w-[1180px] min-w-0 gap-8 lg:mt-0 xl:grid-cols-[210px_minmax(0,1fr)] xl:gap-10">
+        class="server-settings-workspace application-settings-workspace mt-4 grid w-full max-w-none min-w-0 gap-8 lg:mt-0 xl:grid-cols-[210px_minmax(0,1fr)] xl:gap-8">
         <x-server.sidebar :server="$server" activeMenu="private-key" />
 
         <div class="application-settings-form flex w-full flex-col gap-6">
@@ -68,7 +68,7 @@
                                 class="flex size-9 shrink-0 items-center justify-center rounded-lg bg-neutral-100 text-neutral-500 dark:bg-white/[0.06] dark:text-fg-dim">
                                 <x-reicon name="keys" class="size-4" />
                             </div>
-                            <div class="min-w-0">
+                            <div class="min-w-0 self-center">
                                 <div class="flex flex-wrap items-center gap-2">
                                     <p class="truncate text-sm font-medium text-neutral-950 dark:text-fg">
                                         {{ $privateKey->name }}
@@ -77,9 +77,11 @@
                                         <x-status-badge status="Active" type="success" />
                                     @endif
                                 </div>
-                                <p class="mt-1 text-xs text-neutral-500 dark:text-fg-dim">
-                                    {{ $privateKey->description ?: 'No description provided.' }}
-                                </p>
+                                @if (filled($privateKey->description))
+                                    <p class="mt-1 text-xs text-neutral-500 dark:text-fg-dim">
+                                        {{ $privateKey->description }}
+                                    </p>
+                                @endif
                             </div>
                         </div>
                         <div class="flex shrink-0 items-center gap-2">

@@ -1,5 +1,8 @@
 @php
-    $showEnvironmentType = $showPreview;
+    // Preview and production variables are split into labelled groups instead of a
+    // shared "Type" column, so the column is dropped and rows are headed by scope.
+    $groupByScope = $showPreview;
+    $showEnvironmentType = false;
     $activeFilterCount = count($variableFilters) + count($serviceFilters) + ($environmentFilter !== 'all' ? 1 : 0);
     $filterLabels = [
         'managed' => 'Managed', 'user' => 'User-defined', 'buildtime' => 'Buildtime',
@@ -12,7 +15,8 @@
     }
     $activeFilterText = $activeFilterLabels->implode(', ');
 @endphp
-<div class="flex flex-col gap-4" wire:init="loadEnvironmentVariables">
+<div class="flex flex-col gap-4" wire:init="loadEnvironmentVariables"
+    x-on:focus-compose-environment-variable.window="const key = $event.detail.key; const focus = () => { const row = document.querySelector(`[data-env-key='${CSS.escape(key)}']`); if (!row) return false; row.scrollIntoView({ behavior: 'smooth', block: 'center' }); row.querySelector('[data-env-settings-trigger]')?.click(); return true; }; if (!focus()) { $wire.focusComposeEnvironmentVariable(key).then(() => requestAnimationFrame(focus)); }">
     <x-application.settings-section id="environment-variables-section" title="Environment variables"
         helper="Environment variables (secrets) for this resource.">
         @can('manageEnvironment', $resource)
@@ -168,7 +172,7 @@
                                 Add
                             </button>
                         </x-slot:content>
-                        <livewire:project.shared.environment-variable.add />
+                        <livewire:project.shared.environment-variable.add :resource="$resource" />
                     </x-modal-input>
                 @endcan
         </x-table.toolbar>
@@ -212,14 +216,23 @@
                             <span class="text-center">Runtime</span>
                             <span></span>
                         </div>
+                            @php $renderedScope = null; @endphp
                             @foreach ($this->environmentVariablePageRows as $row)
+                            @if ($groupByScope && $row['scope'] !== $renderedScope)
+                                @php $renderedScope = $row['scope']; @endphp
+                                <div class="flex items-center gap-2 border-b border-neutral-200 bg-neutral-50 px-4 py-2 text-[12px] font-semibold text-neutral-700 dark:border-white/[0.08] dark:bg-white/[0.03] dark:text-fg">
+                                    {{ $renderedScope === 'preview' ? 'Preview deployments' : 'Production' }}
+                                </div>
+                            @endif
                             @if ($row['kind'] === 'managed')
                                 <livewire:project.shared.environment-variable.show wire:key="{{ $row['id'] }}"
-                                    :env="$row['environmentVariable']" :type="$resource->type()" :showEnvironmentType="$showEnvironmentType" />
+                                    :env="$row['environmentVariable']" :type="$resource->type()"
+                                    :composeInfo="$row['composeInfo']" :showEnvironmentType="$showEnvironmentType" />
                             @else
                                 <livewire:project.shared.environment-variable.show-hardcoded
                                     wire:key="{{ $row['id'] }}" :env="$row['environmentVariable']"
-                                    :isPreview="$row['scope'] === 'preview'" :showEnvironmentType="$showEnvironmentType" />
+                                    :isPreview="$row['scope'] === 'preview'" :showEnvironmentType="$showEnvironmentType"
+                                    :resourceableType="get_class($resource)" :resourceableId="$resource->id" />
                             @endif
                             @endforeach
                             </div>
@@ -233,7 +246,11 @@
                             first-action="setEnvironmentVariablePage(1)"
                             previous-action="previousEnvironmentVariablePage"
                             next-action="nextEnvironmentVariablePage"
-                            last-action="setEnvironmentVariablePage({{ $lastPage }})" />
+                            last-action="setEnvironmentVariablePage({{ $lastPage }})">
+                            <x-slot:pageSize>
+                                <x-page-size-select model="perPage" livewire storage-key="coolify.page-size.environment-variables" />
+                            </x-slot:pageSize>
+                        </x-table-pagination>
                     </div>
                 @else
                     <div class="relative min-h-40">

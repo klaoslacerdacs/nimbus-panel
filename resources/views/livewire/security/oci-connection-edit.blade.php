@@ -12,11 +12,8 @@
                         ['value' => 'instance_principal', 'label' => 'Instance Principal'],
                     ]" />
 
-                <x-forms.select required id="region" label="Region" wire:model="region">
-                    @foreach(config('oci.regions') as $r)
-                        <option value="{{ $r }}">{{ $r }}</option>
-                    @endforeach
-                </x-forms.select>
+                <x-forms.listbox required searchable id="region" label="Region"
+            :options="collect(config('oci.regions'))->map(fn ($r) => ['value' => $r, 'label' => $r])->all()" />
 
                 @if ($authentication_method === 'api_key')
                     <div class="grid gap-4 lg:grid-cols-2">

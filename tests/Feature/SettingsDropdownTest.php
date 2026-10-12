@@ -38,6 +38,7 @@ it('renders the changelog modal above the desktop sidebar toggle', function () {
 
     $component = Livewire::test(SettingsDropdown::class, ['trigger' => 'changelog-sidebar'])
         ->call('openWhatsNewModal')
+        ->assertNotDispatched('whats-new-opened')
         ->assertSee("What's new", false)
         ->assertSee('Test Release')
         ->assertSee('Mark read')
@@ -47,5 +48,32 @@ it('renders the changelog modal above the desktop sidebar toggle', function () {
     // Single-release layout: no nested card chrome / unread left accent bar
     expect($component->html())
         ->not->toContain('dark:bg-raised')
-        ->not->toContain('w-0.5 bg-accent');
+        ->not->toContain('w-0.5 bg-accent')
+        ->toContain('absolute right-2 top-2');
+});
+
+it('opens the changelog modal when there are no entries', function () {
+    $user = new User(['email' => 'test@example.com']);
+    $user->id = 1;
+
+    Auth::setUser($user);
+
+    app()->instance(ChangelogService::class, new class extends ChangelogService
+    {
+        public function getEntriesForUser(User $user): Collection
+        {
+            return collect();
+        }
+
+        public function getUnreadCountForUser(User $user): int
+        {
+            return 0;
+        }
+    });
+
+    Livewire::test(SettingsDropdown::class, ['trigger' => 'account-menu'])
+        ->call('openWhatsNewModal')
+        ->assertSet('showWhatsNewModal', true)
+        ->assertSee("What's new", false)
+        ->assertSee('No updates found');
 });

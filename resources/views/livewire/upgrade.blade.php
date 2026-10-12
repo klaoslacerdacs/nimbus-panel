@@ -6,6 +6,14 @@
     })">
     @if ($isUpgradeAvailable)
         <div :class="{ 'z-40': modalOpen }" class="relative w-auto h-auto">
+            @if ($fullButton)
+                <x-forms.button type="button" @click="modalOpen=true" x-show="!showProgress" x-cloak isHighlighted>
+                    Upgrade now
+                </x-forms.button>
+                <x-forms.button type="button" @click="modalOpen=true" x-show="showProgress" x-cloak isHighlighted>
+                    Updating…
+                </x-forms.button>
+            @else
             <button type="button" title="Upgrade in progress" aria-label="Upgrade in progress"
                 @click="modalOpen=true" x-show="showProgress" x-cloak
                 class="inline-flex h-[18px] cursor-pointer items-center rounded-full bg-coollabs/10 px-1.5 text-[9.5px] font-semibold leading-none text-coollabs ring-1 ring-inset ring-coollabs/25 transition-colors hover:bg-coollabs/15 dark:bg-warning/15 dark:text-warning dark:ring-warning/25 dark:hover:bg-warning/20">
@@ -16,6 +24,7 @@
                 class="inline-flex h-[18px] cursor-pointer items-center rounded-full bg-coollabs/10 px-1.5 text-[9.5px] font-semibold leading-none text-coollabs ring-1 ring-inset ring-coollabs/25 transition-colors hover:bg-coollabs/15 dark:bg-warning/15 dark:text-warning dark:ring-warning/25 dark:hover:bg-warning/20">
                 Update available
             </button>
+            @endif
             <template x-teleport="body">
                 <div x-show="modalOpen"
                     class="fixed inset-0 z-99 flex min-h-full items-center justify-center overflow-y-auto p-4"
@@ -101,6 +110,10 @@
                                                     class="font-semibold text-coollabs dark:text-warning"></span>
                                                 seconds…
                                             </p>
+                                            <p class="text-center text-[11px] leading-4"
+                                                style="color: var(--coollabs-subtle)">
+                                                If the page does not reload automatically, reload it manually.
+                                            </p>
                                             <x-forms.button @click="reloadNow()" type="button" isHighlighted>
                                                 Reload now
                                             </x-forms.button>
@@ -158,6 +171,8 @@
                 </div>
             </template>
         </div>
+    @elseif ($fullButton)
+        <p class="text-sm text-neutral-600 dark:text-fg-dim">Coolify is up to date.</p>
     @endif
 </div>
 
@@ -171,6 +186,10 @@
             checkUpgradeStatusInterval: null,
             elapsedInterval: null,
             healthCheckAttempts: 0,
+            healthProbePending: false,
+            healthTimeouts: 0,
+            statusRequestPending: false,
+            livewireFailures: 0,
             startTime: null,
             elapsedTime: 0,
             currentStep: 0,
@@ -180,6 +199,7 @@
             currentVersion: config.currentVersion || '',
             latestVersion: config.latestVersion || '',
             serviceDown: false,
+            instanceWentDown: false,
             devMode: config.devMode || false,
             simulationInterval: null,
 
@@ -244,6 +264,19 @@
                 return `${minutes}:${seconds.toString().padStart(2, '0')}`;
             },
 
+            // Livewire never settles a $wire call when its request fails, and a request to a removed
+            // container can hang. Time out both so the progress view does not freeze.
+            withTimeout(promise, ms) {
+                return Promise.race([
+                    promise,
+                    new Promise((_, reject) => setTimeout(() => reject(new Error('Request timed out')), ms)),
+                ]);
+            },
+
+            fetchUpgradeStatus() {
+                return this.withTimeout(this.$wire.getUpgradeStatus(), 15000);
+            },
+
             mapStepToUI(apiStep) {
                 // Map backend steps (1-6) to UI steps (1-4)
                 // Backend: 1=config, 2=env, 3=pull, 4=stop, 5=start, 6=complete
@@ -252,6 +285,93 @@
                 if (apiStep === 3) return 2;
                 if (apiStep <= 5) return 3;
                 return 4;
+            },
+
+            startHealthWatch() {
+                if (this.checkHealthInterval) {
+                    return;
+                }
+                this.checkHealthInterval = setInterval(() => {
+                    this.probeHealth();
+                }, 2000);
+            },
+
+            async probeHealth() {
+                if (this.healthProbePending) {
+                    return;
+                }
+                this.healthProbePending = true;
+                try {
+                    await this.runHealthProbe();
+                } finally {
+                    this.healthProbePending = false;
+                }
+            },
+
+            async runHealthProbe() {
+                if (this.upgradeComplete || this.upgradeError) {
+                    return;
+                }
+                this.healthCheckAttempts++;
+                const elapsedMinutes = Math.floor((Date.now() - this.startTime) / 60000);
+
+                try {
+                    const response = await fetch('/api/health', {
+                        cache: 'no-store',
+                        signal: AbortSignal.timeout(10000),
+                    });
+                    this.healthTimeouts = 0;
+                    if (!response.ok) {
+                        this.instanceWentDown = true;
+                        this.currentStep = 4;
+                        this.currentStatus = this.getReviveStatusMessage(elapsedMinutes, this.healthCheckAttempts);
+                        return;
+                    }
+                    if (!this.instanceWentDown && this.currentStep < 4) {
+                        return;
+                    }
+
+                    let data;
+                    try {
+                        data = await this.fetchUpgradeStatus();
+                    } catch (error) {
+                        if (this.instanceWentDown) {
+                            this.showSuccess();
+                            return;
+                        }
+                        throw error;
+                    }
+                    if (!data) {
+                        if (this.instanceWentDown) {
+                            // The upgraded instance can no longer return data for the old Livewire component.
+                            // A healthy response after observed downtime confirms that the restart completed.
+                            this.showSuccess();
+                        } else {
+                            this.currentStatus = this.getReviveStatusMessage(elapsedMinutes, this.healthCheckAttempts);
+                        }
+                        return;
+                    }
+                    if (data.status === 'complete') {
+                        this.showSuccess();
+                    } else if (data.status === 'error') {
+                        this.showError(data.message);
+                    } else if (data.status === 'none' && this.instanceWentDown) {
+                        // Older target releases cannot report the new upgrade status.
+                        // A failed health probe followed by a healthy response proves the restart completed.
+                        this.showSuccess();
+                    } else {
+                        this.currentStatus = data.message ?? this.getReviveStatusMessage(elapsedMinutes, this.healthCheckAttempts);
+                    }
+                } catch (error) {
+                    // A busy server can answer slowly, so one timeout does not prove that it is down.
+                    if (error?.name === 'TimeoutError' && ++this.healthTimeouts < 2) {
+                        return;
+                    }
+                    console.error('Health check failed:', error);
+                    this.instanceWentDown = true;
+                    this.currentStep = 4;
+                    this.currentStatus = this.getReviveStatusMessage(elapsedMinutes, this.healthCheckAttempts);
+                }
             },
 
             getReviveStatusMessage(elapsedMinutes, attempts) {
@@ -269,29 +389,15 @@
             },
 
             revive() {
-                if (this.checkHealthInterval) return true;
-                this.healthCheckAttempts = 0;
                 this.currentStep = 4;
                 console.log('Checking server\'s health...');
-                this.checkHealthInterval = setInterval(() => {
-                    this.healthCheckAttempts++;
-                    const elapsedMinutes = Math.floor((Date.now() - this.startTime) / 60000);
-                    fetch('/api/health')
-                        .then(response => {
-                            if (response.ok) {
-                                this.showSuccess();
-                            } else {
-                                this.currentStatus = this.getReviveStatusMessage(elapsedMinutes, this.healthCheckAttempts);
-                            }
-                        })
-                        .catch(error => {
-                            console.error('Health check failed:', error);
-                            this.currentStatus = this.getReviveStatusMessage(elapsedMinutes, this.healthCheckAttempts);
-                        });
-                }, 2000);
+                this.startHealthWatch();
             },
 
             showSuccess() {
+                if (this.upgradeComplete) {
+                    return;
+                }
                 if (this.checkHealthInterval) {
                     clearInterval(this.checkHealthInterval);
                     this.checkHealthInterval = null;
@@ -365,11 +471,20 @@
                 this.currentStep = 1;
                 this.currentStatus = 'Starting upgrade...';
                 this.serviceDown = false;
+                this.instanceWentDown = false;
+                this.livewireFailures = 0;
+                this.healthTimeouts = 0;
+                this.startHealthWatch();
 
                 // Poll upgrade status via Livewire
                 this.checkUpgradeStatusInterval = setInterval(async () => {
+                    if (this.statusRequestPending) {
+                        return;
+                    }
+                    this.statusRequestPending = true;
                     try {
-                        const data = await this.$wire.getUpgradeStatus();
+                        const data = await this.fetchUpgradeStatus();
+                        this.livewireFailures = 0;
                         if (data.status === 'in_progress') {
                             this.currentStep = this.mapStepToUI(data.step);
                             this.currentStatus = data.message;
@@ -377,12 +492,24 @@
                             this.showSuccess();
                         } else if (data.status === 'error') {
                             this.showError(data.message);
+                        } else if (data.status === 'none' && this.instanceWentDown) {
+                            this.revive();
+                            await this.probeHealth();
                         }
                     } catch (error) {
-                        // Service is down - switch to health check mode
+                        if (this.upgradeComplete || this.upgradeError) {
+                            return;
+                        }
+                        this.livewireFailures++;
+                        if (this.livewireFailures < 3) {
+                            this.currentStatus = 'Reconnecting. This is expected during an upgrade...';
+                            return;
+                        }
+                        // Repeated Livewire failures usually mean the instance is restarting
                         console.log('Livewire unavailable, switching to health check mode');
                         if (!this.serviceDown) {
                             this.serviceDown = true;
+                            this.instanceWentDown = true;
                             this.currentStep = 4;
                             this.currentStatus = 'Coolify is restarting with the new version...';
                             if (this.checkUpgradeStatusInterval) {
@@ -391,6 +518,8 @@
                             }
                             this.revive();
                         }
+                    } finally {
+                        this.statusRequestPending = false;
                     }
                 }, 2000);
             }

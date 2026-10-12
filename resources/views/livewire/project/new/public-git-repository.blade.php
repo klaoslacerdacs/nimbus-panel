@@ -1,5 +1,5 @@
 <div x-data x-init="$nextTick(() => { if ($refs.autofocusInput) $refs.autofocusInput.focus(); })"
-    class="mt-8 flex w-full max-w-[1180px] flex-col gap-6 lg:mt-3">
+    class="mt-8 flex w-full max-w-none flex-col gap-6 lg:mt-3">
     <form wire:submit="loadBranch">
         <section class="application-settings-section">
             <div class="application-settings-section-header">
@@ -62,7 +62,7 @@
                             helper="You can choose another branch after the application is created." />
                         <x-forms.listbox id="build_pack" label="Build pack" required live :options="[
                             ['value' => 'railpack', 'label' => 'Railpack'],
-                            ['value' => 'nixpacks', 'label' => 'Nixpacks'],
+                            ['value' => 'nixpacks', 'label' => 'Nixpacks (deprecated)'],
                             ['value' => 'static', 'label' => 'Static'],
                             ['value' => 'dockerfile', 'label' => 'Dockerfile'],
                             ['value' => 'dockercompose', 'label' => 'Docker Compose'],
@@ -82,6 +82,10 @@
                                 helper="Directory containing the generated static assets." />
                         @endif
                     </div>
+
+                    @if ($build_pack === 'nixpacks')
+                        <x-nixpacks-deprecated-callout />
+                    @endif
 
                     @if ($build_pack === 'dockercompose')
                         <div x-data="{

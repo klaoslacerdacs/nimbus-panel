@@ -6,7 +6,7 @@
     <livewire:server.navbar :server="$server" />
 
     <div
-        class="server-settings-workspace application-settings-workspace mt-4 grid w-full max-w-[1180px] min-w-0 gap-8 lg:mt-0 xl:grid-cols-[210px_minmax(0,1fr)] xl:gap-10">
+        class="server-settings-workspace application-settings-workspace mt-4 grid w-full max-w-none min-w-0 gap-8 lg:mt-0 xl:grid-cols-[210px_minmax(0,1fr)] xl:gap-8">
         <x-server.sidebar :server="$server" activeMenu="swarm" />
 
         <div class="application-settings-form w-full">
@@ -22,21 +22,27 @@
                         target="_blank">Read the migration guidance.</a>
                 </x-callout>
 
+                @if (!$canUseSwarm)
+                    <x-callout type="info" title="Unavailable for new teams" class="mt-4">
+                        Docker Swarm cannot be enabled because this team has no existing Swarm resources.
+                    </x-callout>
+                @endif
+
                 <div class="mt-4 grid gap-4 lg:grid-cols-2">
-                    <x-forms.listbox id="isSwarmManager" label="Manager role"
+                    <x-forms.listbox canGate="update" :canResource="$server" id="isSwarmManager" label="Manager role"
                         helper="Managers control scheduling and cluster state." onChange="instantSave"
                         :options="[
                             ['value' => false, 'label' => 'Not a Swarm manager'],
                             ['value' => true, 'label' => 'Swarm manager'],
                         ]"
-                        :disabled="$server->settings->is_swarm_worker || !auth()->user()->can('update', $server)" />
-                    <x-forms.listbox id="isSwarmWorker" label="Worker role"
+                        :disabled="!$canUseSwarm || $server->settings->is_swarm_worker || !auth()->user()->can('update', $server)" />
+                    <x-forms.listbox canGate="update" :canResource="$server" id="isSwarmWorker" label="Worker role"
                         helper="Workers run tasks assigned by a Swarm manager." onChange="instantSave"
                         :options="[
                             ['value' => false, 'label' => 'Not a Swarm worker'],
                             ['value' => true, 'label' => 'Swarm worker'],
                         ]"
-                        :disabled="$server->settings->is_swarm_manager || !auth()->user()->can('update', $server)" />
+                        :disabled="!$canUseSwarm || $server->settings->is_swarm_manager || !auth()->user()->can('update', $server)" />
                 </div>
             </x-application.settings-section>
         </div>
