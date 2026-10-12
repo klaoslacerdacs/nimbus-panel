@@ -46,6 +46,10 @@ function mockClient(array $overrides = []): MockInterface
         'getInstanceMetrics' => ['cpu_percent' => null, 'memory_percent' => null, 'net_bytes_in' => null, 'net_bytes_out' => null],
         'listNsgRules' => [],
         'getInstanceFirewall' => ociFirewall(),
+        'listVcnNsgs' => [
+            ['id' => 'ocid1.networksecuritygroup.oc1..example', 'display_name' => 'web-nsg'],
+            ['id' => 'ocid1.networksecuritygroup.oc1..console', 'display_name' => 'console-sg'],
+        ],
         'listVolumeAttachments' => [],
         'listLoadBalancers' => [],
         'listAutonomousDatabases' => [],
@@ -502,4 +506,62 @@ it('keeps using the VM team for firewall policies after the session switches tea
 
     $component->call('toggleFirewallPolicy', $vmPolicy->id);
     expect($this->stack->firewallPolicies()->pluck('name')->all())->toBe(['VM team policy']);
+});
+
+it('attaches a security group created in the OCI console to an imported VM directly', function (): void {
+    $this->stack->delete();
+    $mock = mockClient(['setVnicNsgs' => false]);
+    $mock->shouldReceive('setVnicNsgs')->once()
+        ->with(Mockery::any(), 'ocid1.vnic.oc1..v', ['ocid1.networksecuritygroup.oc1..example', 'ocid1.networksecuritygroup.oc1..console'], 'us-ashburn-1')
+        ->andReturn(['nsg_ids' => []]);
+    app()->instance(OciClient::class, $mock);
+
+    Livewire::test(OciDashboard::class, ['server_uuid' => $this->server->uuid])
+        ->assertSee('console-sg')
+        ->call('attachExistingNsg', 'ocid1.networksecuritygroup.oc1..console')
+        ->assertDispatched('success');
+});
+
+it('attaches a console security group to a Terraform VM through plan and apply', function (): void {
+    Queue::fake();
+    $this->stack->update(['status' => 'provisioned', 'stack_ocid' => 'ocid1.ormstack.d', 'attached_nsg_ids' => []]);
+    $mock = mockClient();
+    $mock->shouldNotReceive('setVnicNsgs');
+    app()->instance(OciClient::class, $mock);
+
+    Livewire::test(OciDashboard::class, ['server_uuid' => $this->server->uuid])
+        ->call('attachExistingNsg', 'ocid1.networksecuritygroup.oc1..console')
+        ->assertDispatched('success');
+
+    expect($this->stack->fresh()->attached_nsg_ids)->toBe(['ocid1.networksecuritygroup.oc1..console'])
+        ->and(json_decode($this->stack->fresh()->terraformVariables()['extra_nsg_ids_json'], true))->toBe(['ocid1.networksecuritygroup.oc1..console']);
+    Queue::assertPushed(OciStackFirewallJob::class);
+});
+
+it('only attaches security groups listed for the VM network', function (): void {
+    Queue::fake();
+    $mock = mockClient();
+    $mock->shouldNotReceive('setVnicNsgs');
+    app()->instance(OciClient::class, $mock);
+
+    Livewire::test(OciDashboard::class, ['server_uuid' => $this->server->uuid])
+        ->call('attachExistingNsg', 'ocid1.networksecuritygroup.oc1..someone-else');
+
+    Queue::assertNothingPushed();
+});
+
+it('never detaches the VM own Terraform security group and shows other groups read-only', function (): void {
+    Queue::fake();
+    $this->stack->update(['status' => 'provisioned', 'stack_ocid' => 'ocid1.ormstack.d', 'attached_nsg_ids' => ['ocid1.networksecuritygroup.oc1..console']]);
+    $mock = mockClient(['getInstanceFirewall' => ociFirewall(['ocid1.networksecuritygroup.oc1..example', 'ocid1.networksecuritygroup.oc1..console']), 'listNsgRules' => false]);
+    $mock->shouldReceive('listNsgRules')->andReturn([['id' => 'r', 'protocol' => '6', 'protocol_label' => 'TCP', 'port_min' => 5432, 'port_max' => 5432, 'source' => '10.0.0.0/16']]);
+    app()->instance(OciClient::class, $mock);
+
+    Livewire::test(OciDashboard::class, ['server_uuid' => $this->server->uuid])
+        ->assertSee('TCP 5432 from 10.0.0.0/16')
+        ->assertSee('managed in the OCI console')
+        ->call('detachExistingNsg', 'ocid1.networksecuritygroup.oc1..example')
+        ->assertDispatched('error');
+
+    Queue::assertNothingPushed();
 });

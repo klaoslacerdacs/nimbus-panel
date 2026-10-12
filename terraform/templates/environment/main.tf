@@ -202,7 +202,8 @@ resource "oci_core_instance" "server" {
     subnet_id        = local.subnet_id
     assign_public_ip = true
     display_name     = var.instance_display_name # OCI derives the OS hostname from the VNIC name
-    nsg_ids          = [local.nsg_id]
+    # The VM's own NSG plus security groups created elsewhere (OCI console) and attached from the panel.
+    nsg_ids = distinct(concat([local.nsg_id], jsondecode(var.extra_nsg_ids_json)))
   }
 
   metadata = {

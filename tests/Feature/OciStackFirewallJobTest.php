@@ -153,3 +153,27 @@ it('marks a change as pending until the job starts, so concurrent changes are re
     expect($this->stack->queueFirewallChange([]))->toBe('queued')
         ->and($this->stack->queueFirewallChange([['protocol' => 'TCP', 'port_min' => 1, 'source' => '0.0.0.0/0']]))->toBe('busy');
 });
+
+it('keeps security groups attached in the OCI console when Terraform takes over the VNIC', function (): void {
+    $this->stack->update(['oci_instance_id' => 'ocid1.instance.fw', 'compartment_ocid' => 'ocid1.compartment.fw', 'attached_nsg_ids' => null]);
+    $mock = firewallJobMock();
+    $mock->shouldReceive('getInstanceFirewall')->once()->andReturn(['nsg_ids' => ['ocid1.networksecuritygroup.fw', 'ocid1.networksecuritygroup.console']]);
+    $mock->shouldReceive('updateStack')->once()
+        ->with(Mockery::any(), Mockery::any(), Mockery::any(), Mockery::on(fn ($vars) => json_decode($vars['extra_nsg_ids_json'], true) === ['ocid1.networksecuritygroup.console']))
+        ->andReturn(['stack_id' => 'ocid1.ormstack.fw']);
+
+    (new OciStackFirewallJob($this->stack))->handle($mock);
+
+    expect($this->stack->fresh()->attached_nsg_ids)->toBe(['ocid1.networksecuritygroup.console']);
+});
+
+it('does not apply when the attached security groups cannot be read', function (): void {
+    $this->stack->update(['oci_instance_id' => 'ocid1.instance.fw', 'compartment_ocid' => 'ocid1.compartment.fw', 'attached_nsg_ids' => null]);
+    $mock = firewallJobMock();
+    $mock->shouldReceive('getInstanceFirewall')->andReturn(['error' => true, 'message' => 'timeout']);
+    $mock->shouldReceive('updateStack')->never();
+
+    (new OciStackFirewallJob($this->stack))->handle($mock);
+
+    expect($this->stack->fresh()->last_plan_summary)->toContain('could detach them');
+});

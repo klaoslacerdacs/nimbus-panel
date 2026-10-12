@@ -31,6 +31,14 @@ class OciDashboard extends Component
 
     public ?string $selectedNsgId = null;
 
+    /** @var list<array{id: string, display_name: string|null}> NSGs of the VM's VCN (incl. created in the OCI console) */
+    #[Locked]
+    public array $availableNsgs = [];
+
+    /** @var array<string, list<array<string, mixed>>> read-only rules of NSGs managed outside the panel, by NSG id */
+    #[Locked]
+    public array $externalNsgRules = [];
+
     public bool $confirmingStop = false;
 
     public bool $confirmingReboot = false;
@@ -221,6 +229,73 @@ class OciDashboard extends Component
             $result = app(OciClient::class)->listNsgRules($this->apiConfig(), $this->selectedNsgId, $this->server->oci_region);
             $this->nsgRules = empty($result['error']) ? $result : [];
         }
+
+        $this->availableNsgs = [];
+        if (! empty($this->firewall['vcn_id'])) {
+            $available = app(OciClient::class)->listVcnNsgs($this->apiConfig(), $this->firewall['compartment_id'], $this->firewall['vcn_id'], $this->server->oci_region);
+            $this->availableNsgs = empty($available['error']) ? $available : [];
+        }
+
+        // Terraform-managed VMs edit only their own NSG; other attached NSGs are shown read-only.
+        $this->externalNsgRules = [];
+        if ($stack = $this->terraformStack()) {
+            foreach (array_diff($nsgIds, [$stack->nsg_ocid]) as $nsgId) {
+                $rules = app(OciClient::class)->listNsgRules($this->apiConfig(), $nsgId, $this->server->oci_region);
+                $this->externalNsgRules[$nsgId] = empty($rules['error']) ? $rules : [];
+            }
+        }
+    }
+
+    /**
+     * Attach a security group that already exists in the VM's VCN (e.g. created in the OCI console).
+     */
+    public function attachExistingNsg(string $nsgId): void
+    {
+        $this->changeAttachedNsgs($nsgId, attach: true);
+    }
+
+    public function detachExistingNsg(string $nsgId): void
+    {
+        $this->changeAttachedNsgs($nsgId, attach: false);
+    }
+
+    private function changeAttachedNsgs(string $nsgId, bool $attach): void
+    {
+        $this->authorize('update', $this->server);
+        // Only NSGs of this VM's VCN, as listed server-side, can be attached; detaching only what is attached.
+        $known = $attach ? array_column($this->availableNsgs, 'id') : ($this->firewall['nsg_ids'] ?? []);
+        if (! in_array($nsgId, $known, true) || empty($this->firewall['vnic_id'])) {
+            return;
+        }
+
+        $current = $this->firewall['nsg_ids'] ?? [];
+        $next = $attach ? array_values(array_unique([...$current, $nsgId])) : array_values(array_diff($current, [$nsgId]));
+
+        if ($stack = $this->terraformStack()) {
+            if ($nsgId === $stack->nsg_ocid) {
+                $this->dispatch('error', 'This is the VM\'s own security group managed by Terraform; it cannot be detached.');
+
+                return;
+            }
+            $result = $stack->queueFirewallChange(null, $next);
+            if ($result !== 'queued') {
+                $this->dispatch('error', OciStack::firewallChangeError($result));
+
+                return;
+            }
+            $this->dispatch('success', 'Security group change queued: Terraform runs plan → apply.');
+        } else {
+            $result = app(OciClient::class)->setVnicNsgs($this->apiConfig(), $this->firewall['vnic_id'], $next, $this->server->oci_region);
+            if (! empty($result['error'])) {
+                $this->dispatch('error', 'Could not update the security groups of this VM.', e($result['message'] ?? ''));
+
+                return;
+            }
+            $this->dispatch('success', $attach ? 'Security group attached.' : 'Security group detached.');
+            $this->loadNsgRules();
+        }
+
+        auditLog('ui.oci_nsg.'.($attach ? 'attached' : 'detached'), ['server_uuid' => $this->server->uuid, 'nsg_id' => $nsgId]);
     }
 
     public function updatedSelectedNsgId(): void

@@ -150,3 +150,9 @@ variable "ingress_rules_json" {
   default     = "[]"
   description = "JSON list of NSG ingress rules managed by Nimbus Panel: [{protocol, port_min, port_max, source, description}]. Resource Manager variables are strings, hence JSON."
 }
+
+variable "extra_nsg_ids_json" {
+  type        = string
+  default     = "[]"
+  description = "JSON list of additional NSG OCIDs (e.g. created in the OCI console) attached to the instance VNIC."
+}

@@ -26,6 +26,7 @@ class OciStack extends BaseModel
         'vcn_ocid',
         'nsg_ocid',
         'firewall_rules',
+        'attached_nsg_ids',
         'region',
         'tf_vars',
         'status',
@@ -43,6 +44,7 @@ class OciStack extends BaseModel
         return [
             'tf_vars' => 'array',
             'firewall_rules' => 'array',
+            'attached_nsg_ids' => 'array',
         ];
     }
 
@@ -125,6 +127,7 @@ class OciStack extends BaseModel
             'tenancy_ocid' => $this->ociConnection?->tenancy_ocid,
             ...($this->tf_vars ?? []),
             'ingress_rules_json' => json_encode($effectiveRules ?? $this->effectiveFirewallRules(), JSON_UNESCAPED_SLASHES),
+            'extra_nsg_ids_json' => json_encode(array_values($this->attached_nsg_ids ?? [])),
         ]);
     }
 
@@ -185,14 +188,14 @@ class OciStack extends BaseModel
      * @param  array<int, array<string, mixed>>|null  $rules
      * @return 'queued'|'busy'|'too_many_rules'|'not_managed'
      */
-    public function queueFirewallChange(?array $rules = null): string
+    public function queueFirewallChange(?array $rules = null, ?array $attachedNsgIds = null): string
     {
         if ($this->status !== 'provisioned' || ! $this->stack_ocid) {
             return 'not_managed';
         }
 
         // Check-and-set under a lock so two quick changes cannot both pass the "busy" check.
-        return Cache::lock("nimbus:oci-firewall-lock:{$this->id}", 10)->block(5, function () use ($rules): string {
+        return Cache::lock("nimbus:oci-firewall-lock:{$this->id}", 10)->block(5, function () use ($rules, $attachedNsgIds): string {
             if ($this->hasRunningJob()) {
                 return 'busy';
             }
@@ -205,6 +208,9 @@ class OciStack extends BaseModel
 
             if ($rules !== null) {
                 $this->update(['firewall_rules' => $own]);
+            }
+            if ($attachedNsgIds !== null) {
+                $this->update(['attached_nsg_ids' => array_values(array_unique(array_diff($attachedNsgIds, [$this->nsg_ocid])))]);
             }
             Cache::put($this->pendingFirewallKey(), true, 3900);
             OciStackFirewallJob::dispatch($this);

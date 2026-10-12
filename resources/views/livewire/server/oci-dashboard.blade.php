@@ -249,6 +249,46 @@
                 </p>
             @endif
 
+            @if ($firewall['vnic_id'] ?? null)
+                @php
+                    $ownNsgId = $terraformStack?->nsg_ocid;
+                    $nsgNames = collect($availableNsgs)->pluck('display_name', 'id')->merge(collect($firewall['nsgs'] ?? [])->pluck('display_name', 'id'));
+                    $attachedOthers = collect($firewall['nsg_ids'] ?? [])->reject(fn ($id) => $id === $ownNsgId);
+                    $attachableNsgs = collect($availableNsgs)->whereNotIn('id', $firewall['nsg_ids'] ?? []);
+                @endphp
+                <div class="border-t border-neutral-200 px-4 pt-3 pb-3 dark:border-white/[0.08]">
+                    <p class="text-[12px] font-medium">Security groups on this VM
+                        <span class="font-normal text-neutral-500 dark:text-fg-dim">(including ones created in the OCI console)</span>
+                    </p>
+                    @if ($ownNsgId)
+                        <p class="mt-1 text-[12px]"><span class="font-mono">{{ $nsgNames[$ownNsgId] ?? $ownNsgId }}</span> <span class="text-neutral-500 dark:text-fg-dim">· this VM's own group, rules above (Terraform)</span></p>
+                    @endif
+                    @foreach ($attachedOthers as $nsgId)
+                        <div wire:key="attached-nsg-{{ $nsgId }}" class="mt-1 text-[12px]">
+                            <div class="flex items-center justify-between gap-2">
+                                <span class="font-mono">{{ $nsgNames[$nsgId] ?? $nsgId }}</span>
+                                <button type="button" wire:click="detachExistingNsg('{{ $nsgId }}')" wire:loading.attr="disabled" @disabled($firewallApplying) class="text-[11px] font-medium text-error">Detach</button>
+                            </div>
+                            @if ($terraformStack)
+                                <p class="font-mono text-neutral-500 dark:text-fg-dim">
+                                    {{ collect($externalNsgRules[$nsgId] ?? [])->map(fn ($rule) => ($rule['protocol_label'] ?? $rule['protocol']).' '.($rule['port_min'] ?? 'all').' from '.($rule['source'] ?? '-'))->implode(' · ') ?: 'No ingress rules' }}
+                                    <span class="font-sans">(read-only, managed in the OCI console)</span>
+                                </p>
+                            @endif
+                        </div>
+                    @endforeach
+                    @if ($attachableNsgs->isNotEmpty())
+                        <div class="mt-2 flex flex-wrap items-center gap-2 text-[12px]">
+                            <span class="text-neutral-500 dark:text-fg-dim">Attach existing security group:</span>
+                            @foreach ($attachableNsgs as $nsg)
+                                <button type="button" wire:key="attach-nsg-{{ $nsg['id'] }}" wire:click="attachExistingNsg('{{ $nsg['id'] }}')" wire:loading.attr="disabled" @disabled($firewallApplying)
+                                    class="button button-secondary text-xs">{{ $nsg['display_name'] ?? $nsg['id'] }}</button>
+                            @endforeach
+                        </div>
+                    @endif
+                </div>
+            @endif
+
             @if ($terraformStack)
                 <div class="border-t border-neutral-200 px-4 pt-3 pb-3 dark:border-white/[0.08]">
                     <p class="text-[12px] font-medium">Shared firewall policies

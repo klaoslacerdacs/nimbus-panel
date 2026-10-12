@@ -61,6 +61,13 @@ class OciStackFirewallJob implements ShouldBeUniqueUntilProcessing, ShouldQueue
         if ($adoptsLegacyRules && $stack->nsg_ocid) {
             $this->adoptLiveRules($oci, $config, $stack);
         }
+        // NSGs attached in the OCI console must survive the apply (Terraform sets the VNIC's full NSG list).
+        if ($stack->attached_nsg_ids === null && ! $this->adoptAttachedNsgs($oci, $config, $stack)) {
+            $this->finish($stack, 'Could not read the security groups attached to the VM, so the firewall was not applied (it could detach them). Try again.');
+
+            return;
+        }
+        $attachedNsgIds = $stack->attached_nsg_ids;
         $rules = $stack->effectiveFirewallRules();
 
         $updated = $oci->updateStack($config, $stack->stack_ocid, $this->getTemplateZipBase64(), $stack->terraformVariables($rules));
@@ -98,8 +105,9 @@ class OciStackFirewallJob implements ShouldBeUniqueUntilProcessing, ShouldQueue
         auditLog('job.oci_stack.firewall_applied', ['team_id' => $stack->team_id, 'oci_stack_id' => $stack->id, 'rules' => count($rules)]);
         $this->finish($stack, 'Firewall rules applied by Terraform at '.now()->toDateTimeString().' UTC ('.count($rules).' rules).');
 
-        // Rules or policies changed while Terraform was applying: converge to the latest desired state.
-        if (self::ruleKeys($stack->fresh()->effectiveFirewallRules()) !== self::ruleKeys($rules)) {
+        // Rules, policies or attached NSGs changed while Terraform was applying: converge to the latest desired state.
+        $latest = $stack->fresh();
+        if (self::ruleKeys($latest->effectiveFirewallRules()) !== self::ruleKeys($rules) || ($latest->attached_nsg_ids ?? []) != ($attachedNsgIds ?? [])) {
             $stack->fresh()->queueFirewallChange();
         }
     }
@@ -128,6 +136,29 @@ class OciStackFirewallJob implements ShouldBeUniqueUntilProcessing, ShouldQueue
         sort($keys);
 
         return $keys;
+    }
+
+    /**
+     * Record the NSGs currently on the VM's VNIC (besides the stack's own) as attached.
+     *
+     * @param  array<string, mixed>  $config
+     */
+    private function adoptAttachedNsgs(OciClient $oci, array $config, OciStack $stack): bool
+    {
+        if (! $stack->oci_instance_id || ! $stack->compartment_ocid) {
+            $stack->update(['attached_nsg_ids' => []]);
+
+            return true;
+        }
+
+        $firewall = $oci->getInstanceFirewall($config, $stack->compartment_ocid, $stack->oci_instance_id, $stack->region);
+        if (! empty($firewall['error'])) {
+            return false;
+        }
+
+        $stack->update(['attached_nsg_ids' => array_values(array_diff($firewall['nsg_ids'] ?? [], [$stack->nsg_ocid]))]);
+
+        return true;
     }
 
     /**

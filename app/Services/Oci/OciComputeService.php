@@ -202,6 +202,36 @@ class OciComputeService
     }
 
     /**
+     * Security groups of a VCN (including ones created in the OCI console) that can be attached to a VM.
+     *
+     * @param  array<string, mixed>  $config
+     * @return list<array{id: string, display_name: string|null}>
+     */
+    public function listVcnNsgs(array $config, string $compartmentId, string $vcnId, string $region): array
+    {
+        $rows = $this->api->paginate($config, 'iaas', $region, self::IAAS.'/networkSecurityGroups', [
+            'compartmentId' => $compartmentId,
+            'vcnId' => $vcnId,
+            'lifecycleState' => 'AVAILABLE',
+        ]);
+
+        return array_map(fn (array $nsg): array => ['id' => $nsg['id'], 'display_name' => $nsg['displayName'] ?? null], $rows);
+    }
+
+    /**
+     * Replace the NSGs attached to a VNIC (VMs not managed by Terraform).
+     *
+     * @param  array<string, mixed>  $config
+     * @param  list<string>  $nsgIds
+     */
+    public function setVnicNsgs(array $config, string $vnicId, array $nsgIds, string $region): array
+    {
+        $this->api->put($config, 'iaas', $region, self::IAAS."/vnics/{$vnicId}", ['nsgIds' => array_values(array_unique($nsgIds))]);
+
+        return ['nsg_ids' => array_values(array_unique($nsgIds))];
+    }
+
+    /**
      * Create an NSG in the instance's VCN and attach it to the VNIC, keeping the NSGs already attached.
      *
      * @param  array<string, mixed>  $config
