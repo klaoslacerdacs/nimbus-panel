@@ -63,6 +63,7 @@ class ListServers extends Tool
                 'ip' => $s->ip,
                 'is_reachable' => $s->settings?->is_reachable,
                 'is_usable' => $s->settings?->is_usable,
+                'oci_region' => $s->oci_region,
             ])
             ->values()
             ->all();

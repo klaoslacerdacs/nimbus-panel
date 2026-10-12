@@ -18,6 +18,7 @@ use App\Mcp\Tools\GetDestination;
 use App\Mcp\Tools\GetEnvironment;
 use App\Mcp\Tools\GetInfrastructureOverview;
 use App\Mcp\Tools\GetLogs;
+use App\Mcp\Tools\GetOciServer;
 use App\Mcp\Tools\GetProject;
 use App\Mcp\Tools\GetServer;
 use App\Mcp\Tools\GetServerDomains;
@@ -36,6 +37,8 @@ use App\Mcp\Tools\ListEnvKeys;
 use App\Mcp\Tools\ListGithubApps;
 use App\Mcp\Tools\ListGithubBranches;
 use App\Mcp\Tools\ListGithubRepositories;
+use App\Mcp\Tools\ListOciConnections;
+use App\Mcp\Tools\ListOciStacks;
 use App\Mcp\Tools\ListProjects;
 use App\Mcp\Tools\ListResources;
 use App\Mcp\Tools\ListResourceTags;
@@ -50,6 +53,7 @@ use App\Mcp\Tools\ListStorages;
 use App\Mcp\Tools\ListTags;
 use App\Mcp\Tools\ListTeamMembers;
 use App\Mcp\Tools\ListUnhealthyResources;
+use App\Mcp\Tools\OciInstanceAction;
 use App\Mcp\Tools\SearchResources;
 use Laravel\Mcp\Server;
 
@@ -83,6 +87,8 @@ Then: list_*/get_* for details. Debug is DB-first:
 Lifecycle (requires token ability **deploy**):
 - control (start|stop|restart; stop needs confirm=true)
 - deploy, cancel_deployment
+
+Oracle Cloud (Nimbus): list_oci_connections, list_oci_stacks (provisioning status + Terraform summary), get_oci_server (live OCI state + metrics), oci_instance_action (start|stop|reboot VM; deploy ability; stop/reboot need confirm=true). Creating or destroying OCI infrastructure is not available over MCP.
 
 Prompts: troubleshoot_application, explain_failed_deploy.
 Resources: coolify://overview, coolify://application/{uuid}.
@@ -136,6 +142,10 @@ MD;
         Control::class,
         Deploy::class,
         CancelDeployment::class,
+        ListOciConnections::class,
+        ListOciStacks::class,
+        GetOciServer::class,
+        OciInstanceAction::class,
     ];
 
     protected array $resources = [

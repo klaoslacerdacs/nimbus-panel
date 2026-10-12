@@ -13,7 +13,7 @@ class CoolifyHelp extends Tool
 {
     protected string $name = 'coolify_help';
 
-    protected string $description = 'Tool catalog by intent. Call first when unsure which Coolify MCP tool to use. Optional intent: overview | search | inventory | debug | deploy | github | team | essentials.';
+    protected string $description = 'Tool catalog by intent. Call first when unsure which Coolify MCP tool to use. Optional intent: overview | search | inventory | debug | deploy | github | oci | team | essentials.';
 
     use BuildsResponse;
     use ResolvesTeam;
@@ -112,6 +112,19 @@ class CoolifyHelp extends Tool
                     'list_github_branches',
                 ],
             ],
+            'oci' => [
+                'description' => 'Oracle Cloud servers (Nimbus): connections, provisioning stacks, live VM state, power actions',
+                'tools' => [
+                    'list_oci_connections',
+                    'list_oci_stacks',
+                    'get_oci_server',
+                    'oci_instance_action',
+                ],
+                'notes' => [
+                    'oci_instance_action needs deploy ability; stop/reboot need confirm=true.',
+                    'A stuck or failed OCI server: list_oci_stacks shows the Terraform plan/apply summary.',
+                ],
+            ],
             'team' => [
                 'description' => 'Team identity',
                 'tools' => [
@@ -174,7 +187,7 @@ class CoolifyHelp extends Tool
     public function schema(JsonSchema $schema): array
     {
         return [
-            'intent' => $schema->string()->description('Optional: overview | search | inventory | debug | deploy | github | team | essentials.'),
+            'intent' => $schema->string()->description('Optional: overview | search | inventory | debug | deploy | github | oci | team | essentials.'),
         ];
     }
 }
