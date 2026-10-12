@@ -4,6 +4,7 @@ namespace App\Jobs;
 
 use App\Events\OciStackStatusChanged;
 use App\Models\OciStack;
+use App\Models\Server;
 use App\Services\OciClient;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldBeUnique;
@@ -12,6 +13,7 @@ use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Sleep;
 
 class OciStackProvisionJob implements ShouldBeUnique, ShouldQueue
 {
@@ -159,6 +161,7 @@ class OciStackProvisionJob implements ShouldBeUnique, ShouldQueue
         }
 
         if ($stack->server && isset($outputs['public_ip'])) {
+            $this->waitForSsh($stack->server->refresh());
             ValidateAndInstallServerJob::dispatch($stack->server);
             Log::info('OciStackProvisionJob: dispatched SSH validation', ['server_id' => $stack->server->id]);
         }
@@ -216,5 +219,21 @@ class OciStackProvisionJob implements ShouldBeUnique, ShouldQueue
         OciStackStatusChanged::dispatch($stack->team_id);
         Log::error('OciStackProvisionJob failed', ['oci_stack_id' => $stack->id, 'reason' => $reason]);
         auditLog('oci.stack.provision_failed', ['oci_stack_id' => $stack->id, 'reason' => $reason], 'error');
+    }
+
+    /**
+     * A fresh VM refuses SSH until boot and cloud-init (which installs the authorized key) finish.
+     * ValidateAndInstallServerJob does not retry a failed connection, so wait here first.
+     */
+    private function waitForSsh(Server $server): void
+    {
+        $deadline = time() + (int) config('oci.ssh_wait_seconds', 300);
+
+        while (time() < $deadline) {
+            if ($server->validateConnection(justCheckingNewKey: true)['uptime']) {
+                return;
+            }
+            Sleep::for(15)->seconds();
+        }
     }
 }

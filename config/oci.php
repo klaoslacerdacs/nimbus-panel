@@ -4,6 +4,8 @@ return [
     // Native OCI REST client tuning.
     'timeout' => (int) env('OCI_HTTP_TIMEOUT', 30),
     'retry_max' => (int) env('OCI_HTTP_RETRY_MAX', 3),
+    // How long a freshly provisioned VM may take to accept SSH before validation runs.
+    'ssh_wait_seconds' => (int) env('OCI_SSH_WAIT_SECONDS', 300),
     'terraform_version' => env('OCI_TERRAFORM_VERSION', '1.5.x'),
 
     // ponytail: per-service regional host templates are the calibration knob.

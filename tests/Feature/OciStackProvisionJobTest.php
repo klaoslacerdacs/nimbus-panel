@@ -2,10 +2,13 @@
 
 use App\Jobs\OciStackDestroyJob;
 use App\Jobs\OciStackProvisionJob;
+use App\Jobs\ValidateAndInstallServerJob;
 use App\Models\OciStack;
+use App\Models\Server;
 use App\Services\OciClient;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Queue;
+use Illuminate\Support\Sleep;
 
 uses(RefreshDatabase::class);
 
@@ -138,4 +141,28 @@ it('destroys in the stack region, not the connection home region', function (): 
     new OciStackDestroyJob($stack)->handle($mock);
 
     expect($stack->fresh()->status)->toBe('destroy_failed');
+});
+
+it('waits until the new VM accepts SSH before validating it', function (): void {
+    Queue::fake();
+    Sleep::fake();
+    $stack = OciStack::factory()->create(['status' => 'pending', 'stack_ocid' => 'ocid1.stack.s']);
+    $server = Server::factory()->create(['ip' => '', 'team_id' => $stack->team_id]);
+    $stack->update(['server_id' => $server->id]);
+
+    $mock = Mockery::mock(OciClient::class);
+    $mock->shouldReceive('runStackJob')->andReturn(['job_id' => 'job']);
+    $mock->shouldReceive('getStackJob')->andReturn(['status' => 'SUCCEEDED']);
+    $mock->shouldReceive('getStackOutputs')->andReturn(['public_ip' => '203.0.113.9', 'instance_id' => 'ocid1.instance.s']);
+
+    $booting = Mockery::mock($server->fresh())->makePartial();
+    $booting->shouldReceive('refresh')->andReturnSelf();
+    $booting->shouldReceive('validateConnection')->with(true)->times(3)
+        ->andReturn(['uptime' => false, 'error' => 'refused'], ['uptime' => false, 'error' => 'refused'], ['uptime' => true, 'error' => null]);
+    $stack->setRelation('server', $booting);
+
+    (new OciStackProvisionJob($stack))->handle($mock);
+
+    Sleep::assertSleptTimes(2);
+    Queue::assertPushed(ValidateAndInstallServerJob::class, fn ($job) => $job->server->id === $server->id);
 });
