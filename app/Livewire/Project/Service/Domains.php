@@ -166,6 +166,12 @@ class Domains extends Component
         $applicationId = $this->newServiceApplicationId;
         $domains = fn () => collect($this->splitDomains((string) $this->findServiceApp($applicationId)?->fresh()?->fqdn));
         $before = $domains();
+        // Templates such as Chaskiq need their container port on the domain (:3000 is internal; the public side stays 443).
+        $requiredPort = $this->findServiceApp($applicationId)?->getRequiredPort();
+        if ($requiredPort) {
+            $parts = DomainUrlParts::split($url);
+            $url = DomainUrlParts::compose($parts['scheme'], $parts['host'], (string) $requiredPort, $parts['path']);
+        }
         $this->newDomain = $url;
         $this->newDomainParts = DomainUrlParts::empty();
         $this->newDomainPartsChanged = false;

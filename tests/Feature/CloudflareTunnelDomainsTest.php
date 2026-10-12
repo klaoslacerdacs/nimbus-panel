@@ -197,3 +197,29 @@ test('hides the section when Cloudflare login is not available and the team is n
     Livewire::test(Domains::class, ['application' => tunnelDomainsApplication()])
         ->assertDontSee('Publish through Cloudflare Tunnel');
 });
+
+test('adds the container port a service template requires', function () {
+    $service = Service::factory()->create([
+        'server_id' => $this->server->id,
+        'destination_id' => $this->destination->id, 'destination_type' => $this->destination->getMorphClass(),
+        'environment_id' => $this->environment->id,
+        'docker_compose_raw' => "services:\n  web:\n    image: nginx:alpine\n    environment:\n      - SERVICE_URL_WEB_3000\n",
+    ]);
+    $web = ServiceApplication::create([
+        'uuid' => (string) Str::uuid(), 'service_id' => $service->id, 'name' => 'web', 'human_name' => 'Web',
+        'image' => 'nginx:alpine', 'fqdn' => null,
+    ]);
+    expect($web->fresh()->getRequiredPort())->toBe(3000);
+
+    Livewire::test(ServiceDomains::class, ['service' => $service->fresh(['applications', 'server'])])
+        ->set('newServiceApplicationId', $web->id)
+        ->set('cloudflareTunnelLabel', 'chat')
+        ->set('cloudflareTunnelZone', 'example.com')
+        ->call('publishThroughCloudflareTunnel')
+        ->assertHasNoErrors()
+        ->assertSet('showPortWarningModal', false);
+
+    expect($web->fresh()->fqdn)->toContain('https://chat.example.com')
+        ->and($web->fresh()->domain_port_overrides)->toMatchArray(['https://chat.example.com' => 3000])
+        ->and(collect(publishedIngress())->firstWhere('hostname', 'chat.example.com'))->toMatchArray(['service' => 'https://localhost:443']);
+});
