@@ -43,6 +43,12 @@
             'icon' => 'layers',
         ],
         [
+            'label' => 'Firewall Policies',
+            'route' => 'security.oci-firewall-policies',
+            'active' => request()->routeIs('security.oci-firewall-policies'),
+            'icon' => 'shield',
+        ],
+        [
             'label' => 'Terraform Jobs',
             'route' => 'security.oci-jobs',
             'active' => request()->routeIs('security.oci-jobs'),

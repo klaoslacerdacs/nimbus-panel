@@ -2,6 +2,7 @@
 
 namespace App\Livewire\Server;
 
+use App\Models\OciFirewallPolicy;
 use App\Models\OciStack;
 use App\Models\Server;
 use App\Models\ServerSetting;
@@ -297,6 +298,29 @@ class OciDashboard extends Component
     }
 
     /**
+     * Attach or detach a shared firewall policy of this VM's team, then let Terraform apply the new effective rules.
+     */
+    public function toggleFirewallPolicy(int $policyId): void
+    {
+        $this->authorize('update', $this->server);
+        $stack = $this->terraformStack();
+        $policy = $stack ? OciFirewallPolicy::query()->where('team_id', $stack->team_id)->find($policyId) : null;
+        if (! $policy) {
+            return;
+        }
+        if ($stack->hasRunningJob()) {
+            $this->dispatch('error', 'Terraform is still applying the previous change. Try again when it finishes.');
+
+            return;
+        }
+
+        $stack->firewallPolicies()->toggle($policy->id);
+        $stack->queueFirewallChange();
+        auditLog('ui.oci_firewall.policy_toggled', ['server_uuid' => $this->server->uuid, 'oci_firewall_policy_id' => $policy->id]);
+        $this->dispatch('success', 'Firewall change queued: Terraform runs plan → apply.');
+    }
+
+    /**
      * Roll the firewall back to a previous successful apply of this VM's stack.
      */
     public function restoreFirewallVersion(int $jobId): void
@@ -310,7 +334,12 @@ class OciDashboard extends Component
             return;
         }
 
-        $this->applyFirewallThroughTerraform($stack, $version->firewall_rules, 'version_restored');
+        // Versions store the effective rules; rules that attached policies still provide stay with the policies.
+        $policyKeys = $stack->firewallPolicies()->get()->flatMap(fn ($policy) => OciStack::normalizeFirewallRules($policy->rules ?? []))
+            ->map(fn (array $rule): string => OciStack::firewallRuleKey($rule))->all();
+        $ownRules = array_values(array_filter($version->firewall_rules, fn (array $rule): bool => ! in_array(OciStack::firewallRuleKey($rule), $policyKeys, true)));
+
+        $this->applyFirewallThroughTerraform($stack, $ownRules, 'version_restored');
     }
 
     /**
@@ -624,13 +653,7 @@ class OciDashboard extends Component
     {
         $this->authorize('update', $this->server);
 
-        $this->validate([
-            'newRule.protocol' => 'required|in:TCP,UDP,ICMP,ALL',
-            'newRule.port_min' => 'nullable|required_if:newRule.protocol,TCP,UDP|integer|min:1|max:65535',
-            'newRule.port_max' => 'nullable|integer|min:1|max:65535|gte:newRule.port_min',
-            'newRule.source' => ['required', 'string', 'regex:/^((25[0-5]|2[0-4]\d|[01]?\d\d?)\.){3}(25[0-5]|2[0-4]\d|[01]?\d\d?)\/(3[0-2]|[12]?\d)$/'],
-            'newRule.description' => 'nullable|string|max:255',
-        ], [
+        $this->validate(OciStack::firewallRuleValidation('newRule'), [
             'newRule.port_min.required_if' => 'TCP and UDP rules need a port.',
             'newRule.port_max.gte' => 'The last port must be greater than or equal to the first port.',
         ]);
@@ -708,6 +731,8 @@ class OciDashboard extends Component
                 'protocol_label' => $rule['protocol'],
             ], OciStack::normalizeFirewallRules($stack->firewall_rules ?? [])) : [],
             'firewallApplying' => (bool) $stack?->hasRunningJob(),
+            'attachedPolicies' => $stack?->firewallPolicies()->get() ?? collect(),
+            'teamPolicies' => $stack ? OciFirewallPolicy::query()->where('team_id', $stack->team_id)->orderBy('name')->get() : collect(),
             'firewallVersions' => $stack?->firewallVersions() ?? collect(),
         ]);
     }

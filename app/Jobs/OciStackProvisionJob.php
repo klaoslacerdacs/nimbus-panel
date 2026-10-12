@@ -91,7 +91,7 @@ class OciStackProvisionJob implements ShouldBeUnique, ShouldQueue
             OciStackStatusChanged::dispatch($stack->team_id);
         }
 
-        $rules = OciStack::normalizeFirewallRules($stack->firewall_rules ?? []);
+        $rules = $stack->effectiveFirewallRules();
         $plan = $this->runTrackedStackJob($oci, $config, $stack, 'plan', $rules);
         if (! $plan['ok']) {
             $this->markFailed($stack, 'Terraform plan failed', $this->logTail($plan['log']));

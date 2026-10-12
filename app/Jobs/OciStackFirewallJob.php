@@ -53,7 +53,7 @@ class OciStackFirewallJob implements ShouldBeUnique, ShouldQueue
         }
 
         $config = $stack->ociConnection->toApiConfig($stack->region);
-        $rules = OciStack::normalizeFirewallRules($stack->firewall_rules ?? []);
+        $rules = $stack->effectiveFirewallRules();
         // Stacks created before rules were Terraform resources still carry rules added through the SDK.
         $adoptsLegacyRules = ! $stack->jobs()->where('operation', 'apply')->where('status', 'succeeded')->whereNotNull('firewall_rules')->exists();
 

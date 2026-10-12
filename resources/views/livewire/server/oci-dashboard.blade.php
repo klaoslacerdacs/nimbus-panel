@@ -249,6 +249,34 @@
                 </p>
             @endif
 
+            @if ($terraformStack)
+                <div class="border-t border-neutral-200 px-4 pt-3 pb-3 dark:border-white/[0.08]">
+                    <p class="text-[12px] font-medium">Shared firewall policies
+                        <a href="{{ route('security.oci-firewall-policies') }}" class="font-normal underline" {{ wireNavigate() }}>manage</a>
+                    </p>
+                    @forelse ($attachedPolicies as $policy)
+                        <div wire:key="vm-policy-{{ $policy->id }}" class="mt-1 flex items-center justify-between gap-2 text-[12px]">
+                            <span>
+                                <span class="font-medium">{{ $policy->name }}</span>
+                                <span class="font-mono text-neutral-500 dark:text-fg-dim">{{ collect($policy->rules)->map(fn ($rule) => $rule['protocol'].' '.($rule['port_min'] ?? 'all').' from '.$rule['source'])->implode(' · ') }}</span>
+                            </span>
+                            <button type="button" wire:click="toggleFirewallPolicy({{ $policy->id }})" @disabled($firewallApplying) class="text-[11px] font-medium text-error">Detach</button>
+                        </div>
+                    @empty
+                        <p class="mt-1 text-[12px] text-neutral-500 dark:text-fg-dim">No shared policy attached; only this VM's own rules apply.</p>
+                    @endforelse
+                    @php $attachable = $teamPolicies->whereNotIn('id', $attachedPolicies->pluck('id')); @endphp
+                    @if ($attachable->isNotEmpty())
+                        <div class="mt-2 flex flex-wrap items-center gap-2 text-[12px]">
+                            <span class="text-neutral-500 dark:text-fg-dim">Attach:</span>
+                            @foreach ($attachable as $policy)
+                                <button type="button" wire:key="vm-attach-{{ $policy->id }}" wire:click="toggleFirewallPolicy({{ $policy->id }})" @disabled($firewallApplying) class="button button-secondary text-xs">{{ $policy->name }}</button>
+                            @endforeach
+                        </div>
+                    @endif
+                </div>
+            @endif
+
             @if ($terraformStack && $firewallVersions->isNotEmpty())
                 @php $currentKeys = collect($managedRules)->pluck('id')->sort()->values()->all(); @endphp
                 <div class="border-t border-neutral-200 px-4 pt-3 pb-3 dark:border-white/[0.08]">

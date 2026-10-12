@@ -17,6 +17,7 @@ use App\Models\GitlabApp;
 use App\Models\InstanceSettings;
 use App\Models\IntegrationToken;
 use App\Models\OciConnection;
+use App\Models\OciFirewallPolicy;
 use App\Models\OciStack;
 use App\Models\PrivateKey;
 use App\Models\Project;
@@ -59,6 +60,7 @@ use App\Policies\InstanceSettingsPolicy;
 use App\Policies\IntegrationTokenPolicy;
 use App\Policies\NotificationPolicy;
 use App\Policies\OciConnectionPolicy;
+use App\Policies\OciFirewallPolicyPolicy;
 use App\Policies\OciStackPolicy;
 use App\Policies\PrivateKeyPolicy;
 use App\Policies\ProjectPolicy;
@@ -144,6 +146,7 @@ class AuthServiceProvider extends ServiceProvider
         CloudInitScript::class => CloudInitScriptPolicy::class,
         OciConnection::class => OciConnectionPolicy::class,
         OciStack::class => OciStackPolicy::class,
+        OciFirewallPolicy::class => OciFirewallPolicyPolicy::class,
         Tag::class => TagPolicy::class,
 
     ];

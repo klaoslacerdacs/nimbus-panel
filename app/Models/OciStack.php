@@ -7,6 +7,7 @@ use App\Traits\ClearsGlobalSearchCache;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Collection;
 
@@ -122,8 +123,42 @@ class OciStack extends BaseModel
         return array_map('strval', [
             'tenancy_ocid' => $this->ociConnection?->tenancy_ocid,
             ...($this->tf_vars ?? []),
-            'ingress_rules_json' => json_encode(self::normalizeFirewallRules($this->firewall_rules ?? []), JSON_UNESCAPED_SLASHES),
+            'ingress_rules_json' => json_encode($this->effectiveFirewallRules(), JSON_UNESCAPED_SLASHES),
         ]);
+    }
+
+    public function firewallPolicies(): BelongsToMany
+    {
+        return $this->belongsToMany(OciFirewallPolicy::class);
+    }
+
+    /**
+     * What Terraform applies: the VM's own rules plus every attached policy, deduplicated by rule key.
+     *
+     * @return list<array<string, mixed>>
+     */
+    public function effectiveFirewallRules(): array
+    {
+        return self::normalizeFirewallRules([
+            ...($this->firewall_rules ?? []),
+            ...$this->firewallPolicies()->get()->flatMap(fn (OciFirewallPolicy $policy): array => $policy->rules ?? [])->all(),
+        ]);
+    }
+
+    /**
+     * Validation for one firewall rule under $prefix (e.g. "newRule"), shared by the VM and policy editors.
+     *
+     * @return array<string, mixed>
+     */
+    public static function firewallRuleValidation(string $prefix): array
+    {
+        return [
+            "{$prefix}.protocol" => 'required|in:TCP,UDP,ICMP,ALL',
+            "{$prefix}.port_min" => "nullable|required_if:{$prefix}.protocol,TCP,UDP|integer|min:1|max:65535",
+            "{$prefix}.port_max" => "nullable|integer|min:1|max:65535|gte:{$prefix}.port_min",
+            "{$prefix}.source" => ['required', 'string', 'regex:/^((25[0-5]|2[0-4]\d|[01]?\d\d?)\.){3}(25[0-5]|2[0-4]\d|[01]?\d\d?)\/(3[0-2]|[12]?\d)$/'],
+            "{$prefix}.description" => 'nullable|string|max:255',
+        ];
     }
 
     public function hasRunningJob(): bool
@@ -136,13 +171,16 @@ class OciStack extends BaseModel
      *
      * @param  array<int, array<string, mixed>>  $rules
      */
-    public function queueFirewallChange(array $rules): bool
+    public function queueFirewallChange(?array $rules = null): bool
     {
         if ($this->status !== 'provisioned' || ! $this->stack_ocid || $this->hasRunningJob()) {
             return false;
         }
 
-        $this->update(['firewall_rules' => self::normalizeFirewallRules($rules)]);
+        // null keeps the VM's own rules and re-applies after a policy change.
+        if ($rules !== null) {
+            $this->update(['firewall_rules' => self::normalizeFirewallRules($rules)]);
+        }
         OciStackFirewallJob::dispatch($this);
 
         return true;

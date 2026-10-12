@@ -4,6 +4,7 @@ use App\Jobs\OciStackFirewallJob;
 use App\Livewire\Server\OciDashboard;
 use App\Models\InstanceSettings;
 use App\Models\OciConnection;
+use App\Models\OciFirewallPolicy;
 use App\Models\OciStack;
 use App\Models\OciStackJob;
 use App\Models\Server;
@@ -461,4 +462,23 @@ it('refuses to restore a version that belongs to another stack', function (): vo
         ->assertDispatched('error');
 
     Queue::assertNothingPushed();
+});
+
+it('attaches and detaches a shared firewall policy on a Terraform-managed VM', function (): void {
+    Queue::fake();
+    $this->stack->update(['status' => 'provisioned', 'stack_ocid' => 'ocid1.ormstack.d']);
+    $policy = OciFirewallPolicy::factory()->create(['team_id' => $this->team->id, 'name' => 'Public web']);
+    $foreignPolicy = OciFirewallPolicy::factory()->create(['name' => 'Other team']);
+    app()->instance(OciClient::class, mockClient());
+
+    $component = Livewire::test(OciDashboard::class, ['server_uuid' => $this->server->uuid])
+        ->assertSee('Shared firewall policies')
+        ->assertDontSee('Other team')
+        ->call('toggleFirewallPolicy', $policy->id);
+
+    expect($this->stack->firewallPolicies()->pluck('name')->all())->toBe(['Public web']);
+    Queue::assertPushed(OciStackFirewallJob::class, 1);
+
+    $component->call('toggleFirewallPolicy', $foreignPolicy->id);
+    expect($this->stack->firewallPolicies()->count())->toBe(1);
 });
