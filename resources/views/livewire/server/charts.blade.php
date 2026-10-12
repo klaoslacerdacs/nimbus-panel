@@ -10,26 +10,30 @@
         <x-server.sidebar :server="$server" activeMenu="metrics" />
 
         <div class="application-settings-form flex w-full flex-col gap-6"
-            @if ($server->isMetricsEnabled()) x-init="$wire.loadData()"
-                @if ($poll) wire:poll.5000ms="pollData" @endif
+            @if ($server->isMetricsEnabled() || $server->usesOciMonitoring()) x-init="$wire.loadData()"
+                {{-- OCI Monitoring has 1-minute resolution: polling every 5s would only add API calls. --}}
+                @if ($poll && ! $server->usesOciMonitoring()) wire:poll.5000ms="pollData" @endif
             @endif>
-            @if ($server->isMetricsEnabled())
+            @if ($server->isMetricsEnabled() || $server->usesOciMonitoring())
                 <form wire:submit.prevent="saveMetricsSettings" class="contents">
                     <x-unsaved-bar action="saveMetricsSettings"
                         targets="sentinelMetricsRefreshRateSeconds,sentinelMetricsHistoryDays,sentinelPushIntervalSeconds" />
 
                     <x-application.settings-section id="server-metrics-overview-section" title="Metrics"
-                        helper="Inspect recent CPU and memory usage reported by Sentinel.">
+                        helper="{{ $server->usesOciMonitoring() ? 'Inspect recent CPU and memory usage reported by OCI Monitoring (1-minute resolution, Oracle Cloud Agent required for memory).' : 'Inspect recent CPU and memory usage reported by Sentinel.' }}">
                         <x-slot:actions>
                             <div class="flex items-center gap-2">
                                 <x-status-badge :status="$poll ? 'Live updates' : 'Historical range'"
                                     :type="$poll ? 'success' : 'neutral'" />
-                                <x-forms.button canGate="update" :canResource="$server" wire:click="toggleMetrics">
-                                    Disable metrics
-                                </x-forms.button>
+                                @unless ($server->usesOciMonitoring())
+                                    <x-forms.button canGate="update" :canResource="$server" wire:click="toggleMetrics">
+                                        Disable metrics
+                                    </x-forms.button>
+                                @endunless
                             </div>
                         </x-slot:actions>
 
+                        @unless ($server->usesOciMonitoring())
                         <div class="grid gap-4 lg:grid-cols-3">
                             <x-forms.input canGate="update" :canResource="$server" type="number" min="1"
                                 id="sentinelMetricsRefreshRateSeconds" label="Collection rate" required
@@ -41,6 +45,7 @@
                                 id="sentinelPushIntervalSeconds" label="Push interval" required
                                 helper="Seconds between health reports sent to Coolify." />
                         </div>
+                        @endunless
 
                         <div class="mt-4 max-w-xs">
                             <x-forms.listbox id="interval" label="Time range" onChange="setInterval" :options="[
@@ -53,9 +58,11 @@
                                 ['value' => 43200, 'label' => 'Last 30 days'],
                             ]" />
                         </div>
-                        <p class="mt-3 text-xs leading-5 text-neutral-500 dark:text-fg-dim">
-                            Five and ten minute ranges refresh automatically every five seconds.
-                        </p>
+                        @unless ($server->usesOciMonitoring())
+                            <p class="mt-3 text-xs leading-5 text-neutral-500 dark:text-fg-dim">
+                                Five and ten minute ranges refresh automatically every five seconds.
+                            </p>
+                        @endunless
                     </x-application.settings-section>
                 </form>
 

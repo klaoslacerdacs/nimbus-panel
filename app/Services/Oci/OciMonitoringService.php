@@ -40,6 +40,57 @@ class OciMonitoringService
     }
 
     /**
+     * CPU/memory history in the Sentinel chart format: list of [epoch milliseconds, percent].
+     *
+     * @param  array<string, mixed>  $config
+     * @return array{cpu: list<array{0: int, 1: float}>, memory: list<array{0: int, 1: float}>}
+     */
+    public function getInstanceMetricSeries(array $config, string $instanceId, string $compartmentId, string $region, int $minutes): array
+    {
+        $end = gmdate('Y-m-d\TH:i:s.000\Z');
+        $start = gmdate('Y-m-d\TH:i:s.000\Z', time() - $minutes * 60);
+        // OCI caps a query at ~100k points; coarser buckets for long windows keep charts light.
+        $resolution = match (true) {
+            $minutes <= 360 => '1m',
+            $minutes <= 2880 => '5m',
+            default => '1h',
+        };
+        $dim = "resourceId = \"{$instanceId}\"";
+
+        $cpu = $this->series($config, $compartmentId, $region, 'oci_computeagent', "CpuUtilization[{$resolution}]{{$dim}}.mean()", $start, $end, $resolution)
+            ?: $this->series($config, $compartmentId, $region, 'oci_compute', "CpuUtilization[{$resolution}]{{$dim}}.mean()", $start, $end, $resolution);
+
+        return [
+            'cpu' => $cpu,
+            'memory' => $this->series($config, $compartmentId, $region, 'oci_computeagent', "MemoryUtilization[{$resolution}]{{$dim}}.mean()", $start, $end, $resolution),
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $config
+     * @return list<array{0: int, 1: float}>
+     */
+    private function series(array $config, string $compartmentId, string $region, string $namespace, string $mql, string $start, string $end, string $resolution): array
+    {
+        try {
+            $resp = $this->api->post($config, 'telemetry', $region, self::PATH, [
+                'namespace' => $namespace,
+                'query' => $mql,
+                'startTime' => $start,
+                'endTime' => $end,
+                'resolution' => $resolution,
+            ], ['compartmentId' => $compartmentId]);
+        } catch (OciException) {
+            return [];
+        }
+
+        return array_values(array_map(
+            fn (array $p): array => [strtotime($p['timestamp']) * 1000, round((float) $p['value'], 2)],
+            array_filter($resp[0]['aggregatedDatapoints'] ?? [], fn ($p): bool => isset($p['timestamp'], $p['value'])),
+        ));
+    }
+
+    /**
      * @param  array<string, mixed>  $config
      */
     private function query(array $config, string $compartmentId, string $region, string $namespace, string $mql, string $start, string $end): ?float

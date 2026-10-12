@@ -350,6 +350,13 @@ class Show extends Component
         $this->authorize('update', $this->server);
         $this->validate(['oci_metrics_source' => 'required|in:oci_monitoring,sentinel']);
         $this->server->update(['oci_metrics_source' => $this->oci_metrics_source]);
+
+        if ($this->server->usesOciMonitoring()) {
+            StopSentinel::dispatch($this->server);
+        } elseif ($this->server->isSentinelEnabled()) {
+            $this->server->restartSentinel();
+        }
+
         $this->dispatch('success', 'Metrics source updated.');
     }
 

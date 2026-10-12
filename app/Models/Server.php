@@ -1160,9 +1160,18 @@ $siteAddress {
     public function isSentinelEnabled(): bool
     {
         return ! $this->isBuildServer()
+            && ! $this->usesOciMonitoring()
             && ! $this->isSwarm()
             && ! $this->isForceDisabled()
             && ! $this->isTransferredAway();
+    }
+
+    /**
+     * Nimbus: OCI servers can take CPU/memory from OCI Monitoring instead of running Sentinel.
+     */
+    public function usesOciMonitoring(): bool
+    {
+        return $this->oci_connection_id !== null && $this->oci_metrics_source === 'oci_monitoring';
     }
 
     public function isMetricsEnabled(): bool

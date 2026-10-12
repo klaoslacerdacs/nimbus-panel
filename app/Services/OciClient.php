@@ -127,6 +127,11 @@ class OciClient
         return $this->guard(fn (): array => $this->compute->getInstanceStatus($config, $instanceId, $region));
     }
 
+    public function getInstanceMetricSeries(array $config, string $instanceId, string $compartmentId, string $region, int $minutes): array
+    {
+        return $this->guard(fn (): array => $this->monitoring->getInstanceMetricSeries($config, $instanceId, $compartmentId, $region, $minutes));
+    }
+
     public function getInstanceMetrics(array $config, string $instanceId, string $compartmentId, string $region): array
     {
         return $this->guard(fn (): array => $this->monitoring->getInstanceMetrics($config, $instanceId, $compartmentId, $region));

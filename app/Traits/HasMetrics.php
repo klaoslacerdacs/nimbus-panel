@@ -3,6 +3,7 @@
 namespace App\Traits;
 
 use App\Models\Server;
+use App\Services\OciClient;
 use Illuminate\Contracts\Encryption\DecryptException;
 use Illuminate\Support\Facades\Log;
 
@@ -10,11 +11,19 @@ trait HasMetrics
 {
     public function getCpuMetrics(int $mins = 5): ?array
     {
+        if ($this->isServerMetrics() && $this->usesOciMonitoring()) {
+            return $this->getOciMetrics($mins)['cpu'];
+        }
+
         return $this->getMetrics('cpu', $mins, 'percent');
     }
 
     public function getMemoryMetrics(int $mins = 5): ?array
     {
+        if ($this->isServerMetrics() && $this->usesOciMonitoring()) {
+            return $this->getOciMetrics($mins)['memory'];
+        }
+
         if ($this->isServerMetrics()) {
             return $this->getMetrics('memory', $mins, 'usedPercent');
         }
@@ -72,6 +81,23 @@ trait HasMetrics
         }
 
         return $metrics;
+    }
+
+    /**
+     * @return array{cpu: array<int, array{0: int, 1: float}>|null, memory: array<int, array{0: int, 1: float}>|null}
+     */
+    private function getOciMetrics(int $mins): array
+    {
+        // Charts ask for CPU and memory separately; one OCI round-trip serves both.
+        $series = once(fn (): array => app(OciClient::class)->getInstanceMetricSeries(
+            $this->ociConnection->toApiConfig(),
+            (string) $this->oci_instance_id,
+            (string) $this->oci_compartment_id,
+            (string) $this->oci_region,
+            $mins,
+        ));
+
+        return ['cpu' => $series['cpu'] ?? null, 'memory' => $series['memory'] ?? null];
     }
 
     private function isServerMetrics(): bool
