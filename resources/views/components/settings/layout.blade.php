@@ -8,6 +8,7 @@
         'Instance' => [
             ['label' => 'Backup', 'route' => 'settings.backup', 'icon' => 'database'],
             ['label' => 'Email', 'route' => 'settings.email', 'icon' => 'mail'],
+            ['label' => 'Cloudflare', 'route' => 'settings.cloudflare', 'icon' => 'cloud'],
             ['label' => 'Authentication', 'route' => 'settings.oauth', 'icon' => 'keys'],
         ],
     ];

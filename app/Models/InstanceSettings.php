@@ -33,6 +33,8 @@ class InstanceSettings extends Model
         'smtp_encryption',
         'smtp_username',
         'smtp_password',
+        'cloudflare_oauth_client_id',
+        'cloudflare_oauth_client_secret',
         'smtp_timeout',
         'smtp_ehlo_domain',
         'resend_enabled',
@@ -70,6 +72,7 @@ class InstanceSettings extends Model
         'smtp_password',
         'resend_api_key',
         'domain_connect_private_key',
+        'cloudflare_oauth_client_secret',
         'sentinel_token',
     ];
 
@@ -82,6 +85,7 @@ class InstanceSettings extends Model
         'smtp_port' => 'integer',
         'smtp_username' => 'encrypted',
         'smtp_password' => 'encrypted',
+        'cloudflare_oauth_client_secret' => 'encrypted',
         'smtp_timeout' => 'integer',
 
         'resend_enabled' => 'boolean',

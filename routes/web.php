@@ -97,6 +97,7 @@ use App\Livewire\Settings\Advanced as SettingsAdvanced;
 use App\Livewire\Settings\Index as SettingsIndex;
 use App\Livewire\Settings\Updates as SettingsUpdates;
 use App\Livewire\SettingsBackup;
+use App\Livewire\SettingsCloudflare;
 use App\Livewire\SettingsEmail;
 use App\Livewire\SettingsOauth;
 use App\Livewire\SharedVariables\Environment\Index as EnvironmentSharedVariablesIndex;
@@ -188,6 +189,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
     Route::get('/settings/backup', SettingsBackup::class)->name('settings.backup');
     Route::get('/settings/email', SettingsEmail::class)->name('settings.email');
+    Route::get('/settings/cloudflare', SettingsCloudflare::class)->name('settings.cloudflare');
     Route::get('/settings/oauth', SettingsOauth::class)->name('settings.oauth');
     Route::get('/settings/oauth/{provider}', SettingsOauth::class)
         ->where('provider', '[A-Za-z0-9_-]+')
