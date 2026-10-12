@@ -37,13 +37,12 @@ class CloudflareOAuth
     }
 
     /**
-     * Resource scopes configured for the client, plus offline_access so Cloudflare issues a refresh token.
+     * Only scopes the client allows: Cloudflare rejects the whole request (/oauth/error) for any other, including
+     * offline_access. Refresh tokens come from the client's refresh_token grant.
      */
     public function scopes(): string
     {
-        $scopes = preg_split('/[\s,]+/', instanceSettings()->cloudflare_oauth_scopes ?: self::DEFAULT_SCOPES, -1, PREG_SPLIT_NO_EMPTY);
-
-        return implode(' ', array_unique([...$scopes, 'offline_access']));
+        return implode(' ', preg_split('/[\s,]+/', instanceSettings()->cloudflare_oauth_scopes ?: self::DEFAULT_SCOPES, -1, PREG_SPLIT_NO_EMPTY));
     }
 
     /**

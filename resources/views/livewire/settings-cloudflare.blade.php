@@ -21,7 +21,7 @@
 
                     <div class="mt-4">
                         <x-forms.input id="scopes" label="Scopes (optional)" :placeholder="$defaultScopes"
-                            helper="Leave blank to use the default shown. Change only if your client was created with other scopes; offline_access is always added." />
+                            helper="Leave blank to use the default shown. Change only if your client was created with other scopes." />
                     </div>
 
                     <div class="mt-4">
@@ -46,7 +46,7 @@
                     <li><strong>Grant types:</strong> <code>authorization_code</code> and <code>refresh_token</code></li>
                     <li><strong>Token endpoint auth method:</strong> <code>client_secret_basic</code></li>
                     <li><strong>Redirect URL:</strong> the callback URL above.</li>
-                    <li><strong>Scopes:</strong> Cloudflare Tunnel Edit, DNS Edit, Zone Read and Account Settings Read (plus offline access if offered, for refresh tokens).</li>
+                    <li><strong>Scopes:</strong> Zero Trust Read/Write, DNS Read/Write, Zone Read and Account Settings Read.</li>
                     <li><strong>Visibility:</strong> private — only members of your Cloudflare account can authorize it.</li>
                     <li>Copy the client ID and secret here. The secret is shown only once.</li>
                 </ol>

@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Support\Facades\Http;
+use RuntimeException;
 
 /**
  * A team's Cloudflare account authorized through OAuth. Tokens are encrypted and never serialized.
@@ -39,7 +40,10 @@ class CloudflareConnection extends BaseModel
      */
     public function api(): PendingRequest
     {
-        if ($this->expires_at !== null && $this->expires_at->isBefore(now()->addMinute()) && $this->refresh_token) {
+        if ($this->expires_at !== null && $this->expires_at->isBefore(now()->addMinute())) {
+            if (blank($this->refresh_token)) {
+                throw new RuntimeException('The Cloudflare login expired. Reconnect Cloudflare in Security → Cloudflare.');
+            }
             app(CloudflareOAuth::class)->refresh($this);
         }
 

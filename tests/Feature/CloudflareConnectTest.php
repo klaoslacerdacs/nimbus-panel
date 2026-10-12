@@ -31,10 +31,10 @@ function startCloudflareFlow(): array
     return $query;
 }
 
-it('redirects to Cloudflare with PKCE and offline_access', function (): void {
+it('redirects to Cloudflare with PKCE and only the client scopes', function (): void {
     $query = startCloudflareFlow();
 
-    expect($query)->toMatchArray(['response_type' => 'code', 'client_id' => 'cf-client', 'code_challenge_method' => 'S256', 'scope' => 'tunnel:edit dns:edit offline_access'])
+    expect($query)->toMatchArray(['response_type' => 'code', 'client_id' => 'cf-client', 'code_challenge_method' => 'S256', 'scope' => 'tunnel:edit dns:edit'])
         ->and($query['code_challenge'])->not->toBeEmpty()
         ->and($query['redirect_uri'])->toBe(url('/auth/cloudflare/callback'));
 });
@@ -203,5 +203,12 @@ it('keeps the stored tokens when the refresh is rejected', function (): void {
 it('uses the default scopes when none are configured', function (): void {
     InstanceSettings::get()->update(['cloudflare_oauth_scopes' => null]);
 
-    expect(startCloudflareFlow()['scope'])->toBe(CloudflareOAuth::DEFAULT_SCOPES.' offline_access');
+    expect(startCloudflareFlow()['scope'])->toBe(CloudflareOAuth::DEFAULT_SCOPES);
+});
+
+it('asks to reconnect when the token expired and Cloudflare gave no refresh token', function (): void {
+    $connection = CloudflareConnection::factory()->create(['team_id' => $this->team->id, 'refresh_token' => null, 'expires_at' => now()->subMinute()]);
+
+    expect(fn () => $connection->api())->toThrow(RuntimeException::class, 'Reconnect Cloudflare');
+    Http::assertNothingSent();
 });
