@@ -90,3 +90,10 @@ it('is only for instance administrators', function (): void {
     $component->call('save')->assertForbidden();
     expect(InstanceSettings::get()->cloudflare_oauth_client_id)->toBeNull();
 });
+
+it('refuses the client secret pasted as the client ID', function (): void {
+    Livewire::test(SettingsCloudflare::class)
+        ->set('clientId', 'cfoc_j5zCUSLFatADaqAyN3B55KbWN9oRKpqW')
+        ->update(calls: [['method' => 'save', 'params' => [], 'path' => '']], updates: ['clientSecret' => 'ad1b5abc'])
+        ->assertHasErrors(['clientId' => 'not_regex']);
+});

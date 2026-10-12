@@ -45,11 +45,12 @@ class SettingsCloudflare extends Component
         $hasStoredSecret = filled($this->settings->cloudflare_oauth_client_secret);
 
         $this->validate([
-            'clientId' => ['required', 'string', 'max:255', 'regex:/^[A-Za-z0-9._-]+$/'],
+            'clientId' => ['required', 'string', 'max:255', 'regex:/^[A-Za-z0-9._-]+$/', 'not_regex:/^cfoc_/'],
             'scopes' => ['nullable', 'string', 'max:1000', 'regex:/^[A-Za-z0-9._:\-\s,]+$/'],
             'clientSecret' => [$hasStoredSecret ? 'nullable' : 'required', 'string', 'max:1024'],
         ], [
             'clientSecret.required' => 'Paste the client secret shown when you created the OAuth client.',
+            'clientId.not_regex' => 'This is the client secret (it starts with cfoc_). Paste it in Client secret, and the Client ID here.',
         ]);
 
         $this->settings->cloudflare_oauth_client_id = $this->clientId;
