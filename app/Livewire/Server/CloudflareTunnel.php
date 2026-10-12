@@ -76,6 +76,11 @@ class CloudflareTunnel extends Component
     {
         try {
             $this->authorize('update', $this->server);
+            if (filter_var($this->server->ip, FILTER_VALIDATE_IP)) {
+                $this->dispatch('error', 'Set the server address to the SSH hostname of the tunnel first.', 'Coolify connects through cloudflared access using that hostname; with an IP address every SSH connection would fail.');
+
+                return;
+            }
             $this->isCloudflareTunnelsEnabled = true;
             $this->server->settings->is_cloudflare_tunnel = true;
             $this->server->settings->save();
@@ -89,12 +94,15 @@ class CloudflareTunnel extends Component
 
     public function automatedCloudflareConfig()
     {
+        // Coolify connects with `cloudflared access ssh --hostname <ssh_domain>`: it must be the public hostname
+        // routed to ssh://localhost:22 in the tunnel, never an IP or a bare name.
+        $this->ssh_domain = trim(str_replace(['https://', 'http://', '/'], '', (string) $this->ssh_domain));
+        $this->validate(
+            ['ssh_domain' => ['required', 'string', 'max:253', 'regex:/^(?=.{4,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/i']],
+            ['ssh_domain.regex' => 'Enter the full SSH hostname published in the tunnel (e.g. ssh-server.example.com), routed to ssh://localhost:22.'],
+        );
         try {
             $this->authorize('update', $this->server);
-            if (str($this->ssh_domain)->contains('https://')) {
-                $this->ssh_domain = str($this->ssh_domain)->replace('https://', '')->replace('http://', '')->trim();
-                $this->ssh_domain = str($this->ssh_domain)->replace('/', '');
-            }
             $activity = ConfigureCloudflared::run($this->server, $this->cloudflare_token, $this->ssh_domain);
             auditLog('ui.server.cloudflare_tunnel.configuration_started', $this->auditContext([
                 'ssh_domain' => (string) $this->ssh_domain,

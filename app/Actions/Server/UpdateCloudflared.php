@@ -37,7 +37,7 @@ class UpdateCloudflared
     {
         $directory = instant_remote_process([
             'for dir in '.ConfigureCloudflared::DIRECTORY.' /tmp/cloudflared; do if [ -f "$dir/docker-compose.yml" ]; then echo "$dir"; break; fi; done',
-        ], $server, false);
+        ], $server); // throw on SSH failure: a connection error must not read as "configuration not found"
 
         if (blank($directory)) {
             throw new RuntimeException('The cloudflared configuration was not found on the server. Configure the tunnel again with the automated setup.');

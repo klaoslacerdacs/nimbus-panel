@@ -151,6 +151,8 @@ test('saving server settings without changes records no event', function () {
 });
 
 test('cloudflare tunnel enable, disable and configuration record events without the tunnel token', function () {
+    // Manual tunnel mode needs the server address to be the tunnel SSH hostname (Nimbus guard).
+    $this->server->update(['ip' => 'ssh.example.com']);
     $component = Livewire::test(CloudflareTunnel::class, ['server_uuid' => $this->server->uuid]);
 
     $component->call('manualCloudflareConfig');

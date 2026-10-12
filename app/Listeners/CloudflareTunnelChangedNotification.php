@@ -4,6 +4,7 @@ namespace App\Listeners;
 
 use App\Events\CloudflareTunnelChanged;
 use App\Events\CloudflareTunnelConfigured;
+use App\Helpers\SshMultiplexingHelper;
 use App\Models\Server;
 use Illuminate\Support\Sleep;
 
@@ -51,6 +52,7 @@ class CloudflareTunnelChangedNotification
 
             return;
         }
+        $previousIp = $this->server->ip;
         $this->server->settings->update([
             'is_cloudflare_tunnel' => true,
         ]);
@@ -62,6 +64,20 @@ class CloudflareTunnelChangedNotification
         } else {
             \Log::debug('Cloudflare Tunnels configuration updated - IP address unchanged.', ['current_ip' => $this->server->ip]);
         }
+        // Nimbus: prove SSH works through the tunnel before relying on it; otherwise go back to direct SSH.
+        SshMultiplexingHelper::removeMuxFile($this->server->fresh());
+        $check = $this->server->fresh()->validateConnection();
+        if (! $check['uptime']) {
+            $this->server->settings->update(['is_cloudflare_tunnel' => false]);
+            $this->server->update([
+                'ip' => $previousIp,
+                'validation_logs' => "The tunnel container is running, but SSH through {$ssh_domain} failed, so Coolify kept using the direct address. Publish {$ssh_domain} in the tunnel as ssh://localhost:22 and run the setup again. Error: ".str((string) $check['error'])->limit(300),
+            ]);
+            SshMultiplexingHelper::removeMuxFile($this->server->fresh());
+            $this->server->fresh()->validateConnection();
+            \Log::warning('Cloudflare Tunnel SSH check failed; reverted to direct SSH.', ['server_id' => $server_id]);
+        }
+
         $teamId = $this->server->team_id;
         CloudflareTunnelConfigured::dispatch($teamId);
     }

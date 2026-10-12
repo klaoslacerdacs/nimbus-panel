@@ -1,5 +1,6 @@
 <?php
 
+use App\Actions\Server\ConfigureCloudflared;
 use App\Jobs\CoolifyTask;
 use App\Livewire\Server\CloudflareTunnel;
 use App\Models\InstanceSettings;
@@ -78,4 +79,49 @@ test('members without update rights cannot update the tunnel', function () {
 
     Process::assertNothingRan();
     Queue::assertNothingPushed();
+});
+
+test('update reports the real SSH failure instead of a missing configuration', function () {
+    actingAsCloudflareTunnelUpdateUser($this->team, 'owner');
+    Process::fake(['*' => Process::result(output: '', errorOutput: 'tls: failed to verify certificate: x509', exitCode: 255)]);
+
+    Livewire::test(CloudflareTunnel::class, ['server_uuid' => $this->server->uuid])
+        ->call('updateCloudflareTunnel')
+        ->assertNotDispatched('cloudflare-tunnel-update-started')
+        ->assertDispatched('error', fn (string $event, array $params) => ! str_contains(implode(' ', array_map('strval', $params)), 'was not found'));
+});
+
+test('automated setup requires a full SSH hostname, not an IP or a bare name', function (string $sshDomain) {
+    actingAsCloudflareTunnelUpdateUser($this->team, 'owner');
+    ConfigureCloudflared::shouldNotRun();
+
+    Livewire::test(CloudflareTunnel::class, ['server_uuid' => $this->server->uuid])
+        ->set('cloudflare_token', 'token')
+        ->set('ssh_domain', $sshDomain)
+        ->call('automatedCloudflareConfig')
+        ->assertHasErrors(['ssh_domain']);
+})->with(['srv-oci-coolify', '163.176.137.233', 'ssh..example.com']);
+
+test('manual setup is refused while the server address is still an IP', function () {
+    actingAsCloudflareTunnelUpdateUser($this->team, 'owner');
+    $this->server->update(['ip' => '163.176.137.233']);
+    $this->server->settings->update(['is_cloudflare_tunnel' => false]);
+
+    Livewire::test(CloudflareTunnel::class, ['server_uuid' => $this->server->uuid])
+        ->call('manualCloudflareConfig')
+        ->assertDispatched('error');
+
+    expect((bool) $this->server->fresh()->settings->is_cloudflare_tunnel)->toBeFalse();
+});
+
+test('automated setup accepts a hostname pasted with its https:// prefix', function () {
+    actingAsCloudflareTunnelUpdateUser($this->team, 'owner');
+    ConfigureCloudflared::shouldRun()->once()->withArgs(fn ($server, $token, $domain) => $domain === 'ssh-server.example.com')
+        ->andReturn(Activity::create(['description' => 'x', 'log_name' => 'default']));
+
+    Livewire::test(CloudflareTunnel::class, ['server_uuid' => $this->server->uuid])
+        ->set('cloudflare_token', 'token')
+        ->set('ssh_domain', 'https://ssh-server.example.com/')
+        ->call('automatedCloudflareConfig')
+        ->assertHasNoErrors();
 });

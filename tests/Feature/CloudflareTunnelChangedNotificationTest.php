@@ -52,3 +52,19 @@ it('does not mark the tunnel when the container is not healthy', function (): vo
     expect((bool) $this->server->fresh()->settings->is_cloudflare_tunnel)->toBeFalse()
         ->and($this->server->fresh()->ip)->toBe('203.0.113.20');
 });
+
+it('falls back to direct SSH when the server cannot be reached through the tunnel hostname', function (): void {
+    Process::fake(function ($process) {
+        // Container healthy, but SSH through cloudflared access fails (hostname not routed in Cloudflare).
+        return str_contains($process->command, 'coolify-cloudflared')
+            ? Process::result(output: 'healthy')
+            : Process::result(output: '', errorOutput: 'websocket: bad handshake', exitCode: 255);
+    });
+
+    (new CloudflareTunnelChangedNotification)->handle(new CloudflareTunnelChanged(['server_id' => $this->server->id, 'ssh_domain' => 'ssh.example.com']));
+
+    $server = $this->server->fresh();
+    expect((bool) $server->settings->is_cloudflare_tunnel)->toBeFalse()
+        ->and($server->ip)->toBe('203.0.113.20')
+        ->and($server->validation_logs)->toContain('ssh.example.com');
+});
