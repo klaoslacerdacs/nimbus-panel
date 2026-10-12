@@ -5,6 +5,7 @@ namespace App\Livewire\Security;
 use App\Models\OciConnection;
 use App\Models\OciStack;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
+use Illuminate\Validation\Rule;
 use Livewire\Component;
 
 class OciStackForm extends Component
@@ -36,7 +37,7 @@ class OciStackForm extends Component
     {
         $rules = [
             'name' => 'required|string|max:255',
-            'oci_connection_id' => 'required|exists:oci_connections,id',
+            'oci_connection_id' => ['required', Rule::exists('oci_connections', 'id')->where('team_id', currentTeam()->id)],
             'config_source' => 'required|string|in:template_zip,git_repo,compartment_discovery',
             'config_url' => 'nullable|required_if:config_source,template_zip,git_repo|url',
             'compartment_ocid' => 'required|string|max:255',
@@ -59,6 +60,7 @@ class OciStackForm extends Component
 
     public function createStack(): void
     {
+        $this->authorize('create', OciStack::class);
         $this->validate();
 
         try {
