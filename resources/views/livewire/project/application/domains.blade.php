@@ -436,5 +436,10 @@
             </template>
         </div>
     @endif
+    @if ($isCompose && count($composeServices) > 0)
+        @include('livewire.project.shared.cloudflare-tunnel-domain', ['tunnelResource' => $application, 'tunnelTargetId' => 'newDomainService', 'tunnelTargetLabel' => 'Service', 'tunnelTargetOptions' => collect($composeServices)->map(fn ($name) => ['value' => $name, 'label' => $name])->all()])
+    @elseif (! $isCompose)
+        @include('livewire.project.shared.cloudflare-tunnel-domain', ['tunnelResource' => $application])
+    @endif
     @include('livewire.project.shared.dns-provider-management')
 </div>

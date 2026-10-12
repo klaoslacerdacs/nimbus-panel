@@ -362,5 +362,6 @@
             </template>
         </div>
     @endif
+    @include('livewire.project.shared.cloudflare-tunnel-domain', ['tunnelResource' => $service, 'tunnelTargetId' => 'newServiceApplicationId', 'tunnelTargetLabel' => 'Service application', 'tunnelTargetOptions' => collect($serviceApps)->map(fn ($app) => ['value' => $app['id'], 'label' => $app['name'] ?? $app['id']])->all()])
     @include('livewire.project.shared.dns-provider-management')
 </div>

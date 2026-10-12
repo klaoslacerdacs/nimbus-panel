@@ -6,6 +6,7 @@ use App\Actions\Shared\CheckDomainDns;
 use App\Jobs\CheckDomainDnsJob;
 use App\Livewire\Concerns\InteractsWithCloudflareDomainConnect;
 use App\Livewire\Concerns\InteractsWithDnsProviders;
+use App\Livewire\Concerns\PublishesThroughCloudflareTunnel;
 use App\Livewire\Project\Shared\ConfigurationChecker;
 use App\Models\Application;
 use App\Models\Server;
@@ -28,6 +29,7 @@ class Domains extends Component
     use InteractsWithCloudflareDomainConnect;
     use InteractsWithDnsProviders;
     use ListensToTeamChannel;
+    use PublishesThroughCloudflareTunnel;
 
     protected bool $notifyRedirectUpdate = true;
 
@@ -176,6 +178,24 @@ class Domains extends Component
     {
         $this->authorize('view', $this->application);
         $this->loadDomainState();
+    }
+
+    protected function cloudflareTunnelServer(): ?Server
+    {
+        return $this->application->destination?->server;
+    }
+
+    protected function addCloudflareTunnelDomain(string $url): array
+    {
+        $service = $this->newDomainService;
+        $before = $this->currentDomainList($service);
+        $this->newDomain = $url;
+        $this->newDomainParts = DomainUrlParts::empty();
+        $this->newDomainPartsChanged = false;
+        $this->addDomain();
+        $this->application->refresh();
+
+        return $this->currentDomainList($service)->diff($before)->values()->all();
     }
 
     public function refreshDomains(bool $parseCompose = true): void

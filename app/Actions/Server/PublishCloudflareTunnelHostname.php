@@ -13,17 +13,20 @@ use RuntimeException;
 use SensitiveParameter;
 
 /**
- * Publishes `hostname → ssh://localhost:22` on the server's Cloudflare Tunnel and points the hostname's DNS at
- * the tunnel, so Coolify can SSH through `cloudflared access ssh`. Uses the team's OAuth connection, or a pasted API
+ * Publishes a hostname on the server's Cloudflare Tunnel (SSH for Coolify itself, or an app through Traefik) and
+ * points the hostname's DNS at the tunnel. Uses the team's OAuth connection, or a pasted API
  * token that is used once and never stored.
  */
-class PublishCloudflareSshHostname
+class PublishCloudflareTunnelHostname
 {
     use AsAction;
 
     private const string API = 'https://api.cloudflare.com/client/v4';
 
-    public function handle(Server $server, string $hostname, #[SensitiveParameter] CloudflareConnection|string $credential): void
+    /**
+     * @param  array<string, mixed>  $originRequest  cloudflared originRequest settings for this route
+     */
+    public function handle(Server $server, string $hostname, #[SensitiveParameter] CloudflareConnection|string $credential, string $service = 'ssh://localhost:22', array $originRequest = []): void
     {
         ['a' => $accountId, 't' => $tunnelId] = $this->tunnelIdentity($server);
 
@@ -46,7 +49,7 @@ class PublishCloudflareSshHostname
         $catchAll = $routes->first(fn (array $rule): bool => ! isset($rule['hostname'])) ?? ['service' => 'http_status:404'];
         $config['ingress'] = [
             ...$routes->filter(fn (array $rule): bool => isset($rule['hostname']))->values()->all(),
-            ['hostname' => $hostname, 'service' => 'ssh://localhost:22'],
+            ['hostname' => $hostname, 'service' => $service, ...($originRequest !== [] ? ['originRequest' => $originRequest] : [])],
             $catchAll,
         ];
         $this->call($api->put("/accounts/{$accountId}/cfd_tunnel/{$tunnelId}/configurations", ['config' => $config]), 'Cloudflare Tunnel Write');

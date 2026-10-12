@@ -3,7 +3,7 @@
 namespace App\Livewire\Server;
 
 use App\Actions\Server\ConfigureCloudflared;
-use App\Actions\Server\PublishCloudflareSshHostname;
+use App\Actions\Server\PublishCloudflareTunnelHostname;
 use App\Actions\Server\UpdateCloudflared;
 use App\Events\CloudflareTunnelChanged;
 use App\Models\CloudflareConnection;
@@ -184,7 +184,7 @@ class CloudflareTunnel extends Component
 
         try {
             $this->authorize('update', $this->server);
-            PublishCloudflareSshHostname::run($this->server, $this->fixSshHostname, $credential);
+            PublishCloudflareTunnelHostname::run($this->server, $this->fixSshHostname, $credential);
             auditLog('ui.server.cloudflare_tunnel.ssh_hostname_published', $this->auditContext(['ssh_domain' => $this->fixSshHostname]));
 
             CloudflareTunnelChanged::dispatch(['server_id' => $this->server->id, 'ssh_domain' => $this->fixSshHostname]);
