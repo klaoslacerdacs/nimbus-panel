@@ -147,3 +147,14 @@ it('cannot tamper with the listed instances from the browser', function () {
     Livewire::test(ImportOciServer::class)
         ->set('instances', [['id' => 'ocid1.instance.oc1..forged']]);
 })->throws(CannotUpdateLockedPropertyException::class);
+
+it('accepts a typed compartment OCID when compartments cannot be listed', function () {
+    app()->instance(OciClient::class, mockImportClient(['listCompartments' => ['error' => true, 'message' => 'NotAuthorized']]));
+
+    Livewire::test(ImportOciServer::class)
+        ->set('oci_connection_id', $this->connection->id)
+        ->set('compartment_id', 'ocid1.compartment.oc1..typed')
+        ->call('nextStep')
+        ->assertHasNoErrors()
+        ->assertSet('current_step', 2);
+});

@@ -75,3 +75,11 @@ it('offers the OCI destroy option only for servers backed by a stack', function 
     $this->stack->delete();
     Livewire::test(Delete::class, ['server_uuid' => $this->server->uuid])->assertDontSee('Also destroy OCI stack');
 });
+
+it('marks the stack as destroying when queuing the destroy, and never queues it twice', function () {
+    Livewire::test(Delete::class, ['server_uuid' => $this->server->uuid])
+        ->call('delete', 'password', ['delete_from_oci']);
+
+    expect($this->stack->fresh()->status)->toBe('destroying');
+    Queue::assertPushed(OciStackDestroyJob::class, 1);
+});

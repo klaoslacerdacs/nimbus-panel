@@ -1,5 +1,6 @@
 <?php
 
+use App\Jobs\OciStackDestroyJob;
 use App\Jobs\OciStackProvisionJob;
 use App\Models\OciStack;
 use App\Services\OciClient;
@@ -45,7 +46,7 @@ it('marks failed when plan job creation fails', function () {
 
     $mock = Mockery::mock(OciClient::class);
     $mock->shouldReceive('createStack')->once()->andReturn(['stack_id' => 'ocid1.stack.test']);
-    $mock->shouldReceive('runStackJob')->with(Mockery::any(), 'ocid1.stack.test', 'PLAN')->once()->andReturn(['error' => 'bridge error']);
+    $mock->shouldReceive('runStackJob')->with(Mockery::any(), 'ocid1.stack.test', 'PLAN')->once()->andReturn(['error' => 'plan job rejected']);
     $mock->shouldNotReceive('runStackJob', Mockery::any(), Mockery::any(), 'APPLY');
     app()->instance(OciClient::class, $mock);
 
@@ -123,4 +124,18 @@ it('ships an environment.zip identical to the Terraform template sources', funct
         expect($zip->getFromName(basename($file)))->toBe(file_get_contents($file), basename($file).' is out of sync — rebuild environment.zip');
     }
     expect($zip->numFiles)->toBe(count(glob(base_path('terraform/templates/environment/*.tf'))));
+});
+
+it('destroys in the stack region, not the connection home region', function () {
+    $stack = OciStack::factory()->create(['status' => 'destroying', 'stack_ocid' => 'ocid1.stack.d', 'region' => 'sa-saopaulo-1']);
+    $stack->ociConnection->update(['region' => 'us-ashburn-1']);
+
+    $mock = Mockery::mock(OciClient::class);
+    $mock->shouldReceive('runStackJob')->once()
+        ->with(Mockery::on(fn ($config) => $config['region'] === 'sa-saopaulo-1'), 'ocid1.stack.d', 'DESTROY', true)
+        ->andReturn(['error' => true]);
+
+    (new OciStackDestroyJob($stack))->handle($mock);
+
+    expect($stack->fresh()->status)->toBe('destroy_failed');
 });
