@@ -44,6 +44,13 @@ class Upgrade extends Component
         $this->latestVersion = get_latest_version_of_coolify();
         $this->devMode = isDev();
 
+        // Nimbus: upgrading would install upstream Coolify over this panel.
+        if (! config('constants.nimbus.allow_upstream_update')) {
+            $this->isUpgradeAvailable = false;
+
+            return;
+        }
+
         if ($this->devMode) {
             $this->isUpgradeAvailable = true;
 
@@ -67,6 +74,11 @@ class Upgrade extends Component
         try {
             if (! isInstanceAdmin()) {
                 abort(403);
+            }
+            if (! config('constants.nimbus.allow_upstream_update')) {
+                $this->dispatch('error', 'Upstream Coolify updates are disabled in Nimbus Panel.');
+
+                return;
             }
             if ($this->updateInProgress) {
                 return;
