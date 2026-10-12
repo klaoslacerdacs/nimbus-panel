@@ -59,7 +59,8 @@ class OciConnectionEdit extends Component
     {
         $rules = [
             'name' => 'required|string|max:255',
-            'authentication_method' => 'required|string|in:api_key,instance_principal',
+            // ponytail: only api_key until the native signer implements Instance Principal (OciRequestSigner throws 501).
+            'authentication_method' => 'required|string|in:api_key',
             'region' => 'required|string|max:50',
             'compartment_ocid' => 'nullable|string|max:255',
         ];

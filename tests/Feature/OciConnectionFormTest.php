@@ -144,14 +144,9 @@ it('denies addConnection to non-admin team members', function () {
     $this->assertDatabaseMissing('oci_connections', ['name' => 'Sneaky Connection']);
 });
 
-it('creates a connection using instance_principal auth', function () {
+it('rejects instance_principal auth until the native signer supports it', function () {
     $mock = Mockery::mock(OciClient::class);
-    $mock->shouldReceive('validateConnection')
-        ->once()
-        ->with(Mockery::on(fn ($config) => ($config['auth_mode'] ?? null) === 'instance_principal'
-            && ! isset($config['key_content'])   // no PEM for instance_principal
-            && ! isset($config['tenancy_id'])))
-        ->andReturn(['ok' => true]);
+    $mock->shouldNotReceive('validateConnection');
     app()->instance(OciClient::class, $mock);
 
     Livewire::test(OciConnectionForm::class)
@@ -159,10 +154,7 @@ it('creates a connection using instance_principal auth', function () {
         ->set('authentication_method', 'instance_principal')
         ->set('region', 'us-ashburn-1')
         ->call('addConnection')
-        ->assertDispatched('connectionAdded');
+        ->assertHasErrors(['authentication_method']);
 
-    $this->assertDatabaseHas('oci_connections', [
-        'name' => 'Instance Principal Conn',
-        'team_id' => $this->team->id,
-    ]);
+    $this->assertDatabaseMissing('oci_connections', ['name' => 'Instance Principal Conn']);
 });

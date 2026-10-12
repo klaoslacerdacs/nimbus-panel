@@ -5,7 +5,7 @@
         <x-forms.listbox required live id="authentication_method" label="Authentication method"
             :options="[
                 ['value' => 'api_key', 'label' => 'API Key'],
-                ['value' => 'instance_principal', 'label' => 'Instance Principal'],
+                ['value' => 'instance_principal', 'label' => 'Instance Principal (coming soon)', 'disabled' => true],
             ]" />
 
         <x-forms.listbox required searchable id="region" label="Region"
