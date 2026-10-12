@@ -7,6 +7,7 @@ use App\Models\Server;
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Sleep;
 use Lorisleiva\Actions\Concerns\AsAction;
 use RuntimeException;
 use SensitiveParameter;
@@ -60,6 +61,25 @@ class PublishCloudflareSshHostname
         $existing
             ? $this->call($api->put("/zones/{$zoneId}/dns_records/{$existing}", $record))
             : $this->call($api->post("/zones/{$zoneId}/dns_records", $record));
+
+        $this->waitForPublicDns($hostname);
+    }
+
+    /**
+     * Looking the hostname up before Cloudflare serves it makes resolvers cache "no such host" for the zone's
+     * negative TTL (30 min by default), so the SSH check would keep failing. Wait on 1.1.1.1 (DoH) first.
+     */
+    private function waitForPublicDns(string $hostname, int $seconds = 60): void
+    {
+        $deadline = now()->addSeconds($seconds);
+        do {
+            $answer = rescue(fn () => Http::withHeaders(['accept' => 'application/dns-json'])->timeout(5)
+                ->get('https://cloudflare-dns.com/dns-query', ['name' => $hostname, 'type' => 'A'])->json('Answer'), null, report: false);
+            if (! empty($answer)) {
+                return;
+            }
+            Sleep::for(3)->seconds();
+        } while (now()->isBefore($deadline));
     }
 
     /**

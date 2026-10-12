@@ -15,12 +15,14 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Sleep;
 use Livewire\Livewire;
 use Spatie\Activitylog\Models\Activity;
 
 uses(RefreshDatabase::class);
 
 beforeEach(function () {
+    Sleep::fake(syncWithCarbon: true);
     Server::flushIdentityMap();
     Queue::fake();
     Storage::fake('ssh-keys');
@@ -154,6 +156,7 @@ function cloudflareFixHttpFake(): void
         'api.cloudflare.com/client/v4/zones?name=example.com' => ['success' => true, 'result' => [['id' => 'zone789']]],
         'api.cloudflare.com/client/v4/zones/zone789/dns_records?*' => ['success' => true, 'result' => []],
         'api.cloudflare.com/client/v4/zones/zone789/dns_records' => ['success' => true, 'result' => ['id' => 'rec1']],
+        'cloudflare-dns.com/*' => ['Status' => 0, 'Answer' => [['data' => '104.21.82.118']]],
     ]);
 }
 
@@ -381,4 +384,21 @@ test('fix automatically refuses a tunnel configured by a local file', function (
         ->assertDispatched('error');
 
     Http::assertNotSent(fn ($request) => $request->method() === 'PUT');
+});
+
+test('waits until the new SSH hostname resolves publicly before checking SSH', function () {
+    actingAsCloudflareTunnelUpdateUser($this->team, 'owner');
+    $this->server->update(['ip' => '163.176.137.233']);
+    $this->server->settings->update(['is_cloudflare_tunnel' => false, 'is_reachable' => true, 'is_usable' => true]);
+    cloudflareFixProcessFake(sshThroughTunnelWorks: true);
+    // Registered first so it wins over the resolving answer in cloudflareFixHttpFake().
+    Http::fake(['cloudflare-dns.com/*' => Http::sequence()->push(['Status' => 3])->push(['Status' => 3])->push(['Status' => 0, 'Answer' => [['data' => '104.21.82.118']]])]);
+    cloudflareFixHttpFake();
+
+    Livewire::test(CloudflareTunnel::class, ['server_uuid' => $this->server->uuid])
+        ->set('fixSshHostname', 'srv-oci-coolify.example.com')
+        ->update(calls: [['method' => 'fixSshThroughTunnel', 'params' => [], 'path' => '']], updates: ['cloudflareApiToken' => 'cf-api-token'])
+        ->assertDispatched('success');
+
+    Sleep::assertSleptTimes(2);
 });

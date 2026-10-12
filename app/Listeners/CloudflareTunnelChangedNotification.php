@@ -72,7 +72,9 @@ class CloudflareTunnelChangedNotification
             $this->server->update([
                 'ip' => $previousIp,
                 'ip_previous' => $this->server->fresh()->ip_previous,
-                'validation_logs' => "The tunnel container is running, but SSH through {$ssh_domain} failed, so Coolify kept using the direct address. Publish {$ssh_domain} in the tunnel as ssh://localhost:22 and run the setup again. Error: ".str((string) $check['error'])->limit(300),
+                'validation_logs' => (str_contains((string) $check['error'], 'no such host')
+                    ? "The tunnel container is running, but {$ssh_domain} does not resolve from this Coolify server yet (DNS resolvers cache a missing name for up to 30 minutes), so Coolify kept using the direct address. Try again in a few minutes."
+                    : "The tunnel container is running, but SSH through {$ssh_domain} failed, so Coolify kept using the direct address. Publish {$ssh_domain} in the tunnel as ssh://localhost:22 and run the setup again.").' Error: '.str((string) $check['error'])->limit(300),
             ]);
             SshMultiplexingHelper::removeMuxFile($this->server->fresh());
             $this->server->fresh()->validateConnection();
