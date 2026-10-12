@@ -35,9 +35,7 @@ class OciClient
     public function validateConnection(array $config): array
     {
         return $this->guard(function () use ($config): array {
-            $tenancyId = ($config['auth_mode'] ?? null) === 'instance_principal'
-                ? app(OciInstancePrincipal::class)->tenancyId()
-                : $config['tenancy_id'];
+            $tenancyId = OciInstancePrincipal::resolveTenancy($config);
             $tenancy = $this->api->get($config, 'identity', $config['region'], "/20160918/tenancies/{$tenancyId}");
 
             return ['ok' => true, 'tenancy_ocid' => $tenancy['id'] ?? $tenancyId, 'tenancy_name' => $tenancy['name'] ?? null];

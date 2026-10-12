@@ -25,7 +25,7 @@ class OciComputeService
     public function listCompartments(array $config, string $region): array
     {
         $rows = $this->api->paginate($config, 'identity', $region, self::IAAS.'/compartments', [
-            'compartmentId' => $config['tenancy_id'],
+            'compartmentId' => OciInstancePrincipal::resolveTenancy($config),
         ]);
 
         return array_map(fn (array $c): array => [

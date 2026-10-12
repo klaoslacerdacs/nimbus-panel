@@ -1,6 +1,7 @@
 <?php
 
 use App\Services\Oci\OciApiClient;
+use App\Services\Oci\OciComputeService;
 use App\Services\Oci\OciException;
 use App\Services\Oci\OciInstancePrincipal;
 use App\Services\Oci\OciRequestSigner;
@@ -43,7 +44,10 @@ function fakeOciMetadata(array $identity, string $token, array $extra = []): voi
     ], $extra));
 }
 
-beforeEach(fn () => OciInstancePrincipal::forget());
+beforeEach(function (): void {
+    OciInstancePrincipal::forget();
+    Http::preventStrayRequests();
+});
 
 it('federates the instance certificate into a security token signed with the session key', function (): void {
     $identity = instanceIdentity();
@@ -112,4 +116,15 @@ it('re-federates once when OCI rejects a cached token', function (): void {
 
     expect($result)->toBe(['id' => 'ok']);
     Http::assertSentCount(12); // 2 federations (5 each) + 2 API calls
+});
+
+it('lists compartments with the federated tenancy when no tenancy_id is configured', function (): void {
+    fakeOciMetadata(instanceIdentity(), securityToken(time() + 1200), [
+        'identity.sa-saopaulo-1.oci.oraclecloud.com/*' => Http::response([]),
+    ]);
+
+    app(OciComputeService::class)->listCompartments(['auth_mode' => 'instance_principal', 'region' => 'sa-saopaulo-1'], 'sa-saopaulo-1');
+
+    Http::assertSent(fn (Request $request) => str_contains($request->url(), 'identity.sa-saopaulo-1.oci.oraclecloud.com')
+        && str_contains(urldecode($request->url()), 'compartmentId='.IP_TENANCY));
 });

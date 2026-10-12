@@ -41,6 +41,18 @@ class OciInstancePrincipal
         return $this->session()['tenancy'];
     }
 
+    /**
+     * Tenancy for any auth mode: API keys carry it; Instance Principal reads it from the host certificate.
+     *
+     * @param  array<string, mixed>  $config
+     */
+    public static function resolveTenancy(array $config): string
+    {
+        return ($config['auth_mode'] ?? 'api_key') === 'instance_principal'
+            ? app(self::class)->tenancyId()
+            : (string) $config['tenancy_id'];
+    }
+
     public static function forget(): void
     {
         self::$session = null;
