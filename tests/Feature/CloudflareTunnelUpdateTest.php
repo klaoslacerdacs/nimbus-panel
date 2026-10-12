@@ -10,6 +10,7 @@ use App\Models\Team;
 use App\Models\User;
 use App\Support\RemoteProcessCommand;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
@@ -124,4 +125,102 @@ test('automated setup accepts a hostname pasted with its https:// prefix', funct
         ->set('ssh_domain', 'https://ssh-server.example.com/')
         ->call('automatedCloudflareConfig')
         ->assertHasNoErrors();
+});
+
+function cloudflareFixProcessFake(bool $sshThroughTunnelWorks): void
+{
+    $tunnelToken = base64_encode(json_encode(['a' => 'acc123', 't' => 'tun456', 's' => 'secret']));
+    Process::fake(function ($process) use ($tunnelToken, $sshThroughTunnelWorks) {
+        return match (true) {
+            str_contains($process->command, 'TUNNEL_TOKEN') => Process::result(output: "      - TUNNEL_TOKEN={$tunnelToken}"),
+            str_contains($process->command, 'coolify-cloudflared') => Process::result(output: 'healthy'),
+            str_contains($process->command, 'cloudflared access ssh') && ! $sshThroughTunnelWorks => Process::result(output: '', errorOutput: 'websocket: bad handshake', exitCode: 255),
+            default => Process::result(output: ''),
+        };
+    });
+}
+
+function cloudflareFixHttpFake(): void
+{
+    Http::fake([
+        'api.cloudflare.com/client/v4/accounts/acc123/cfd_tunnel/tun456/configurations' => Http::sequence()
+            ->push(['success' => true, 'result' => ['config' => ['ingress' => [
+                ['hostname' => 'app.example.com', 'service' => 'http://localhost:80'],
+                ['service' => 'http_status:404'],
+            ]]]])
+            ->push(['success' => true, 'result' => []]),
+        'api.cloudflare.com/client/v4/zones?name=example.com' => ['success' => true, 'result' => [['id' => 'zone789']]],
+        'api.cloudflare.com/client/v4/zones/zone789/dns_records?*' => ['success' => true, 'result' => []],
+        'api.cloudflare.com/client/v4/zones/zone789/dns_records' => ['success' => true, 'result' => ['id' => 'rec1']],
+    ]);
+}
+
+test('fix automatically publishes the SSH hostname, creates DNS and switches SSH to the tunnel', function () {
+    actingAsCloudflareTunnelUpdateUser($this->team, 'owner');
+    $this->server->update(['ip' => '163.176.137.233']);
+    $this->server->settings->update(['is_cloudflare_tunnel' => false, 'is_reachable' => true, 'is_usable' => true]);
+    cloudflareFixProcessFake(sshThroughTunnelWorks: true);
+    cloudflareFixHttpFake();
+
+    Livewire::test(CloudflareTunnel::class, ['server_uuid' => $this->server->uuid])
+        ->set('fixSshHostname', 'srv-oci-coolify.example.com')
+        ->update(calls: [['method' => 'fixSshThroughTunnel', 'params' => [], 'path' => '']], updates: ['cloudflareApiToken' => 'cf-api-token'])
+        ->assertDispatched('success')
+        ->assertSet('cloudflareApiToken', null);
+
+    Http::assertSent(fn ($request) => $request->method() === 'PUT'
+        && str_contains($request->url(), 'cfd_tunnel/tun456/configurations')
+        && $request['config']['ingress'] === [
+            ['hostname' => 'app.example.com', 'service' => 'http://localhost:80'],
+            ['hostname' => 'srv-oci-coolify.example.com', 'service' => 'ssh://localhost:22'],
+            ['service' => 'http_status:404'],
+        ]
+        && $request->header('Authorization')[0] === 'Bearer cf-api-token');
+    Http::assertSent(fn ($request) => $request->method() === 'POST'
+        && $request['type'] === 'CNAME' && $request['content'] === 'tun456.cfargotunnel.com' && $request['proxied'] === true);
+
+    expect((bool) $this->server->fresh()->settings->is_cloudflare_tunnel)->toBeTrue()
+        ->and($this->server->fresh()->ip)->toBe('srv-oci-coolify.example.com');
+});
+
+test('fix automatically keeps direct SSH when the tunnel hostname does not work yet', function () {
+    actingAsCloudflareTunnelUpdateUser($this->team, 'owner');
+    $this->server->update(['ip' => '163.176.137.233']);
+    $this->server->settings->update(['is_cloudflare_tunnel' => false, 'is_reachable' => true, 'is_usable' => true]);
+    cloudflareFixProcessFake(sshThroughTunnelWorks: false);
+    cloudflareFixHttpFake();
+
+    Livewire::test(CloudflareTunnel::class, ['server_uuid' => $this->server->uuid])
+        ->set('fixSshHostname', 'srv-oci-coolify.example.com')
+        ->update(calls: [['method' => 'fixSshThroughTunnel', 'params' => [], 'path' => '']], updates: ['cloudflareApiToken' => 'cf-api-token'])
+        ->assertDispatched('error');
+
+    expect((bool) $this->server->fresh()->settings->is_cloudflare_tunnel)->toBeFalse()
+        ->and($this->server->fresh()->ip)->toBe('163.176.137.233');
+});
+
+test('fix automatically surfaces Cloudflare API errors without touching the server', function () {
+    actingAsCloudflareTunnelUpdateUser($this->team, 'owner');
+    $this->server->update(['ip' => '163.176.137.233']);
+    $this->server->settings->update(['is_cloudflare_tunnel' => false, 'is_reachable' => true, 'is_usable' => true]);
+    cloudflareFixProcessFake(sshThroughTunnelWorks: true);
+    Http::fake(['api.cloudflare.com/*' => Http::response(['success' => false, 'errors' => [['message' => 'Authentication error']]], 403)]);
+
+    Livewire::test(CloudflareTunnel::class, ['server_uuid' => $this->server->uuid])
+        ->set('fixSshHostname', 'srv-oci-coolify.example.com')
+        ->update(calls: [['method' => 'fixSshThroughTunnel', 'params' => [], 'path' => '']], updates: ['cloudflareApiToken' => 'bad-token'])
+        ->assertDispatched('error');
+
+    expect($this->server->fresh()->ip)->toBe('163.176.137.233');
+});
+
+test('members cannot run the automatic tunnel fix', function () {
+    actingAsCloudflareTunnelUpdateUser($this->team, 'member');
+    Http::fake();
+
+    Livewire::test(CloudflareTunnel::class, ['server_uuid' => $this->server->uuid])
+        ->set('fixSshHostname', 'srv-oci-coolify.example.com')
+        ->update(calls: [['method' => 'fixSshThroughTunnel', 'params' => [], 'path' => '']], updates: ['cloudflareApiToken' => 'cf-api-token']);
+
+    Http::assertNothingSent();
 });

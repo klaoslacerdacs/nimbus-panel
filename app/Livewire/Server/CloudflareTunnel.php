@@ -3,7 +3,9 @@
 namespace App\Livewire\Server;
 
 use App\Actions\Server\ConfigureCloudflared;
+use App\Actions\Server\PublishCloudflareSshHostname;
 use App\Actions\Server\UpdateCloudflared;
+use App\Events\CloudflareTunnelChanged;
 use App\Models\Server;
 use App\Traits\ListensToTeamChannel;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
@@ -25,6 +27,17 @@ class CloudflareTunnel extends Component
 
     #[Validate(['required', 'boolean'])]
     public bool $isCloudflareTunnelsEnabled;
+
+    /** Nimbus "fix automatically": SSH hostname to publish on the tunnel. */
+    public string $fixSshHostname = '';
+
+    /** Used once for the Cloudflare API, never stored or sent back to the browser. */
+    public ?string $cloudflareApiToken = null;
+
+    public function dehydrate(): void
+    {
+        $this->cloudflareApiToken = null;
+    }
 
     public function getListeners()
     {
@@ -108,6 +121,38 @@ class CloudflareTunnel extends Component
                 'ssh_domain' => (string) $this->ssh_domain,
             ]));
             $this->dispatch('activityMonitor', $activity->id);
+        } catch (\Throwable $e) {
+            return handleError($e, $this);
+        }
+    }
+
+    /**
+     * One-click fix: publish the SSH hostname on the tunnel + DNS through the Cloudflare API, then let the
+     * tunnel-finished check verify SSH through it before switching (it falls back to direct SSH on failure).
+     */
+    public function fixSshThroughTunnel()
+    {
+        $this->fixSshHostname = trim(str_replace(['https://', 'http://', '/'], '', strtolower($this->fixSshHostname)));
+        $this->validate([
+            'fixSshHostname' => ['required', 'string', 'max:253', 'regex:/^(?=.{4,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/'],
+            'cloudflareApiToken' => ['required', 'string', 'max:255'],
+        ], [
+            'fixSshHostname.regex' => 'Enter a full hostname on a domain of your Cloudflare account, e.g. ssh-server.example.com.',
+        ]);
+        $apiToken = $this->cloudflareApiToken;
+
+        try {
+            $this->authorize('update', $this->server);
+            PublishCloudflareSshHostname::run($this->server, $this->fixSshHostname, $apiToken);
+            auditLog('ui.server.cloudflare_tunnel.ssh_hostname_published', $this->auditContext(['ssh_domain' => $this->fixSshHostname]));
+
+            CloudflareTunnelChanged::dispatch(['server_id' => $this->server->id, 'ssh_domain' => $this->fixSshHostname]);
+            $this->server->refresh();
+            $this->isCloudflareTunnelsEnabled = (bool) $this->server->settings->is_cloudflare_tunnel;
+
+            $this->isCloudflareTunnelsEnabled
+                ? $this->dispatch('success', "SSH now goes through the tunnel at {$this->fixSshHostname}.")
+                : $this->dispatch('error', 'The hostname was published, but SSH through it does not work yet. Coolify kept the direct address.', e((string) $this->server->validation_logs));
         } catch (\Throwable $e) {
             return handleError($e, $this);
         }
