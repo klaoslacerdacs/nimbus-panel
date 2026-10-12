@@ -25,10 +25,12 @@ class OciMonitoringService
         $dim = "resourceId = \"{$instanceId}\"";
 
         // ponytail: 4 sequential POSTs — parallelize with Guzzle concurrent promises when latency matters
-        $cpu = $this->query($config, $compartmentId, $region, 'oci_compute', "CpuUtilization[5m]{{$dim}}.mean()", $start, $end);
+        // Ampere/ARM shapes don't report CpuUtilization in oci_compute (hypervisor); try agent first
+        $cpu = $this->query($config, $compartmentId, $region, 'oci_computeagent', "CpuUtilization[5m]{{$dim}}.mean()", $start, $end)
+            ?? $this->query($config, $compartmentId, $region, 'oci_compute', "CpuUtilization[5m]{{$dim}}.mean()", $start, $end);
         $memory = $this->query($config, $compartmentId, $region, 'oci_computeagent', "MemoryUtilization[5m]{{$dim}}.mean()", $start, $end);
-        $netIn = $this->query($config, $compartmentId, $region, 'oci_computeagent', "NetworkBytesIn[5m]{{$dim}}.mean()", $start, $end);
-        $netOut = $this->query($config, $compartmentId, $region, 'oci_computeagent', "NetworkBytesOut[5m]{{$dim}}.mean()", $start, $end);
+        $netIn = $this->query($config, $compartmentId, $region, 'oci_computeagent', "NetworksBytesIn[5m]{{$dim}}.mean()", $start, $end);
+        $netOut = $this->query($config, $compartmentId, $region, 'oci_computeagent', "NetworksBytesOut[5m]{{$dim}}.mean()", $start, $end);
 
         return [
             'cpu_percent' => $cpu !== null ? round($cpu, 2) : null,

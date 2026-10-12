@@ -141,6 +141,11 @@ class OciBridgeClient
         return $this->guard(fn () => $this->compute->instanceAction($config, $instanceId, $region, $action));
     }
 
+    public function getInstancePrimaryVnic(array $config, string $compartmentId, string $instanceId, string $region): array
+    {
+        return $this->guard(fn () => $this->compute->getInstancePrimaryVnic($config, $compartmentId, $instanceId, $region));
+    }
+
     public function listVolumeAttachments(array $config, string $compartmentId, string $instanceId, string $region): array
     {
         return $this->guard(fn () => $this->compute->listVolumeAttachments($config, $compartmentId, $instanceId, $region));
@@ -156,6 +161,16 @@ class OciBridgeClient
         return $this->guard(fn () => $this->compute->detachVolume($config, $volumeAttachmentId, $region));
     }
 
+    public function createVolume(array $config, string $compartmentId, string $availabilityDomain, string $displayName, int $sizeInGBs, string $region): array
+    {
+        return $this->guard(fn () => $this->compute->createVolume($config, $compartmentId, $availabilityDomain, $displayName, $sizeInGBs, $region));
+    }
+
+    public function listVolumes(array $config, string $compartmentId, string $region): array
+    {
+        return $this->guard(fn () => $this->compute->listVolumes($config, $compartmentId, $region));
+    }
+
     public function listLoadBalancers(array $config, string $compartmentId, string $region): array
     {
         return $this->guard(fn () => $this->compute->listLoadBalancers($config, $compartmentId, $region));
@@ -164,6 +179,16 @@ class OciBridgeClient
     public function listAutonomousDatabases(array $config, string $compartmentId, string $region): array
     {
         return $this->guard(fn () => $this->compute->listAutonomousDatabases($config, $compartmentId, $region));
+    }
+
+    public function listRouteTables(array $config, string $compartmentId, string $vcnId, string $region): array
+    {
+        return $this->guard(fn () => $this->compute->listRouteTables($config, $compartmentId, $vcnId, $region));
+    }
+
+    public function listBuckets(array $config, string $compartmentId, string $region): array
+    {
+        return $this->guard(fn () => $this->compute->listBuckets($config, $compartmentId, $region));
     }
 
     /**

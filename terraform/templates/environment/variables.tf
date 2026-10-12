@@ -11,25 +11,22 @@ variable "create_compartment" {
 variable "compartment_ocid" {
   type    = string
   default = ""
-  validation {
-    condition     = var.create_compartment || var.compartment_ocid != ""
-    error_message = "compartment_ocid é obrigatório quando create_compartment = false."
-  }
+  # ponytail: cross-variable validation removed — OCI RM Terraform < 1.9 doesn't support it
 }
 
 variable "compartment_name" {
   type    = string
   default = ""
-  validation {
-    condition     = !var.create_compartment || var.compartment_name != ""
-    error_message = "compartment_name é obrigatório quando create_compartment = true."
-  }
+}
+
+variable "tenancy_ocid" {
+  type        = string
+  description = "Tenancy OCID — used as fallback parent when creating a new compartment"
 }
 
 variable "parent_compartment_ocid" {
   type    = string
   default = ""
-  # ponytail: if empty, OCI provider uses the tenancy root from Instance Principal auth
 }
 
 variable "create_network" {
@@ -40,19 +37,11 @@ variable "create_network" {
 variable "vcn_ocid" {
   type    = string
   default = ""
-  validation {
-    condition     = var.create_network || var.vcn_ocid != ""
-    error_message = "vcn_ocid é obrigatório quando create_network = false."
-  }
 }
 
 variable "subnet_ocid" {
   type    = string
   default = ""
-  validation {
-    condition     = var.create_network || var.subnet_ocid != ""
-    error_message = "subnet_ocid é obrigatório quando create_network = false."
-  }
 }
 
 variable "vcn_display_name" {
@@ -64,7 +53,7 @@ variable "vcn_dns_label" {
   type    = string
   default = "nimbus"
   validation {
-    condition     = !var.create_network || can(regex("^[a-z][a-z0-9]{0,14}$", var.vcn_dns_label))
+    condition     = can(regex("^[a-z][a-z0-9]{0,14}$", var.vcn_dns_label))
     error_message = "vcn_dns_label deve ter no máximo 15 caracteres alfanuméricos, iniciando com letra."
   }
 }
@@ -81,7 +70,6 @@ variable "vcn_cidr" {
 variable "subnet_cidr" {
   type    = string
   default = ""
-  # ponytail: auto-derived via cidrsubnet(var.vcn_cidr, 8, 0) when empty
 }
 
 variable "subnet_display_name" {

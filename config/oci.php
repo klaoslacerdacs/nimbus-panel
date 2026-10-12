@@ -16,6 +16,7 @@ return [
         'resourcemanager' => 'https://resourcemanager.{region}.oraclecloud.com',
         'loadbalancer' => 'https://iaas.{region}.oraclecloud.com',
         'database' => 'https://database.{region}.oraclecloud.com',
+        'objectstorage' => 'https://objectstorage.{region}.oraclecloud.com',
     ],
 
     // Canonical commercial regions (frozen from the SDK list). listRegions() reads this.

@@ -36,7 +36,7 @@ locals {
 resource "oci_identity_compartment" "new" {
   count = var.create_compartment ? 1 : 0
 
-  compartment_id = var.parent_compartment_ocid != "" ? var.parent_compartment_ocid : null
+  compartment_id = var.parent_compartment_ocid != "" ? var.parent_compartment_ocid : var.tenancy_ocid
   name           = var.compartment_name
   description    = "Managed by Nimbus Panel"
   freeform_tags  = local.tags

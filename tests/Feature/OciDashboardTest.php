@@ -27,6 +27,9 @@ function mockClient(array $overrides = []): MockInterface
         'listVolumeAttachments' => [],
         'listLoadBalancers' => [],
         'listAutonomousDatabases' => [],
+        'listRouteTables' => [],
+        'listBuckets' => [],
+        'listVolumes' => [],
     ];
 
     $mock = Mockery::mock(OciBridgeClient::class);
@@ -71,7 +74,7 @@ it('renders without error when instance is provisioned', function () {
     $mock = mockClient(['getInstanceStatus' => ['lifecycle_state' => 'RUNNING'], 'getInstanceMetrics' => ['cpu_percent' => 12.5, 'memory_percent' => null, 'net_bytes_in' => null, 'net_bytes_out' => null], 'listNsgRules' => [['id' => 'rule1', 'protocol' => '6', 'port_min' => 22, 'port_max' => 22, 'source' => '0.0.0.0/0', 'description' => '']]]);
     app()->instance(OciBridgeClient::class, $mock);
 
-    Livewire::test(OciDashboard::class, ['server' => $this->server])
+    Livewire::test(OciDashboard::class, ['server_uuid' => $this->server->uuid])
         ->assertStatus(200)
         ->assertSee('RUNNING');
 });
@@ -79,27 +82,27 @@ it('renders without error when instance is provisioned', function () {
 it('shows provisioning progress when stack is applying', function () {
     $this->stack->update(['status' => 'applying', 'last_plan_summary' => 'Applying Terraform...']);
 
-    Livewire::test(OciDashboard::class, ['server' => $this->server])
+    Livewire::test(OciDashboard::class, ['server_uuid' => $this->server->uuid])
         ->assertStatus(200)
-        ->assertSee('Provisioning in Progress')
+        ->assertSee('Provisioning in progress')
         ->assertSee('Applying Terraform...');
 });
 
 it('shows failed banner when stack failed', function () {
     $this->stack->update(['status' => 'failed', 'last_plan_summary' => 'Apply failed or timed out']);
 
-    Livewire::test(OciDashboard::class, ['server' => $this->server])
+    Livewire::test(OciDashboard::class, ['server_uuid' => $this->server->uuid])
         ->assertStatus(200)
-        ->assertSee('Operation Failed')
+        ->assertSee('Operation failed')
         ->assertSee('Apply failed or timed out');
 });
 
 it('shows destroying banner when stack is destroying', function () {
     $this->stack->update(['status' => 'destroying', 'last_plan_summary' => 'Running Terraform destroy...']);
 
-    Livewire::test(OciDashboard::class, ['server' => $this->server])
+    Livewire::test(OciDashboard::class, ['server_uuid' => $this->server->uuid])
         ->assertStatus(200)
-        ->assertSee('Destroying Resources');
+        ->assertSee('Destroying resources');
 });
 
 it('denies power actions to team members without admin role', function () {
@@ -113,7 +116,7 @@ it('denies power actions to team members without admin role', function () {
     $mock = mockClient();
     app()->instance(OciBridgeClient::class, $mock);
 
-    Livewire::test(OciDashboard::class, ['server' => $this->server])
+    Livewire::test(OciDashboard::class, ['server_uuid' => $this->server->uuid])
         ->call('startInstance')
         ->assertForbidden();
 });
@@ -126,7 +129,7 @@ it('adds NSG rule via bridge client', function () {
         ->andReturn(['success' => true]);
     app()->instance(OciBridgeClient::class, $mock);
 
-    Livewire::test(OciDashboard::class, ['server' => $this->server])
+    Livewire::test(OciDashboard::class, ['server_uuid' => $this->server->uuid])
         ->set('newRule.protocol', 'TCP')
         ->set('newRule.port_min', '443')
         ->set('newRule.port_max', '443')
@@ -143,7 +146,7 @@ it('removes NSG rule via bridge client', function () {
         ->andReturn(['success' => true]);
     app()->instance(OciBridgeClient::class, $mock);
 
-    Livewire::test(OciDashboard::class, ['server' => $this->server])
+    Livewire::test(OciDashboard::class, ['server_uuid' => $this->server->uuid])
         ->call('removeNsgRule', 'rule-abc')
         ->assertHasNoErrors();
 });
@@ -156,7 +159,7 @@ it('triggers stop confirmation then calls bridge on confirm', function () {
         ->andReturn(['lifecycle_state' => 'STOPPING']);
     app()->instance(OciBridgeClient::class, $mock);
 
-    Livewire::test(OciDashboard::class, ['server' => $this->server])
+    Livewire::test(OciDashboard::class, ['server_uuid' => $this->server->uuid])
         ->call('confirmStop')
         ->assertSet('confirmingStop', true)
         ->call('stopInstance')
@@ -164,7 +167,7 @@ it('triggers stop confirmation then calls bridge on confirm', function () {
 });
 
 it('cancel clears confirmation flags', function () {
-    Livewire::test(OciDashboard::class, ['server' => $this->server])
+    Livewire::test(OciDashboard::class, ['server_uuid' => $this->server->uuid])
         ->set('confirmingStop', true)
         ->call('cancelConfirm')
         ->assertSet('confirmingStop', false);
@@ -179,9 +182,9 @@ it('loads and displays block volume attachments', function () {
     $mock = mockClient(['listVolumeAttachments' => $volumeData]);
     app()->instance(OciBridgeClient::class, $mock);
 
-    Livewire::test(OciDashboard::class, ['server' => $this->server])
+    Livewire::test(OciDashboard::class, ['server_uuid' => $this->server->uuid])
         ->assertSet('volumeAttachments', $volumeData)
-        ->assertSee('Block Volumes');
+        ->assertSee('Block volumes');
 });
 
 it('attaches a block volume via bridge client', function () {
@@ -192,7 +195,7 @@ it('attaches a block volume via bridge client', function () {
         ->andReturn(['id' => 'ocid1.volumeattachment.oc1..new', 'volume_id' => 'ocid1.volume.oc1..newvol', 'lifecycle_state' => 'ATTACHING', 'attachment_type' => 'paravirtualized']);
     app()->instance(OciBridgeClient::class, $mock);
 
-    Livewire::test(OciDashboard::class, ['server' => $this->server])
+    Livewire::test(OciDashboard::class, ['server_uuid' => $this->server->uuid])
         ->set('attachVolumeOcid', 'ocid1.volume.oc1..newvol')
         ->call('attachVolume')
         ->assertHasNoErrors()
@@ -203,7 +206,7 @@ it('rejects attach with invalid volume OCID format', function () {
     $mock = mockClient();
     app()->instance(OciBridgeClient::class, $mock);
 
-    Livewire::test(OciDashboard::class, ['server' => $this->server])
+    Livewire::test(OciDashboard::class, ['server_uuid' => $this->server->uuid])
         ->set('attachVolumeOcid', 'not-an-ocid')
         ->call('attachVolume')
         ->assertHasErrors(['attachVolumeOcid']);
@@ -217,7 +220,7 @@ it('confirms then detaches a block volume', function () {
         ->andReturn(['detached' => true]);
     app()->instance(OciBridgeClient::class, $mock);
 
-    Livewire::test(OciDashboard::class, ['server' => $this->server])
+    Livewire::test(OciDashboard::class, ['server_uuid' => $this->server->uuid])
         ->call('confirmDetachVolume', 'att1')
         ->assertSet('confirmingDetach', true)
         ->assertSet('pendingDetachId', 'att1')
@@ -233,7 +236,7 @@ it('loads and displays load balancers', function () {
     $mock = mockClient(['listLoadBalancers' => $lbData]);
     app()->instance(OciBridgeClient::class, $mock);
 
-    Livewire::test(OciDashboard::class, ['server' => $this->server])
+    Livewire::test(OciDashboard::class, ['server_uuid' => $this->server->uuid])
         ->assertSet('loadBalancers', $lbData)
         ->assertSee('prod-lb');
 });
@@ -245,7 +248,7 @@ it('loads and displays autonomous databases with connection strings', function (
     $mock = mockClient(['listAutonomousDatabases' => $adbData]);
     app()->instance(OciBridgeClient::class, $mock);
 
-    Livewire::test(OciDashboard::class, ['server' => $this->server])
+    Livewire::test(OciDashboard::class, ['server_uuid' => $this->server->uuid])
         ->assertSet('autonomousDatabases', $adbData)
         ->assertSee('prod-adb')
         ->assertSee('OLTP');
@@ -262,7 +265,7 @@ it('denies block volume actions to non-admin members', function () {
     $mock = mockClient();
     app()->instance(OciBridgeClient::class, $mock);
 
-    Livewire::test(OciDashboard::class, ['server' => $this->server])
+    Livewire::test(OciDashboard::class, ['server_uuid' => $this->server->uuid])
         ->set('attachVolumeOcid', 'ocid1.volume.oc1..vol1')
         ->call('attachVolume')
         ->assertForbidden();

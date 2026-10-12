@@ -53,7 +53,7 @@ class OciApiClient
      */
     public function rawGet(array $config, string $service, string $region, string $path, array $query = []): string
     {
-        return $this->send($config, 'GET', $service, $region, $path, $query, null)->body();
+        return $this->send($config, 'GET', $service, $region, $path, $query, null, '*/*')->body();
     }
 
     /**
@@ -89,7 +89,7 @@ class OciApiClient
      * @param  array<string, mixed>  $config
      * @param  array<string, mixed>  $query
      */
-    private function send(array $config, string $method, string $service, string $region, string $path, array $query, ?string $body): Response
+    private function send(array $config, string $method, string $service, string $region, string $path, array $query, ?string $body, string $accept = 'application/json'): Response
     {
         $url = $this->buildUrl($service, $region, $path, $query);
         $timeout = (int) config('oci.timeout', 30);
@@ -98,7 +98,7 @@ class OciApiClient
 
         while (true) {
             $headers = $this->signer->signHeaders($config, $method, $url, $body);
-            $request = Http::timeout($timeout)->withHeaders($headers)->accept('application/json');
+            $request = Http::timeout($timeout)->withHeaders($headers)->accept($accept);
 
             $response = match (strtoupper($method)) {
                 'GET' => $request->get($url),

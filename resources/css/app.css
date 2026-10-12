@@ -4127,3 +4127,24 @@ a.command-palette-item:focus-visible {
 .dark .command-palette-arch-badge {
     color: #fcd34d;
 }
+
+/* OCI dashboard table grids */
+.oci-nsg-grid {
+    grid-template-columns: 5rem 7rem minmax(8rem, 1fr) minmax(8rem, 1fr) 5rem;
+}
+
+.oci-volumes-grid {
+    grid-template-columns: minmax(10rem, 1.5fr) 8rem 5rem 8rem 5.5rem 5rem;
+}
+
+.oci-lb-grid {
+    grid-template-columns: minmax(10rem, 1.3fr) 8rem minmax(8rem, 1fr) minmax(8rem, 1fr) 7rem;
+}
+
+.oci-routes-grid {
+    grid-template-columns: 10rem 10rem minmax(12rem, 1fr);
+}
+
+.oci-buckets-grid {
+    grid-template-columns: minmax(10rem, 1.5fr) 8rem 7rem 8rem;
+}

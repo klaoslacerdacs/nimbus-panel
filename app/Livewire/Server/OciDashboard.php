@@ -43,6 +43,10 @@ class OciDashboard extends Component
 
     public array $autonomousDatabases = [];
 
+    public array $routeTables = [];
+
+    public array $buckets = [];
+
     public bool $confirmingDetach = false;
 
     #[Locked]
@@ -50,8 +54,19 @@ class OciDashboard extends Component
 
     public string $attachVolumeOcid = '';
 
-    public function mount(Server $server): void
+    public array $availableVolumes = [];
+
+    public bool $showVolumeSelector = false;
+
+    public bool $showCreateVolume = false;
+
+    public string $newVolumeName = '';
+
+    public int $newVolumeSize = 50;
+
+    public function mount(string $server_uuid): void
     {
+        $server = Server::ownedByCurrentTeam()->whereUuid($server_uuid)->firstOrFail();
         $this->authorize('view', $server);
         $this->server = $server;
         // Ensure settings record exists — older servers may lack it if created without observer
@@ -67,6 +82,8 @@ class OciDashboard extends Component
             $this->loadVolumeAttachments();
             $this->loadLoadBalancers();
             $this->loadAutonomousDatabases();
+            $this->loadRouteTables();
+            $this->loadBuckets();
         }
     }
 
@@ -89,6 +106,8 @@ class OciDashboard extends Component
             $this->loadVolumeAttachments();
             $this->loadLoadBalancers();
             $this->loadAutonomousDatabases();
+            $this->loadRouteTables();
+            $this->loadBuckets();
         }
     }
 
@@ -128,8 +147,25 @@ class OciDashboard extends Component
         }
 
         if ($this->server->oci_metrics_source === 'sentinel') {
-            // ponytail: SSH/Sentinel path — delegate to HasMetrics trait when server is functional
-            return;
+            try {
+                $cpu = $this->server->getCpuMetrics(5);
+                $memory = $this->server->getMemoryMetrics(5);
+                $cpuVal = $cpu ? (float) (end($cpu)[1] ?? 0) : null;
+                $memVal = $memory ? (float) (end($memory)[1] ?? 0) : null;
+
+                if ($cpuVal !== null || $memVal !== null) {
+                    $this->metrics = [
+                        'cpu_percent' => $cpuVal !== null ? round($cpuVal, 2) : null,
+                        'memory_percent' => $memVal !== null ? round($memVal, 2) : null,
+                        'net_bytes_in' => null,
+                        'net_bytes_out' => null,
+                    ];
+
+                    return;
+                }
+            } catch (\Throwable) {
+                // Sentinel unavailable — fall through to OCI monitoring
+            }
         }
 
         $client = app(OciBridgeClient::class);
@@ -226,6 +262,76 @@ class OciDashboard extends Component
         );
 
         $this->volumeAttachments = isset($result['error']) ? [] : $result;
+    }
+
+    public function loadAvailableVolumes(): void
+    {
+        $connection = $this->server->ociConnection;
+        $compartmentId = $this->server->oci_compartment_id;
+
+        if (! $connection || ! $compartmentId) {
+            return;
+        }
+
+        $result = app(OciBridgeClient::class)->listVolumes(
+            $connection->toBridgeConfig(),
+            $compartmentId,
+            $this->server->oci_region,
+        );
+
+        $this->availableVolumes = isset($result['error']) ? [] : $result;
+        $this->showVolumeSelector = true;
+    }
+
+    public function createVolume(): void
+    {
+        $this->authorize('update', $this->server);
+        $this->validate([
+            'newVolumeName' => 'required|string|max:255',
+            'newVolumeSize' => 'required|integer|min:50|max:32768',
+        ]);
+
+        $connection = $this->server->ociConnection;
+        $compartmentId = $this->server->oci_compartment_id;
+
+        if (! $connection || ! $compartmentId) {
+            $this->dispatch('error', 'No OCI compartment linked to this server.');
+
+            return;
+        }
+
+        $ads = app(OciBridgeClient::class)->listAvailabilityDomains(
+            $connection->toBridgeConfig(),
+            $compartmentId,
+            $this->server->oci_region,
+        );
+
+        $ad = $ads[0]['name'] ?? null;
+        if (! $ad) {
+            $this->dispatch('error', 'Could not determine availability domain.');
+
+            return;
+        }
+
+        $result = app(OciBridgeClient::class)->createVolume(
+            $connection->toBridgeConfig(),
+            $compartmentId,
+            $ad,
+            $this->newVolumeName,
+            $this->newVolumeSize,
+            $this->server->oci_region,
+        );
+
+        if (isset($result['error'])) {
+            $this->dispatch('error', 'Volume creation failed. Check OCI console.');
+
+            return;
+        }
+
+        $this->showCreateVolume = false;
+        $this->newVolumeName = '';
+        $this->newVolumeSize = 50;
+        $this->dispatch('info', 'Volume "'.$result['display_name'].'" is being provisioned (~30s). Use "Find Volume" to attach it once AVAILABLE.');
     }
 
     public function attachVolume(): void
@@ -329,6 +435,42 @@ class OciDashboard extends Component
         );
 
         $this->autonomousDatabases = isset($result['error']) ? [] : $result;
+    }
+
+    public function loadRouteTables(): void
+    {
+        $ociStack = $this->server->ociStack()->first();
+        $connection = $this->server->ociConnection;
+
+        if (! $connection || ! $ociStack?->vcn_ocid || ! $ociStack?->compartment_ocid) {
+            return;
+        }
+
+        $result = app(OciBridgeClient::class)->listRouteTables(
+            $connection->toBridgeConfig(),
+            $ociStack->compartment_ocid,
+            $ociStack->vcn_ocid,
+            $this->server->oci_region,
+        );
+
+        $this->routeTables = isset($result['error']) ? [] : $result;
+    }
+
+    public function loadBuckets(): void
+    {
+        $connection = $this->server->ociConnection;
+        if (! $connection) {
+            return;
+        }
+
+        // Use tenancy as compartment to list all accessible buckets
+        $result = app(OciBridgeClient::class)->listBuckets(
+            $connection->toBridgeConfig(),
+            $connection->tenancy_ocid,
+            $this->server->oci_region,
+        );
+
+        $this->buckets = isset($result['error']) ? [] : $result;
     }
 
     private function performAction(string $action): void

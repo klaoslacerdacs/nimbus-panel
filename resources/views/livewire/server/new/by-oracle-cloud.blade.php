@@ -322,9 +322,9 @@
                 </div>
                 <div class="lg:col-span-2">
                     <label for="image_id" class="mb-1.5 block text-sm font-medium">Image <span class="text-red-500">*</span></label>
-                    @if ($images)
+                    @if ($this->filteredImages)
                         @php
-                            $imagesByOs = collect($images)->groupBy('operating_system');
+                            $imagesByOs = collect($this->filteredImages)->groupBy('operating_system');
                         @endphp
                         <select id="image_id" wire:model="image_id"
                             class="w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm dark:border-white/[0.08] dark:bg-neutral-900">

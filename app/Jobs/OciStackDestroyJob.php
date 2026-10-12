@@ -92,7 +92,9 @@ class OciStackDestroyJob implements ShouldBeUnique, ShouldQueue
             }
 
             if (! in_array($status, ['in_progress', 'accepted', 'waiting'])) {
-                $stack->update(['status' => 'destroy_failed', 'last_plan_summary' => "Destroy job ended with status: {$status}"]);
+                $lines = $bridge->getJobLogs($config, $destroy['job_id'])['lines'] ?? [];
+                $summary = "Destroy job ended with status: {$status}".($lines ? "\n\n".implode("\n", $lines) : '');
+                $stack->update(['status' => 'destroy_failed', 'last_plan_summary' => $summary]);
                 OciStackStatusChanged::dispatch($stack->team_id);
 
                 return;

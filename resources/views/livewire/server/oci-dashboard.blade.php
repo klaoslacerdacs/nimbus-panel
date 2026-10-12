@@ -7,9 +7,7 @@
 
     <div class="server-settings-workspace application-settings-workspace mt-4 grid w-full max-w-[1180px] min-w-0 gap-8 lg:mt-0 xl:grid-cols-[210px_minmax(0,1fr)] xl:gap-10">
         <x-server.sidebar :server="$server" activeMenu="oci" />
-        <div class="application-settings-form min-w-0 w-full">
-
-<div class="flex flex-col gap-6" wire:poll.30000ms="loadStatus">
+        <div class="application-settings-form flex flex-col gap-6 min-w-0 w-full">
 
     {{-- Provisioning / Destroy Progress --}}
     @php
@@ -28,306 +26,396 @@
             ];
             $currentIdx = $steps[$stackStatus] ?? ($isDestroying ? 1 : 0);
         @endphp
-        <div @if ($isProvisioning || $isDestroying) wire:poll.5000ms="loadProvisioningStatus" @endif
-            class="rounded-lg border {{ $isFailed ? 'border-red-300 dark:border-red-700' : ($isDestroying ? 'border-orange-200 dark:border-orange-700' : 'border-blue-200 dark:border-blue-700') }} p-4">
-            <div class="mb-3 flex items-center justify-between">
-                <h3 class="text-sm font-semibold">
-                    @if ($isDestroying) Destroying Resources
-                    @elseif ($isFailed) Operation Failed
-                    @else Provisioning in Progress
-                    @endif
-                </h3>
-                @if (! $isFailed)
-                    <svg class="h-4 w-4 animate-spin {{ $isDestroying ? 'text-orange-500' : 'text-blue-500' }}" fill="none" viewBox="0 0 24 24">
-                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
-                    </svg>
-                @endif
-            </div>
-
-            @if (! $isDestroying)
-                <div class="mb-4 flex items-center gap-1">
-                    @foreach (['Queued', 'Planning', 'Applying', $isFailed ? 'Failed' : 'Done'] as $stepIdx => $stepLabel)
-                        @php
-                            $done = $stepIdx < $currentIdx;
-                            $active = $stepIdx === $currentIdx;
-                        @endphp
-                        <div class="flex items-center">
-                            <div class="flex h-6 w-6 items-center justify-center rounded-full text-xs font-medium
-                                {{ $done ? 'bg-green-500 text-white' : ($active ? ($isFailed ? 'bg-red-500 text-white' : 'bg-blue-500 text-white') : 'bg-neutral-200 text-neutral-500 dark:bg-neutral-700') }}">
-                                @if ($done) ✓
-                                @elseif ($active && $isFailed) ✕
-                                @else {{ $stepIdx + 1 }}
+        <x-application.settings-section :title="$isDestroying ? 'Destroying resources' : ($isFailed ? 'Operation failed' : 'Provisioning in progress')">
+            <div @if ($isProvisioning || $isDestroying) wire:poll.5000ms="loadProvisioningStatus" @endif>
+                @if (! $isDestroying)
+                    <div class="mb-4 flex items-center gap-1">
+                        @foreach (['Queued', 'Planning', 'Applying', $isFailed ? 'Failed' : 'Done'] as $stepIdx => $stepLabel)
+                            @php
+                                $done = $stepIdx < $currentIdx;
+                                $active = $stepIdx === $currentIdx;
+                            @endphp
+                            <div class="flex items-center">
+                                <div @class([
+                                    'flex h-6 w-6 items-center justify-center rounded-full text-[11px] font-medium',
+                                    'bg-success text-white' => $done,
+                                    'bg-error text-white' => $active && $isFailed,
+                                    'bg-coollabs text-white dark:bg-warning dark:text-black' => $active && ! $isFailed,
+                                    'bg-neutral-200 text-neutral-500 dark:bg-white/[0.08] dark:text-fg-dim' => ! $done && ! $active,
+                                ])>
+                                    @if ($done) ✓
+                                    @elseif ($active && $isFailed) ✕
+                                    @else {{ $stepIdx + 1 }}
+                                    @endif
+                                </div>
+                                <span class="ml-1 text-[12px] {{ $active ? 'font-semibold' : 'text-neutral-500 dark:text-fg-dim' }}">{{ $stepLabel }}</span>
+                                @if ($stepIdx < 3)
+                                    <div class="mx-2 h-px w-6 {{ $done ? 'bg-success/40' : 'bg-neutral-200 dark:bg-white/[0.08]' }}"></div>
                                 @endif
                             </div>
-                            <span class="ml-1 text-xs {{ $active ? 'font-semibold' : 'text-neutral-500' }}">{{ $stepLabel }}</span>
-                            @if ($stepIdx < 3)
-                                <div class="mx-2 h-px w-6 {{ $done ? 'bg-green-400' : 'bg-neutral-200 dark:bg-neutral-700' }}"></div>
-                            @endif
-                        </div>
-                    @endforeach
-                </div>
-            @endif
-
-            @if ($stackMessage)
-                <pre class="overflow-x-auto whitespace-pre-wrap break-words text-xs {{ $isFailed ? 'text-red-600 dark:text-red-400' : 'text-neutral-500' }}">{{ $stackMessage }}</pre>
-            @endif
-        </div>
+                        @endforeach
+                    </div>
+                @endif
+                @if ($stackMessage)
+                    <pre class="overflow-x-auto whitespace-pre-wrap break-words text-[12px] {{ $isFailed ? 'text-error' : 'text-neutral-500 dark:text-fg-dim' }}">{{ $stackMessage }}</pre>
+                @endif
+            </div>
+        </x-application.settings-section>
     @endif
 
     {{-- Instance Status --}}
-    <div class="rounded-lg border border-neutral-200 p-4 dark:border-white/[0.08]">
-        <h3 class="mb-3 text-sm font-semibold">Instance Status</h3>
+    <x-application.settings-section title="Instance status" wire:poll.30000ms="loadStatus">
+        <x-slot:actions>
+            @if ($server->oci_instance_id)
+                @php $state = $instanceStatus['lifecycle_state'] ?? $server->oci_instance_status ?? 'UNKNOWN'; @endphp
+                @if ($confirmingStop)
+                    <span class="text-[12px] text-neutral-500 dark:text-fg-dim">Stop instance?</span>
+                    <button wire:click="stopInstance" class="button button-danger">Confirm</button>
+                    <button wire:click="cancelConfirm" class="button">Cancel</button>
+                @elseif ($confirmingReboot)
+                    <span class="text-[12px] text-neutral-500 dark:text-fg-dim">Reboot instance?</span>
+                    <button wire:click="rebootInstance" class="button button-danger">Confirm</button>
+                    <button wire:click="cancelConfirm" class="button">Cancel</button>
+                @else
+                    <button wire:click="startInstance" :disabled="$actionLoading || '{{ $state }}' === 'RUNNING'" class="button">Start</button>
+                    <button wire:click="confirmStop" :disabled="$actionLoading || '{{ $state }}' !== 'RUNNING'" class="button">Stop</button>
+                    <button wire:click="confirmReboot" :disabled="$actionLoading || '{{ $state }}' !== 'RUNNING'" class="button">Reboot</button>
+                @endif
+            @endif
+        </x-slot:actions>
 
         @if (! $server->oci_instance_id)
-            <p class="text-sm text-neutral-500">
-                @if ($isProvisioning)
-                    Waiting for provisioning to complete...
-                @else
-                    Instance not yet provisioned.
-                @endif
-            </p>
+            <x-empty size="sm" title="Not yet provisioned"
+                description="{{ $isProvisioning ? 'Waiting for provisioning to complete.' : 'No OCI instance linked to this server.' }}">
+                <x-slot:icon><x-reicon name="server" class="size-8" /></x-slot:icon>
+            </x-empty>
         @else
             @php
                 $state = $instanceStatus['lifecycle_state'] ?? $server->oci_instance_status ?? 'UNKNOWN';
-                $color = match (true) {
-                    $state === 'RUNNING' => 'bg-green-500',
-                    in_array($state, ['STARTING', 'STOPPING', 'PROVISIONING']) => 'bg-yellow-500',
-                    default => 'bg-neutral-400',
+                $badgeType = match (true) {
+                    $state === 'RUNNING' => 'success',
+                    in_array($state, ['STARTING', 'STOPPING', 'PROVISIONING']) => 'warning',
+                    default => 'info',
                 };
             @endphp
-            <div class="flex items-center justify-between">
-                <div class="flex items-center gap-3">
-                    <span class="inline-block h-2 w-2 rounded-full {{ $color }}"></span>
-                    <span class="text-sm font-medium">{{ $state }}</span>
-                </div>
-
-                <div class="flex gap-2">
-                    @if ($confirmingStop)
-                        <span class="self-center text-xs text-neutral-500">Stop instance?</span>
-                        <x-forms.button wire:click="stopInstance" class="button-danger px-2 py-1 text-xs">Confirm</x-forms.button>
-                        <x-forms.button wire:click="cancelConfirm" class="px-2 py-1 text-xs">Cancel</x-forms.button>
-                    @elseif ($confirmingReboot)
-                        <span class="self-center text-xs text-neutral-500">Reboot instance?</span>
-                        <x-forms.button wire:click="rebootInstance" class="button-danger px-2 py-1 text-xs">Confirm</x-forms.button>
-                        <x-forms.button wire:click="cancelConfirm" class="px-2 py-1 text-xs">Cancel</x-forms.button>
-                    @else
-                        <x-forms.button wire:click="startInstance" :disabled="$actionLoading || $state === 'RUNNING'" class="px-3 py-1 text-xs">Start</x-forms.button>
-                        <x-forms.button wire:click="confirmStop" :disabled="$actionLoading || $state !== 'RUNNING'" class="px-3 py-1 text-xs">Stop</x-forms.button>
-                        <x-forms.button wire:click="confirmReboot" :disabled="$actionLoading || $state !== 'RUNNING'" class="px-3 py-1 text-xs">Reboot</x-forms.button>
-                    @endif
-                </div>
-            </div>
+            <x-status-badge :label="$state" :type="$badgeType" />
         @endif
-    </div>
+    </x-application.settings-section>
 
     {{-- Metrics --}}
-    <div class="rounded-lg border border-neutral-200 p-4 dark:border-white/[0.08]">
-        <h3 class="mb-3 text-sm font-semibold">Metrics (last 5 min avg)</h3>
-
-        @if ($server->oci_metrics_source === 'sentinel')
-            <p class="text-sm text-neutral-500">Metrics via SSH/Sentinel — ensure the Sentinel container is running on this server.</p>
-        @elseif ($metrics)
+    <x-application.settings-section title="Metrics" helper="5-minute average from OCI Monitoring.">
+        @if ($metrics)
             <div class="grid grid-cols-2 gap-4 lg:grid-cols-4">
                 <div>
-                    <p class="text-xs text-neutral-500">CPU</p>
-                    <p class="text-xl font-semibold">{{ $metrics['cpu_percent'] !== null ? $metrics['cpu_percent'].'%' : '—' }}</p>
+                    <p class="text-[11px] text-neutral-500 dark:text-fg-dim">CPU</p>
+                    <p class="text-xl font-semibold">{{ $metrics['cpu_percent'] !== null ? $metrics['cpu_percent'].'%' : '-' }}</p>
                 </div>
                 <div>
-                    <p class="text-xs text-neutral-500">Memory</p>
-                    <p class="text-xl font-semibold">{{ $metrics['memory_percent'] !== null ? $metrics['memory_percent'].'%' : '—' }}</p>
+                    <p class="text-[11px] text-neutral-500 dark:text-fg-dim">Memory</p>
+                    <p class="text-xl font-semibold">{{ $metrics['memory_percent'] !== null ? $metrics['memory_percent'].'%' : '-' }}</p>
                     @if ($metrics['memory_percent'] === null)
-                        <p class="text-xs text-neutral-400">OCI agent required</p>
+                        <p class="text-[11px] text-neutral-400 dark:text-fg-faint">OCI agent required</p>
                     @endif
                 </div>
                 <div>
-                    <p class="text-xs text-neutral-500">Network In</p>
-                    <p class="text-xl font-semibold">{{ $metrics['net_bytes_in'] !== null ? number_format($metrics['net_bytes_in'] / 1024, 1).' KB/s' : '—' }}</p>
+                    <p class="text-[11px] text-neutral-500 dark:text-fg-dim">Network in</p>
+                    <p class="text-xl font-semibold">{{ $metrics['net_bytes_in'] !== null ? number_format($metrics['net_bytes_in'] / 1024, 1).' KB/s' : '-' }}</p>
                 </div>
                 <div>
-                    <p class="text-xs text-neutral-500">Network Out</p>
-                    <p class="text-xl font-semibold">{{ $metrics['net_bytes_out'] !== null ? number_format($metrics['net_bytes_out'] / 1024, 1).' KB/s' : '—' }}</p>
+                    <p class="text-[11px] text-neutral-500 dark:text-fg-dim">Network out</p>
+                    <p class="text-xl font-semibold">{{ $metrics['net_bytes_out'] !== null ? number_format($metrics['net_bytes_out'] / 1024, 1).' KB/s' : '-' }}</p>
                 </div>
             </div>
         @else
-            <p class="text-sm text-neutral-500">No metrics available. Instance may not be running or OCI Monitoring may not be enabled.</p>
+            <p class="text-[12px] text-neutral-500 dark:text-fg-dim">No metrics available. Instance may not be running or OCI Monitoring may not be enabled.</p>
         @endif
-    </div>
+    </x-application.settings-section>
 
     {{-- NSG Firewall Rules --}}
     @php $ociStack = $server->ociStack; @endphp
     @if ($ociStack?->nsg_ocid)
-        <div class="rounded-lg border border-neutral-200 p-4 dark:border-white/[0.08]">
-            <h3 class="mb-3 text-sm font-semibold">Firewall Rules (NSG Ingress)</h3>
+        <x-application.settings-section title="Firewall rules" helper="NSG ingress rules for this instance." flush>
+            <x-slot:actions>
+                <button wire:click="addNsgRule" class="button button-highlighted">
+                    <x-reicon name="plus" class="size-3.5" />
+                    Add rule
+                </button>
+            </x-slot:actions>
+
+            {{-- Add rule form --}}
+            <div class="flex flex-wrap items-start gap-2 border-b border-neutral-200 p-4 dark:border-white/[0.08]">
+                <div class="flex-1 min-w-24">
+                    <x-forms.listbox id="newRule.protocol" label="Protocol" :options="[
+                        ['value' => 'TCP', 'label' => 'TCP'],
+                        ['value' => 'UDP', 'label' => 'UDP'],
+                        ['value' => 'ICMP', 'label' => 'ICMP'],
+                        ['value' => 'ALL', 'label' => 'ALL'],
+                    ]" />
+                </div>
+                <div class="w-24">
+                    <x-forms.input id="newRule.port_min" type="number" label="Port min" placeholder="22" min="1" max="65535" />
+                </div>
+                <div class="w-24">
+                    <x-forms.input id="newRule.port_max" type="number" label="Port max" placeholder="22" min="1" max="65535" />
+                </div>
+                <div class="w-36">
+                    <x-forms.input id="newRule.source" label="Source CIDR" placeholder="0.0.0.0/0" />
+                </div>
+                <div class="min-w-0 flex-1">
+                    <x-forms.input id="newRule.description" label="Description" placeholder="Optional" />
+                </div>
+            </div>
+            @error('newRule.source') <p class="px-4 pb-2 text-[12px] text-error">{{ $message }}</p> @enderror
 
             @if ($nsgRules)
-                <div class="overflow-x-auto">
-                    <table class="w-full text-xs">
-                        <thead>
-                            <tr class="border-b border-neutral-200 text-left text-neutral-500 dark:border-white/[0.08]">
-                                <th class="pb-2 pr-4">Protocol</th>
-                                <th class="pb-2 pr-4">Port</th>
-                                <th class="pb-2 pr-4">Source</th>
-                                <th class="pb-2 pr-4">Description</th>
-                                <th class="pb-2"></th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            @foreach ($nsgRules as $rule)
-                                <tr class="border-b border-neutral-100 dark:border-white/[0.04]">
-                                    <td class="py-1.5 pr-4 font-mono">{{ $rule['protocol'] === '6' ? 'TCP' : ($rule['protocol'] === '17' ? 'UDP' : $rule['protocol']) }}</td>
-                                    <td class="py-1.5 pr-4 font-mono">
-                                        @if (isset($rule['port_min']))
-                                            {{ $rule['port_min'] }}{{ isset($rule['port_max']) && $rule['port_max'] !== $rule['port_min'] ? '-'.$rule['port_max'] : '' }}
-                                        @else
-                                            all
-                                        @endif
-                                    </td>
-                                    <td class="py-1.5 pr-4 font-mono">{{ $rule['source'] ?? '—' }}</td>
-                                    <td class="py-1.5 pr-4 text-neutral-500">{{ $rule['description'] ?: '—' }}</td>
-                                    <td class="py-1.5">
-                                        <button wire:click="removeNsgRule('{{ $rule['id'] }}')"
-                                            class="text-xs text-red-500 hover:text-red-700">Remove</button>
-                                    </td>
-                                </tr>
-                            @endforeach
-                        </tbody>
-                    </table>
+                <div class="data-table">
+                    <div class="data-table-header oci-nsg-grid">
+                        <span>Protocol</span>
+                        <span>Port</span>
+                        <span>Source</span>
+                        <span>Description</span>
+                        <span class="text-right">Actions</span>
+                    </div>
+                    @foreach ($nsgRules as $rule)
+                        <div wire:key="nsg-rule-{{ $rule['id'] }}" class="data-table-row oci-nsg-grid border-b border-neutral-200 last:border-b-0 dark:border-white/[0.07]">
+                            <div class="font-mono text-[12px]">{{ $rule['protocol'] === '6' ? 'TCP' : ($rule['protocol'] === '17' ? 'UDP' : $rule['protocol']) }}</div>
+                            <div class="font-mono text-[12px]">
+                                @if (isset($rule['port_min']))
+                                    {{ $rule['port_min'] }}{{ isset($rule['port_max']) && $rule['port_max'] !== $rule['port_min'] ? '-'.$rule['port_max'] : '' }}
+                                @else
+                                    all
+                                @endif
+                            </div>
+                            <div class="font-mono text-[12px]">{{ $rule['source'] ?? '-' }}</div>
+                            <div class="text-[12px] text-neutral-500 dark:text-fg-dim">{{ $rule['description'] ?: '-' }}</div>
+                            <div class="flex justify-end">
+                                <button wire:click="removeNsgRule('{{ $rule['id'] }}')"
+                                    class="inline-flex h-7 items-center rounded-md px-2 text-[11px] font-medium text-error transition-colors hover:bg-error/10">
+                                    Remove
+                                </button>
+                            </div>
+                        </div>
+                    @endforeach
                 </div>
             @else
-                <p class="mb-3 text-xs text-neutral-500">No ingress rules.</p>
+                <x-empty size="sm" title="No ingress rules" description="Add a rule above to allow traffic to this instance.">
+                    <x-slot:icon><x-reicon name="shield" class="size-8" /></x-slot:icon>
+                </x-empty>
             @endif
-
-            <div class="mt-3 flex flex-wrap items-end gap-2 border-t border-neutral-100 pt-3 dark:border-white/[0.04]">
-                <select wire:model="newRule.protocol"
-                    class="rounded border border-neutral-200 bg-white px-2 py-1 text-xs dark:border-white/[0.08] dark:bg-neutral-900">
-                    <option>TCP</option>
-                    <option>UDP</option>
-                    <option>ICMP</option>
-                    <option>ALL</option>
-                </select>
-                <input wire:model="newRule.port_min" type="number" min="1" max="65535" placeholder="Port min"
-                    class="w-20 rounded border border-neutral-200 bg-white px-2 py-1 text-xs dark:border-white/[0.08] dark:bg-neutral-900" />
-                <input wire:model="newRule.port_max" type="number" min="1" max="65535" placeholder="Port max"
-                    class="w-20 rounded border border-neutral-200 bg-white px-2 py-1 text-xs dark:border-white/[0.08] dark:bg-neutral-900" />
-                <input wire:model="newRule.source" type="text" placeholder="0.0.0.0/0"
-                    class="w-32 rounded border border-neutral-200 bg-white px-2 py-1 text-xs dark:border-white/[0.08] dark:bg-neutral-900" />
-                <input wire:model="newRule.description" type="text" placeholder="Description"
-                    class="min-w-0 flex-1 rounded border border-neutral-200 bg-white px-2 py-1 text-xs dark:border-white/[0.08] dark:bg-neutral-900" />
-                <x-forms.button wire:click="addNsgRule" class="px-3 py-1 text-xs">Add</x-forms.button>
-            </div>
-        </div>
+        </x-application.settings-section>
     @endif
 
     {{-- Block Volumes --}}
     @if ($server->oci_instance_id && $server->oci_compartment_id)
-        <div class="rounded-lg border border-neutral-200 p-4 dark:border-white/[0.08]">
-            <h3 class="mb-3 text-sm font-semibold">Block Volumes</h3>
+        <x-application.settings-section title="Block volumes" flush>
+            <x-slot:actions>
+                @if (! $showCreateVolume && ! $showVolumeSelector)
+                    <button wire:click="loadAvailableVolumes" class="button">
+                        <x-reicon name="plus" class="size-3.5" />
+                        Attach existing
+                    </button>
+                    <button wire:click="$set('showCreateVolume', true)" class="button button-highlighted">
+                        <x-reicon name="plus" class="size-3.5" />
+                        Create new
+                    </button>
+                @endif
+            </x-slot:actions>
 
             @if ($confirmingDetach)
-                <div class="mb-3 flex items-center gap-3 rounded border border-orange-200 bg-orange-50 px-3 py-2 dark:border-orange-700 dark:bg-orange-900/20">
-                    <span class="text-sm text-orange-700 dark:text-orange-300">Detach this volume? The instance will lose access immediately.</span>
-                    <x-forms.button wire:click="detachVolume" class="button-danger px-3 py-1 text-xs">Confirm Detach</x-forms.button>
-                    <x-forms.button wire:click="cancelConfirm" class="px-3 py-1 text-xs">Cancel</x-forms.button>
+                <div class="flex items-center gap-3 border-b border-neutral-200 bg-error/5 px-4 py-3 dark:border-white/[0.08]">
+                    <span class="min-w-0 flex-1 text-[12px] text-error">Detach this volume? The instance will lose access immediately.</span>
+                    <button wire:click="detachVolume" class="button button-danger">Confirm detach</button>
+                    <button wire:click="cancelConfirm" class="button">Cancel</button>
+                </div>
+            @endif
+
+            @if ($showCreateVolume)
+                <div class="flex flex-wrap items-start gap-2 border-b border-neutral-200 p-4 dark:border-white/[0.08]">
+                    <div class="min-w-0 flex-1">
+                        <x-forms.input id="newVolumeName" label="Volume name" placeholder="my-data-volume" />
+                    </div>
+                    <div class="w-32">
+                        <x-forms.input id="newVolumeSize" type="number" label="Size (GB)" min="50" max="32768" />
+                    </div>
+                    <div class="flex items-end gap-2 self-end pb-0.5">
+                        <button wire:click="createVolume" class="button button-highlighted">Create</button>
+                        <button wire:click="$set('showCreateVolume', false)" class="button">Cancel</button>
+                    </div>
+                </div>
+                @error('newVolumeName') <p class="px-4 pb-2 text-[12px] text-error">{{ $message }}</p> @enderror
+                @error('newVolumeSize') <p class="px-4 pb-2 text-[12px] text-error">{{ $message }}</p> @enderror
+            @elseif ($showVolumeSelector)
+                @php
+                    $volumeOptions = collect($availableVolumes)->map(fn ($v) => [
+                        'value' => $v['id'],
+                        'label' => ($v['display_name'] ?? $v['id']).($v['size_in_gbs'] ? ' ('.$v['size_in_gbs'].' GB)' : ''),
+                    ])->all();
+                @endphp
+                <div class="flex flex-wrap items-end gap-2 border-b border-neutral-200 p-4 dark:border-white/[0.08]">
+                    @if ($availableVolumes)
+                        <div class="min-w-0 flex-1">
+                            <x-forms.listbox id="attachVolumeOcid" label="Select volume" :options="$volumeOptions" placeholder="Select a volume" />
+                        </div>
+                        <div class="flex gap-2 pb-0.5">
+                            <button wire:click="attachVolume" class="button button-highlighted" :disabled="! $attachVolumeOcid">Attach</button>
+                            <button wire:click="$set('showVolumeSelector', false)" class="button">Cancel</button>
+                        </div>
+                    @else
+                        <p class="flex-1 text-[12px] text-neutral-500 dark:text-fg-dim">No available volumes in this compartment.</p>
+                        <button wire:click="$set('showVolumeSelector', false)" class="button">Cancel</button>
+                    @endif
                 </div>
             @endif
 
             @if ($volumeAttachments)
-                <div class="overflow-x-auto">
-                    <table class="w-full text-xs">
-                        <thead>
-                            <tr class="border-b border-neutral-200 text-left text-neutral-500 dark:border-white/[0.08]">
-                                <th class="pb-2 pr-4">Volume OCID</th>
-                                <th class="pb-2 pr-4">Type</th>
-                                <th class="pb-2 pr-4">State</th>
-                                <th class="pb-2 pr-4">Read-only</th>
-                                <th class="pb-2"></th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            @foreach ($volumeAttachments as $attachment)
-                                <tr class="border-b border-neutral-100 dark:border-white/[0.04]">
-                                    <td class="py-1.5 pr-4 font-mono text-neutral-500">{{ Str::limit($attachment['volume_id'], 28) }}</td>
-                                    <td class="py-1.5 pr-4">{{ $attachment['attachment_type'] ?? '—' }}</td>
-                                    <td class="py-1.5 pr-4">{{ $attachment['lifecycle_state'] }}</td>
-                                    <td class="py-1.5 pr-4">{{ $attachment['is_read_only'] ? 'Yes' : 'No' }}</td>
-                                    <td class="py-1.5">
-                                        <button wire:click="confirmDetachVolume('{{ $attachment['id'] }}')"
-                                            class="text-xs text-red-500 hover:text-red-700">Detach</button>
-                                    </td>
-                                </tr>
-                            @endforeach
-                        </tbody>
-                    </table>
+                <div class="data-table">
+                    <div class="data-table-header oci-volumes-grid">
+                        <span>Volume OCID</span>
+                        <span>Type</span>
+                        <span>Size</span>
+                        <span>State</span>
+                        <span>Read-only</span>
+                        <span class="text-right">Actions</span>
+                    </div>
+                    @foreach ($volumeAttachments as $attachment)
+                        <div wire:key="volume-{{ $attachment['id'] }}" class="data-table-row oci-volumes-grid border-b border-neutral-200 last:border-b-0 dark:border-white/[0.07]">
+                            <div class="min-w-0 truncate font-mono text-[12px] text-neutral-500 dark:text-fg-dim">{{ Str::limit($attachment['volume_id'], 28) }}</div>
+                            <div class="text-[12px]">{{ $attachment['attachment_type'] ?? '-' }}</div>
+                            <div class="font-mono text-[12px]">{{ isset($attachment['size_in_gbs']) && $attachment['size_in_gbs'] ? $attachment['size_in_gbs'].' GB' : '-' }}</div>
+                            @php
+                                $volState = $attachment['lifecycle_state'];
+                                $volBadge = match (true) {
+                                    $volState === 'ATTACHED' => 'success',
+                                    in_array($volState, ['ATTACHING', 'DETACHING']) => 'warning',
+                                    $volState === 'DETACHED' => 'error',
+                                    default => 'neutral',
+                                };
+                            @endphp
+                            <div><x-status-badge :label="$volState" :type="$volBadge" /></div>
+                            <div class="text-[12px]">{{ $attachment['is_read_only'] ? 'Yes' : 'No' }}</div>
+                            <div class="flex justify-end">
+                                @if ($attachment['attachment_type'] !== 'boot')
+                                    <button wire:click="confirmDetachVolume('{{ $attachment['id'] }}')"
+                                        class="inline-flex h-7 items-center rounded-md px-2 text-[11px] font-medium text-error transition-colors hover:bg-error/10">
+                                        Detach
+                                    </button>
+                                @endif
+                            </div>
+                        </div>
+                    @endforeach
                 </div>
             @else
-                <p class="mb-3 text-xs text-neutral-500">No block volumes attached.</p>
+                <x-empty size="sm" title="No block volumes attached" description="Attach an existing volume or create a new one.">
+                    <x-slot:icon><x-reicon name="database" class="size-8" /></x-slot:icon>
+                </x-empty>
             @endif
-
-            <div class="mt-3 flex items-end gap-2 border-t border-neutral-100 pt-3 dark:border-white/[0.04]">
-                <input wire:model="attachVolumeOcid" type="text" placeholder="ocid1.volume.oc1.…"
-                    class="min-w-0 flex-1 rounded border border-neutral-200 bg-white px-2 py-1 text-xs font-mono dark:border-white/[0.08] dark:bg-neutral-900" />
-                <x-forms.button wire:click="attachVolume" class="px-3 py-1 text-xs">Attach</x-forms.button>
-            </div>
-        </div>
+        </x-application.settings-section>
     @endif
 
     {{-- Load Balancers --}}
     @if ($server->oci_compartment_id && $loadBalancers)
-        <div class="rounded-lg border border-neutral-200 p-4 dark:border-white/[0.08]">
-            <h3 class="mb-3 text-sm font-semibold">Load Balancers</h3>
-            <div class="overflow-x-auto">
-                <table class="w-full text-xs">
-                    <thead>
-                        <tr class="border-b border-neutral-200 text-left text-neutral-500 dark:border-white/[0.08]">
-                            <th class="pb-2 pr-4">Name</th>
-                            <th class="pb-2 pr-4">Shape</th>
-                            <th class="pb-2 pr-4">IPs</th>
-                            <th class="pb-2 pr-4">Backend Sets</th>
-                            <th class="pb-2">State</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        @foreach ($loadBalancers as $lb)
-                            <tr class="border-b border-neutral-100 dark:border-white/[0.04]">
-                                <td class="py-1.5 pr-4 font-medium">{{ $lb['display_name'] }}</td>
-                                <td class="py-1.5 pr-4 font-mono text-neutral-500">{{ $lb['shape_name'] }}</td>
-                                <td class="py-1.5 pr-4 font-mono">{{ implode(', ', $lb['ip_addresses']) ?: '—' }}</td>
-                                <td class="py-1.5 pr-4 text-neutral-500">{{ implode(', ', $lb['backend_sets']) ?: '—' }}</td>
-                                <td class="py-1.5">{{ $lb['lifecycle_state'] }}</td>
-                            </tr>
-                        @endforeach
-                    </tbody>
-                </table>
+        <x-application.settings-section title="Load balancers" flush>
+            <div class="data-table">
+                <div class="data-table-header oci-lb-grid">
+                    <span>Name</span>
+                    <span>Shape</span>
+                    <span>IPs</span>
+                    <span>Backend sets</span>
+                    <span>State</span>
+                </div>
+                @foreach ($loadBalancers as $lb)
+                    <div wire:key="lb-{{ $lb['id'] }}" class="data-table-row oci-lb-grid border-b border-neutral-200 last:border-b-0 dark:border-white/[0.07]">
+                        <div class="text-[12px] font-medium">{{ $lb['display_name'] }}</div>
+                        <div class="font-mono text-[12px] text-neutral-500 dark:text-fg-dim">{{ $lb['shape_name'] }}</div>
+                        <div class="font-mono text-[12px]">{{ implode(', ', $lb['ip_addresses']) ?: '-' }}</div>
+                        <div class="text-[12px] text-neutral-500 dark:text-fg-dim">{{ implode(', ', $lb['backend_sets']) ?: '-' }}</div>
+                        <div><x-status-badge :label="$lb['lifecycle_state']" :type="$lb['lifecycle_state'] === 'ACTIVE' ? 'success' : ($lb['lifecycle_state'] === 'FAILED' ? 'error' : 'neutral')" /></div>
+                    </div>
+                @endforeach
             </div>
-        </div>
+        </x-application.settings-section>
+    @endif
+
+    {{-- Route Tables --}}
+    @if ($routeTables)
+        <x-application.settings-section title="Route tables" helper="VCN route tables for this instance.">
+            <div class="flex flex-col gap-4">
+                @foreach ($routeTables as $rt)
+                    <div>
+                        <div class="mb-2 flex items-center justify-between">
+                            <span class="text-[12px] font-semibold text-black dark:text-fg">{{ $rt['display_name'] }}</span>
+                            <x-status-badge :label="$rt['lifecycle_state']" :type="$rt['lifecycle_state'] === 'AVAILABLE' ? 'success' : 'neutral'" />
+                        </div>
+                        @if ($rt['route_rules'])
+                            <div class="data-table">
+                                <div class="data-table-header oci-routes-grid">
+                                    <span>Destination</span>
+                                    <span>Type</span>
+                                    <span>Target</span>
+                                </div>
+                                @foreach ($rt['route_rules'] as $rule)
+                                    <div class="data-table-row oci-routes-grid border-b border-neutral-200 last:border-b-0 dark:border-white/[0.07]">
+                                        <div class="font-mono text-[12px]">{{ $rule['destination'] }}</div>
+                                        <div class="text-[12px] text-neutral-500 dark:text-fg-dim">{{ $rule['destination_type'] }}</div>
+                                        <div class="min-w-0 truncate font-mono text-[12px] text-neutral-500 dark:text-fg-dim">{{ Str::limit($rule['network_entity_id'], 32) }}</div>
+                                    </div>
+                                @endforeach
+                            </div>
+                        @else
+                            <p class="text-[12px] text-neutral-400 dark:text-fg-faint">No route rules.</p>
+                        @endif
+                    </div>
+                @endforeach
+            </div>
+        </x-application.settings-section>
+    @endif
+
+    {{-- Object Storage --}}
+    @if ($buckets)
+        <x-application.settings-section title="Object storage" flush>
+            <div class="data-table">
+                <div class="data-table-header oci-buckets-grid">
+                    <span>Bucket</span>
+                    <span>Tier</span>
+                    <span>Objects</span>
+                    <span>Size</span>
+                </div>
+                @foreach ($buckets as $bucket)
+                    <div wire:key="bucket-{{ $bucket['name'] }}" class="data-table-row oci-buckets-grid border-b border-neutral-200 last:border-b-0 dark:border-white/[0.07]">
+                        <div class="text-[12px] font-medium">{{ $bucket['name'] }}</div>
+                        <div class="text-[12px] text-neutral-500 dark:text-fg-dim">{{ $bucket['storage_tier'] }}</div>
+                        <div class="text-[12px]">{{ number_format($bucket['approximate_count'] ?? 0) }}</div>
+                        <div class="text-[12px]">{{ $bucket['approximate_size'] ? number_format($bucket['approximate_size'] / 1048576, 1).' MB' : '-' }}</div>
+                    </div>
+                @endforeach
+            </div>
+        </x-application.settings-section>
     @endif
 
     {{-- Autonomous Databases --}}
     @if ($server->oci_compartment_id && $autonomousDatabases)
-        <div class="rounded-lg border border-neutral-200 p-4 dark:border-white/[0.08]">
-            <h3 class="mb-3 text-sm font-semibold">Autonomous Databases</h3>
-            <div class="flex flex-col gap-3">
+        <x-application.settings-section title="Autonomous databases">
+            <div class="flex flex-col gap-4">
                 @foreach ($autonomousDatabases as $adb)
-                    <div class="rounded border border-neutral-100 p-3 dark:border-white/[0.04]">
+                    <div class="rounded-lg border border-neutral-200 p-3 dark:border-white/[0.08]">
                         <div class="mb-1 flex items-center justify-between">
-                            <span class="text-sm font-medium">{{ $adb['display_name'] }}</span>
-                            <span class="text-xs text-neutral-500">{{ $adb['lifecycle_state'] }}</span>
+                            <span class="text-[12px] font-semibold text-black dark:text-fg">{{ $adb['display_name'] }}</span>
+                            <x-status-badge :label="$adb['lifecycle_state']" :type="$adb['lifecycle_state'] === 'AVAILABLE' ? 'success' : ($adb['lifecycle_state'] === 'TERMINATED' ? 'error' : 'neutral')" />
                         </div>
-                        <div class="mb-2 flex gap-4 text-xs text-neutral-500">
+                        <div class="mb-2 flex flex-wrap gap-4 text-[11px] text-neutral-500 dark:text-fg-dim">
                             <span>DB: {{ $adb['db_name'] }}</span>
                             <span>Workload: {{ $adb['db_workload'] }}</span>
                             <span>{{ $adb['cpu_core_count'] }} OCPUs</span>
                             <span>{{ $adb['data_storage_size_in_tbs'] }} TB</span>
                         </div>
                         @if ($adb['connection_strings'])
-                            <details class="text-xs">
-                                <summary class="cursor-pointer text-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-300">Connection Strings</summary>
+                            <details class="text-[12px]">
+                                <summary class="cursor-pointer text-neutral-500 hover:text-neutral-700 dark:text-fg-dim dark:hover:text-fg">Connection strings</summary>
                                 <div class="mt-2 flex flex-col gap-1">
                                     @foreach ($adb['connection_strings'] as $profile => $cs)
                                         <div class="flex gap-2">
-                                            <span class="w-20 shrink-0 font-mono text-neutral-400">{{ $profile }}</span>
-                                            <span class="break-all font-mono text-neutral-600 dark:text-neutral-400">{{ $cs }}</span>
+                                            <span class="w-16 shrink-0 font-mono text-[11px] text-neutral-400 dark:text-fg-faint">{{ $profile }}</span>
+                                            <span class="break-all font-mono text-[11px] text-neutral-600 dark:text-fg-dim">{{ $cs }}</span>
                                         </div>
                                     @endforeach
                                 </div>
@@ -336,10 +424,9 @@
                     </div>
                 @endforeach
             </div>
-        </div>
+        </x-application.settings-section>
     @endif
 
-</div>
         </div>
     </div>
 </div>

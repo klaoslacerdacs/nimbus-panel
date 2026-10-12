@@ -66,13 +66,18 @@ class OciStackProvisionJob implements ShouldBeUnique, ShouldQueue
                 return;
             }
 
+            $tfVars = array_merge(
+                ['tenancy_ocid' => $stack->ociConnection->tenancy_ocid],
+                $stack->tf_vars ?? []
+            );
+
             $result = $bridge->createStack(
                 $config,
                 $stack->name,
                 $stackCompartmentId,
                 'ZIP_UPLOAD',
                 ['zip_file_base64_encoded' => $zipBase64],
-                $stack->tf_vars ?? []
+                $tfVars
             );
 
             if (! isset($result['stack_id'])) {
@@ -117,8 +122,19 @@ class OciStackProvisionJob implements ShouldBeUnique, ShouldQueue
         }
 
         $outputs = $bridge->getStackOutputs($config, $apply['job_id']);
-        if (isset($outputs['public_ip'])) {
-            $stack->server?->update(['ip' => $outputs['public_ip']]);
+
+        $serverUpdate = [];
+        if (! empty($outputs['public_ip'])) {
+            $serverUpdate['ip'] = $outputs['public_ip'];
+        }
+        if (! empty($outputs['instance_id'])) {
+            $serverUpdate['oci_instance_id'] = $outputs['instance_id'];
+        }
+        if (! empty($outputs['compartment_id'])) {
+            $serverUpdate['oci_compartment_id'] = $outputs['compartment_id'];
+        }
+        if ($serverUpdate) {
+            $stack->server?->update($serverUpdate);
         }
 
         $stackUpdate = ['status' => 'provisioned', 'last_plan_summary' => null, 'oci_instance_id' => $outputs['instance_id'] ?? null];

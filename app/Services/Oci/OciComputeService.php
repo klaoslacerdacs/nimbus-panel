@@ -235,6 +235,29 @@ class OciComputeService
     }
 
     /**
+     * Resolve the primary VNIC of an instance and return its public/private IPs.
+     *
+     * @param  array<string, mixed>  $config
+     * @return array{public_ip: string|null, private_ip: string|null}
+     */
+    public function getInstancePrimaryVnic(array $config, string $compartmentId, string $instanceId, string $region): array
+    {
+        $attachments = $this->api->get($config, 'iaas', $region, self::IAAS.'/vnicAttachments', [
+            'compartmentId' => $compartmentId,
+            'instanceId' => $instanceId,
+        ]);
+
+        $vnicId = $attachments[0]['vnicId'] ?? null;
+        if (! $vnicId) {
+            return ['public_ip' => null, 'private_ip' => null];
+        }
+
+        $vnic = $this->api->get($config, 'iaas', $region, self::IAAS."/vnics/{$vnicId}");
+
+        return ['public_ip' => $vnic['publicIp'] ?? null, 'private_ip' => $vnic['privateIp'] ?? null];
+    }
+
+    /**
      * @param  array<string, mixed>  $config
      * @return array{lifecycle_state: string|null}
      */
@@ -258,20 +281,52 @@ class OciComputeService
      */
     public function listVolumeAttachments(array $config, string $compartmentId, string $instanceId, string $region): array
     {
-        $rows = $this->api->get($config, 'iaas', $region, self::IAAS.'/volumeAttachments', [
+        $dataVols = $this->api->paginate($config, 'iaas', $region, self::IAAS.'/volumeAttachments', [
             'compartmentId' => $compartmentId,
             'instanceId' => $instanceId,
             'limit' => 100,
         ]);
 
-        return array_map(fn (array $a): array => [
+        $bootVols = $this->api->paginate($config, 'iaas', $region, self::IAAS.'/bootVolumeAttachments', [
+            'compartmentId' => $compartmentId,
+            'instanceId' => $instanceId,
+            'limit' => 100,
+        ]);
+
+        $sizeOf = function (string $path) use ($config, $region): ?int {
+            try {
+                $v = $this->api->get($config, 'iaas', $region, $path);
+
+                return isset($v['sizeInGBs']) ? (int) $v['sizeInGBs'] : null;
+            } catch (\Throwable) {
+                return null;
+            }
+        };
+
+        $mapBoot = fn (array $a): array => [
+            'id' => $a['id'],
+            'volume_id' => $a['bootVolumeId'] ?? null,
+            'display_name' => $a['displayName'] ?? 'Boot Volume',
+            'lifecycle_state' => $a['lifecycleState'] ?? null,
+            'attachment_type' => 'boot',
+            'is_read_only' => false,
+            'size_in_gbs' => isset($a['bootVolumeId']) ? $sizeOf(self::IAAS."/bootVolumes/{$a['bootVolumeId']}") : null,
+        ];
+
+        $mapData = fn (array $a): array => [
             'id' => $a['id'],
             'volume_id' => $a['volumeId'] ?? null,
             'display_name' => $a['displayName'] ?? null,
             'lifecycle_state' => $a['lifecycleState'] ?? null,
             'attachment_type' => $a['attachmentType'] ?? null,
             'is_read_only' => $a['isReadOnly'] ?? false,
-        ], $rows);
+            'size_in_gbs' => isset($a['volumeId']) ? $sizeOf(self::IAAS."/volumes/{$a['volumeId']}") : null,
+        ];
+
+        return array_merge(
+            array_map($mapBoot, $bootVols),
+            array_map($mapData, $dataVols),
+        );
     }
 
     /**
@@ -347,6 +402,93 @@ class OciComputeService
             'cpu_core_count' => $adb['cpuCoreCount'] ?? null,
             'data_storage_size_in_tbs' => $adb['dataStorageSizeInTBs'] ?? null,
             'connection_strings' => $adb['connectionStrings']['allConnectionStrings'] ?? null,
+        ], $rows);
+    }
+
+    /**
+     * @param  array<string, mixed>  $config
+     * @return array<string, mixed>
+     */
+    public function createVolume(array $config, string $compartmentId, string $availabilityDomain, string $displayName, int $sizeInGBs, string $region): array
+    {
+        $v = $this->api->post($config, 'iaas', $region, self::IAAS.'/volumes', [
+            'compartmentId' => $compartmentId,
+            'availabilityDomain' => $availabilityDomain,
+            'displayName' => $displayName,
+            'sizeInGBs' => $sizeInGBs,
+        ]);
+
+        return [
+            'id' => $v['id'],
+            'display_name' => $v['displayName'] ?? $displayName,
+            'lifecycle_state' => $v['lifecycleState'] ?? null,
+            'size_in_gbs' => isset($v['sizeInGBs']) ? (int) $v['sizeInGBs'] : $sizeInGBs,
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $config
+     * @return array<int, array<string, mixed>>
+     */
+    public function listVolumes(array $config, string $compartmentId, string $region): array
+    {
+        $rows = $this->api->paginate($config, 'iaas', $region, self::IAAS.'/volumes', [
+            'compartmentId' => $compartmentId,
+            'limit' => 100,
+        ]);
+
+        return array_map(fn (array $v): array => [
+            'id' => $v['id'],
+            'display_name' => $v['displayName'] ?? null,
+            'lifecycle_state' => $v['lifecycleState'] ?? null,
+            'size_in_gbs' => isset($v['sizeInGBs']) ? (int) $v['sizeInGBs'] : null,
+        ], $rows);
+    }
+
+    /**
+     * @param  array<string, mixed>  $config
+     * @return array<int, array<string, mixed>>
+     */
+    public function listRouteTables(array $config, string $compartmentId, string $vcnId, string $region): array
+    {
+        $rows = $this->api->paginate($config, 'iaas', $region, self::IAAS.'/routeTables', [
+            'compartmentId' => $compartmentId,
+            'vcnId' => $vcnId,
+            'limit' => 100,
+        ]);
+
+        return array_map(fn (array $rt): array => [
+            'id' => $rt['id'],
+            'display_name' => $rt['displayName'] ?? null,
+            'lifecycle_state' => $rt['lifecycleState'] ?? null,
+            'route_rules' => array_map(fn (array $r): array => [
+                'destination' => $r['destination'] ?? null,
+                'destination_type' => $r['destinationType'] ?? null,
+                'network_entity_id' => $r['networkEntityId'] ?? null,
+            ], $rt['routeRules'] ?? []),
+        ], $rows);
+    }
+
+    /**
+     * @param  array<string, mixed>  $config
+     * @return array<int, array<string, mixed>>
+     */
+    public function listBuckets(array $config, string $compartmentId, string $region): array
+    {
+        $ns = trim($this->api->rawGet($config, 'objectstorage', $region, '/n'), "\" \n");
+
+        $rows = $this->api->paginate($config, 'objectstorage', $region, "/n/{$ns}/b", [
+            'compartmentId' => $compartmentId,
+            'limit' => 100,
+        ]);
+
+        return array_map(fn (array $b): array => [
+            'name' => $b['name'],
+            'namespace' => $ns,
+            'storage_tier' => $b['storageTier'] ?? null,
+            'approximate_count' => $b['approximateCount'] ?? null,
+            'approximate_size' => $b['approximateSize'] ?? null,
+            'time_created' => $b['timeCreated'] ?? null,
         ], $rows);
     }
 

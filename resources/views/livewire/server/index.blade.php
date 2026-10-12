@@ -16,6 +16,13 @@
                     </a>
                 @endcan
             @endif
+            @can('create', App\Models\Server::class)
+                <a href="{{ route('server.new.oracle-cloud.import') }}" {{ wireNavigate() }}
+                    class="button w-fit shrink-0 whitespace-nowrap">
+                    <x-reicon name="cloud-download" class="size-3.5" />
+                    Import OCI VM
+                </a>
+            @endcan
             @can('createAnyResource')
                 <a href="{{ route('server.create') }}" {{ wireNavigate() }}
                     class="button w-fit shrink-0 whitespace-nowrap button-highlighted">

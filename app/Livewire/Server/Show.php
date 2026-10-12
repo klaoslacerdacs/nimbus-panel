@@ -2,6 +2,7 @@
 
 namespace App\Livewire\Server;
 
+use App\Actions\Server\RenameServerHostname;
 use App\Actions\Server\StartSentinel;
 use App\Actions\Server\StopSentinel;
 use App\Events\ServerReachabilityChanged;
@@ -252,6 +253,7 @@ class Show extends Component
                 throw new \Exception('A server with this IP/Domain is already in use by another team.');
             }
 
+            $nameChanged = $this->server->name !== $this->name;
             $this->server->name = $this->name;
             $this->server->description = $this->description;
             $this->server->ip = $this->ip;
@@ -259,6 +261,11 @@ class Show extends Component
             $this->server->port = $this->port;
             $this->server->validation_logs = $this->validationLogs;
             $this->server->save();
+
+            if ($nameChanged && $this->server->oci_connection_id && $this->server->settings->is_reachable) {
+                RenameServerHostname::run($this->server, $this->name);
+                $this->dispatch('success', 'Server renamed and hostname updated.');
+            }
 
             $this->server->settings->connection_timeout = $this->connectionTimeout;
             $this->server->settings->is_swarm_manager = $this->isSwarmManager;
@@ -278,10 +285,16 @@ class Show extends Component
                 $this->serverTimezone = config('app.timezone');
                 throw new \Exception('Invalid timezone.');
             } else {
+                $tzChanged = $this->server->settings->server_timezone !== $this->serverTimezone;
                 $this->server->settings->server_timezone = $this->serverTimezone;
             }
 
             $this->server->settings->save();
+
+            if (! empty($tzChanged) && $this->server->oci_connection_id && $this->isReachable) {
+                $tz = escapeshellarg($this->serverTimezone);
+                instant_remote_process(["timedatectl set-timezone {$tz} 2>/dev/null || true"], $this->server, false);
+            }
         } else {
             $this->name = $this->server->name;
             $this->description = $this->server->description;

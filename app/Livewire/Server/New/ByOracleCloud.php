@@ -12,6 +12,7 @@ use App\Rules\ValidHostname;
 use App\Services\OciBridgeClient;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Illuminate\Support\Facades\DB;
+use Livewire\Attributes\Computed;
 use Livewire\Attributes\Locked;
 use Livewire\Component;
 
@@ -146,6 +147,25 @@ class ByOracleCloud extends Component
         $this->subnets = [];
         $this->subnet_ocid = '';
         $this->loadCompartments();
+    }
+
+    #[Computed]
+    public function filteredImages(): array
+    {
+        $isArm = str_contains($this->shape, '.A1.') || str_contains($this->shape, '.A2.') || str_contains($this->shape, '.A4.');
+        $filtered = array_values(array_filter($this->images, fn ($img) => $isArm
+                ? str_contains(strtolower($img['display_name'] ?? ''), 'aarch64')
+                : ! str_contains(strtolower($img['display_name'] ?? ''), 'aarch64')
+        ));
+
+        return $filtered ?: $this->images;
+    }
+
+    public function updatedShape(): void
+    {
+        $compatible = $this->filteredImages;
+        $ubuntu = collect($compatible)->firstWhere('operating_system', 'Canonical Ubuntu');
+        $this->image_id = $ubuntu['id'] ?? ($compatible[0]['id'] ?? '');
     }
 
     public function updatedCompartmentOcid(): void
