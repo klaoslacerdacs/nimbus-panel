@@ -3,9 +3,9 @@
 namespace App\Services\Oci;
 
 /**
- * Instance metrics via the Monitoring SummarizeMetricsData action. CPU comes
- * from the oci_compute namespace (no agent); memory/network from
- * oci_computeagent (agent required) — those return null when unavailable,
+ * Instance metrics via the Monitoring SummarizeMetricsData action. CPU tries
+ * oci_computeagent first (Ampere shapes) then oci_compute; memory/network need
+ * the Oracle Cloud Agent and return null when it is not reporting.
  */
 class OciMonitoringService
 {

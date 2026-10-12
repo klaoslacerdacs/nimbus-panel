@@ -17,7 +17,8 @@ class RenameServerHostname
         }
 
         $oldHostname = trim(instant_remote_process(['hostname'], $server, false) ?? '');
-        $commands = ['hostnamectl set-hostname '.escapeshellarg($hostname).' 2>/dev/null || echo '.escapeshellarg($hostname).' > /etc/hostname'];
+        // hostnamectl only (systemd on every OCI image); a `echo > /etc/hostname` fallback would not get sudo for non-root users.
+        $commands = ['hostnamectl set-hostname '.escapeshellarg($hostname)];
 
         // Old hostname comes from the remote host: regex-escape it and shell-quote the whole sed expression.
         if (preg_match('/^[a-zA-Z0-9.-]+$/', $oldHostname) && $oldHostname !== $hostname) {

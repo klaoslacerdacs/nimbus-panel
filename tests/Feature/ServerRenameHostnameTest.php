@@ -9,11 +9,13 @@ use App\Models\Server;
 use App\Models\Team;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Queue;
 use Livewire\Livewire;
 
 uses(RefreshDatabase::class);
 
 beforeEach(function () {
+    Queue::fake();
     config(['cache.default' => 'array', 'session.driver' => 'array']);
     InstanceSettings::unguarded(fn () => InstanceSettings::query()->create(['id' => 0]));
 
@@ -43,7 +45,7 @@ KEY,
         'name' => 'old-name',
         'ip' => '1.2.3.4',
     ]);
-    $this->server->settings->update(['is_reachable' => true]);
+    $this->server->settings->update(['is_reachable' => true, 'server_timezone' => 'UTC']);
 });
 
 it('renames the OS hostname of reachable OCI servers', function () {
@@ -54,7 +56,8 @@ it('renames the OS hostname of reachable OCI servers', function () {
 
     Livewire::test(Show::class, ['server_uuid' => $this->server->uuid])
         ->set('name', 'new-name')
-        ->call('submit');
+        ->call('submit')
+        ->assertNotDispatched('error');
 });
 
 it('does not touch the OS hostname of non-OCI servers', function () {
@@ -65,4 +68,16 @@ it('does not touch the OS hostname of non-OCI servers', function () {
         ->call('submit');
 
     expect($this->server->fresh()->name)->toBe('new-name');
+});
+
+it('does not touch the OS hostname when saving fails validation', function () {
+    $connection = OciConnection::factory()->create(['team_id' => $this->team->id]);
+    $this->server->update(['oci_connection_id' => $connection->id]);
+
+    RenameServerHostname::shouldNotRun();
+
+    Livewire::test(Show::class, ['server_uuid' => $this->server->uuid])
+        ->set('name', 'new-name')
+        ->set('serverTimezone', 'Not/AZone')
+        ->call('submit');
 });

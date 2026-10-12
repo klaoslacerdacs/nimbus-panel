@@ -462,10 +462,10 @@ class OciDashboard extends Component
             return;
         }
 
-        // Use tenancy as compartment to list all accessible buckets
+        // Buckets of the server's compartment (Object Storage lists one compartment per call).
         $result = app(OciClient::class)->listBuckets(
             $connection->toApiConfig(),
-            $connection->tenancy_ocid,
+            $this->server->oci_compartment_id ?: $connection->tenancy_ocid,
             $this->server->oci_region,
         );
 

@@ -33,7 +33,8 @@ function mockClient(array $overrides = []): MockInterface
     ];
 
     $mock = Mockery::mock(OciClient::class);
-    foreach (array_merge($defaults, $overrides) as $method => $returnValue) {
+    // An override of `false` leaves the method unstubbed so the test can set a stricter expectation.
+    foreach (array_filter(array_merge($defaults, $overrides), fn ($v) => $v !== false) as $method => $returnValue) {
         $mock->shouldReceive($method)->andReturn($returnValue);
     }
 
@@ -284,4 +285,16 @@ it('creates block volumes in the instance availability domain', function () {
         ->set('newVolumeSize', 100)
         ->call('createVolume')
         ->assertHasNoErrors();
+});
+
+it('lists buckets of the server compartment', function () {
+    $mock = mockClient(['listBuckets' => false]);
+    $mock->shouldReceive('listBuckets')->atLeast()->once()
+        ->with(Mockery::any(), 'ocid1.compartment.oc1..example', 'us-ashburn-1')
+        ->andReturn([$bucket = ['name' => 'assets', 'namespace' => 'ns', 'storage_tier' => 'Standard', 'approximate_count' => 1, 'approximate_size' => 10, 'time_created' => null]]);
+    app()->instance(OciClient::class, $mock);
+
+    Livewire::test(OciDashboard::class, ['server_uuid' => $this->server->uuid])
+        ->assertSet('buckets', [$bucket])
+        ->assertSee('assets');
 });

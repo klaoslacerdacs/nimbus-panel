@@ -256,11 +256,6 @@ class Show extends Component
             $this->server->validation_logs = $this->validationLogs;
             $this->server->save();
 
-            if ($nameChanged && $this->server->oci_connection_id && $this->server->settings->is_reachable) {
-                RenameServerHostname::run($this->server, $this->name);
-                $this->dispatch('success', 'Server renamed and hostname updated.');
-            }
-
             $this->server->settings->connection_timeout = $this->connectionTimeout;
             $this->server->settings->wildcard_domain = $this->wildcardDomain;
             // The role is only changed through requestServerRoleChange()/confirmServerRoleChange().
@@ -284,9 +279,14 @@ class Show extends Component
             $changedFields = auditChangedFields($this->server->settings);
             $this->server->settings->save();
 
-            if (! empty($tzChanged) && $this->server->oci_connection_id && $this->isReachable) {
-                $tz = escapeshellarg($this->serverTimezone);
-                instant_remote_process(["timedatectl set-timezone {$tz} 2>/dev/null || true"], $this->server, false);
+            // OCI servers are fully managed by Nimbus: keep OS hostname/timezone in sync, after everything validated and saved.
+            if ($this->server->oci_connection_id && $this->server->settings->is_reachable) {
+                if ($nameChanged) {
+                    RenameServerHostname::run($this->server, $this->name);
+                }
+                if (! empty($tzChanged)) {
+                    instant_remote_process(['timedatectl set-timezone '.escapeshellarg($this->serverTimezone).' 2>/dev/null || true'], $this->server, false);
+                }
             }
 
             $this->auditSettingsUpdate($changedFields);
