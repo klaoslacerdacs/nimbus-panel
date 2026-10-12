@@ -66,11 +66,9 @@ class Delete extends Component
                 }
             }
 
-            if ($this->delete_from_oci) {
-                $ociStack = $this->server->ociStack()->first();
-                if ($ociStack) {
-                    OciStackDestroyJob::dispatch($ociStack)->onQueue('oci');
-                }
+            $ociStack = $this->delete_from_oci ? $this->server->ociStack()->first() : null;
+            if ($ociStack && ! in_array($ociStack->status, ['destroying', 'destroyed'])) {
+                OciStackDestroyJob::dispatch($ociStack);
             }
 
             $this->server->delete();
@@ -129,7 +127,7 @@ class Delete extends Component
             ];
         }
 
-        if ($this->server->oci_instance_id) {
+        if ($this->server->ociStack()->exists()) {
             $checkboxes[] = [
                 'id' => 'delete_from_oci',
                 'label' => 'Also destroy OCI stack (Terraform destroy — removes VM and all OCI resources)',
