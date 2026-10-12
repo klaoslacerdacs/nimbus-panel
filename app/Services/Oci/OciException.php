@@ -9,7 +9,7 @@ class OciException extends RuntimeException
     public function __construct(
         string $message,
         int $ociCode = 500,
-        private ?string $ociDetails = null,
+        private readonly ?string $ociDetails = null,
     ) {
         parent::__construct($message, $ociCode);
     }

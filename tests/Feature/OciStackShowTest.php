@@ -11,7 +11,7 @@ use Livewire\Livewire;
 
 uses(RefreshDatabase::class);
 
-beforeEach(function () {
+beforeEach(function (): void {
     InstanceSettings::unguarded(fn () => InstanceSettings::query()->create(['id' => 0]));
 
     $this->user = User::factory()->create();
@@ -31,7 +31,7 @@ beforeEach(function () {
     ]);
 });
 
-it('renders provisioned stack details', function () {
+it('renders provisioned stack details', function (): void {
     Livewire::test(OciStackShow::class, ['stack' => $this->stack])
         ->assertSee($this->stack->name)
         ->assertSee('Provisioned')
@@ -40,7 +40,7 @@ it('renders provisioned stack details', function () {
         ->assertSee('OCI Console');
 });
 
-it('shows tf_vars table excluding ssh key', function () {
+it('shows tf_vars table excluding ssh key', function (): void {
     $this->stack->update(['tf_vars' => [
         'region' => 'sa-saopaulo-1',
         'shape' => 'VM.Standard.A1.Flex',
@@ -54,7 +54,7 @@ it('shows tf_vars table excluding ssh key', function () {
         ->assertSee('hidden');
 });
 
-it('shows error message on failed stack', function () {
+it('shows error message on failed stack', function (): void {
     $this->stack->update(['status' => 'failed', 'last_plan_summary' => 'Quota exceeded for VM.Standard.A1.Flex']);
 
     Livewire::test(OciStackShow::class, ['stack' => $this->stack])
@@ -62,7 +62,7 @@ it('shows error message on failed stack', function () {
         ->assertSee('Quota exceeded for VM.Standard.A1.Flex');
 });
 
-it('denies access to other team members', function () {
+it('denies access to other team members', function (): void {
     $this->withoutVite();
     $other = User::factory()->create();
     $otherTeam = Team::factory()->create();

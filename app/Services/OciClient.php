@@ -51,147 +51,147 @@ class OciClient
 
     public function listCompartments(array $config, string $region): array
     {
-        return $this->guard(fn () => $this->compute->listCompartments($config, $region));
+        return $this->guard(fn (): array => $this->compute->listCompartments($config, $region));
     }
 
     public function listInstances(array $config, string $compartmentId, string $region): array
     {
-        return $this->guard(fn () => $this->compute->listInstances($config, $compartmentId, $region));
+        return $this->guard(fn (): array => $this->compute->listInstances($config, $compartmentId, $region));
     }
 
     public function listAvailabilityDomains(array $config, string $compartmentId, string $region): array
     {
-        return $this->guard(fn () => $this->compute->listAvailabilityDomains($config, $compartmentId, $region));
+        return $this->guard(fn (): array => $this->compute->listAvailabilityDomains($config, $compartmentId, $region));
     }
 
     public function listShapes(array $config, string $compartmentId, string $region): array
     {
-        return $this->guard(fn () => $this->compute->listShapes($config, $compartmentId, $region));
+        return $this->guard(fn (): array => $this->compute->listShapes($config, $compartmentId, $region));
     }
 
     public function listImages(array $config, string $compartmentId, string $region): array
     {
-        return $this->guard(fn () => $this->compute->listImages($config, $compartmentId, $region));
+        return $this->guard(fn (): array => $this->compute->listImages($config, $compartmentId, $region));
     }
 
     public function listSubnets(array $config, string $vcnId, string $compartmentId, string $region): array
     {
-        return $this->guard(fn () => $this->compute->listSubnets($config, $vcnId, $compartmentId, $region));
+        return $this->guard(fn (): array => $this->compute->listSubnets($config, $vcnId, $compartmentId, $region));
     }
 
     public function listSubnetsByCompartment(array $config, string $compartmentId, string $region): array
     {
-        return $this->guard(fn () => $this->compute->listSubnetsByCompartment($config, $compartmentId, $region));
+        return $this->guard(fn (): array => $this->compute->listSubnetsByCompartment($config, $compartmentId, $region));
     }
 
     public function listVcns(array $config, string $compartmentId, string $region): array
     {
-        return $this->guard(fn () => $this->compute->listVcns($config, $compartmentId, $region));
+        return $this->guard(fn (): array => $this->compute->listVcns($config, $compartmentId, $region));
     }
 
     public function listNsgRules(array $config, string $nsgId, string $region): array
     {
-        return $this->guard(fn () => $this->compute->listNsgRules($config, $nsgId, $region));
+        return $this->guard(fn (): array => $this->compute->listNsgRules($config, $nsgId, $region));
     }
 
     public function addNsgRules(array $config, string $nsgId, array $rules, string $region): array
     {
-        return $this->guard(fn () => $this->compute->addNsgRules($config, $nsgId, $rules, $region));
+        return $this->guard(fn (): array => $this->compute->addNsgRules($config, $nsgId, $rules, $region));
     }
 
     public function removeNsgRules(array $config, string $nsgId, array $ruleIds, string $region): array
     {
-        return $this->guard(fn () => $this->compute->removeNsgRules($config, $nsgId, $ruleIds, $region));
+        return $this->guard(fn (): array => $this->compute->removeNsgRules($config, $nsgId, $ruleIds, $region));
     }
 
     public function createStack(array $config, string $name, string $compartmentId, string $configSourceType, array $configSourceParams, array $variables = []): array
     {
-        return $this->guard(fn () => $this->resourceManager->createStack($config, $name, $compartmentId, $configSourceType, $configSourceParams, $variables));
+        return $this->guard(fn (): array => $this->resourceManager->createStack($config, $name, $compartmentId, $configSourceType, $configSourceParams, $variables));
     }
 
     public function runStackJob(array $config, string $stackId, string $operation, bool $confirmDestroy = false): array
     {
-        return $this->guard(fn () => $this->resourceManager->runJob($config, $stackId, $operation, $confirmDestroy));
+        return $this->guard(fn (): array => $this->resourceManager->runJob($config, $stackId, $operation, $confirmDestroy));
     }
 
     public function getStackJob(array $config, string $jobId): array
     {
-        return $this->guard(fn () => $this->resourceManager->getJob($config, $jobId));
+        return $this->guard(fn (): array => $this->resourceManager->getJob($config, $jobId));
     }
 
     public function getStackOutputs(array $config, string $jobId): array
     {
-        return $this->guard(fn () => $this->resourceManager->getStackOutputs($config, $jobId));
+        return $this->guard(fn (): array => $this->resourceManager->getStackOutputs($config, $jobId));
     }
 
     public function getJobLogs(array $config, string $jobId): array
     {
-        return $this->guard(fn () => $this->resourceManager->getJobLogs($config, $jobId));
+        return $this->guard(fn (): array => $this->resourceManager->getJobLogs($config, $jobId));
     }
 
     public function getInstanceStatus(array $config, string $instanceId, string $region): array
     {
-        return $this->guard(fn () => $this->compute->getInstanceStatus($config, $instanceId, $region));
+        return $this->guard(fn (): array => $this->compute->getInstanceStatus($config, $instanceId, $region));
     }
 
     public function getInstanceMetrics(array $config, string $instanceId, string $compartmentId, string $region): array
     {
-        return $this->guard(fn () => $this->monitoring->getInstanceMetrics($config, $instanceId, $compartmentId, $region));
+        return $this->guard(fn (): array => $this->monitoring->getInstanceMetrics($config, $instanceId, $compartmentId, $region));
     }
 
     public function instanceAction(array $config, string $instanceId, string $region, string $action): array
     {
-        return $this->guard(fn () => $this->compute->instanceAction($config, $instanceId, $region, $action));
+        return $this->guard(fn (): array => $this->compute->instanceAction($config, $instanceId, $region, $action));
     }
 
     public function getInstancePrimaryVnic(array $config, string $compartmentId, string $instanceId, string $region): array
     {
-        return $this->guard(fn () => $this->compute->getInstancePrimaryVnic($config, $compartmentId, $instanceId, $region));
+        return $this->guard(fn (): array => $this->compute->getInstancePrimaryVnic($config, $compartmentId, $instanceId, $region));
     }
 
     public function listVolumeAttachments(array $config, string $compartmentId, string $instanceId, string $region): array
     {
-        return $this->guard(fn () => $this->compute->listVolumeAttachments($config, $compartmentId, $instanceId, $region));
+        return $this->guard(fn (): array => $this->compute->listVolumeAttachments($config, $compartmentId, $instanceId, $region));
     }
 
     public function attachVolume(array $config, string $instanceId, string $volumeId, string $region, bool $readOnly = false): array
     {
-        return $this->guard(fn () => $this->compute->attachVolume($config, $instanceId, $volumeId, $region, $readOnly));
+        return $this->guard(fn (): array => $this->compute->attachVolume($config, $instanceId, $volumeId, $region, $readOnly));
     }
 
     public function detachVolume(array $config, string $volumeAttachmentId, string $region): array
     {
-        return $this->guard(fn () => $this->compute->detachVolume($config, $volumeAttachmentId, $region));
+        return $this->guard(fn (): array => $this->compute->detachVolume($config, $volumeAttachmentId, $region));
     }
 
     public function createVolume(array $config, string $compartmentId, string $availabilityDomain, string $displayName, int $sizeInGBs, string $region): array
     {
-        return $this->guard(fn () => $this->compute->createVolume($config, $compartmentId, $availabilityDomain, $displayName, $sizeInGBs, $region));
+        return $this->guard(fn (): array => $this->compute->createVolume($config, $compartmentId, $availabilityDomain, $displayName, $sizeInGBs, $region));
     }
 
     public function listVolumes(array $config, string $compartmentId, string $region): array
     {
-        return $this->guard(fn () => $this->compute->listVolumes($config, $compartmentId, $region));
+        return $this->guard(fn (): array => $this->compute->listVolumes($config, $compartmentId, $region));
     }
 
     public function listLoadBalancers(array $config, string $compartmentId, string $region): array
     {
-        return $this->guard(fn () => $this->compute->listLoadBalancers($config, $compartmentId, $region));
+        return $this->guard(fn (): array => $this->compute->listLoadBalancers($config, $compartmentId, $region));
     }
 
     public function listAutonomousDatabases(array $config, string $compartmentId, string $region): array
     {
-        return $this->guard(fn () => $this->compute->listAutonomousDatabases($config, $compartmentId, $region));
+        return $this->guard(fn (): array => $this->compute->listAutonomousDatabases($config, $compartmentId, $region));
     }
 
     public function listRouteTables(array $config, string $compartmentId, string $vcnId, string $region): array
     {
-        return $this->guard(fn () => $this->compute->listRouteTables($config, $compartmentId, $vcnId, $region));
+        return $this->guard(fn (): array => $this->compute->listRouteTables($config, $compartmentId, $vcnId, $region));
     }
 
     public function listBuckets(array $config, string $compartmentId, string $region): array
     {
-        return $this->guard(fn () => $this->compute->listBuckets($config, $compartmentId, $region));
+        return $this->guard(fn (): array => $this->compute->listBuckets($config, $compartmentId, $region));
     }
 
     /**

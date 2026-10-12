@@ -27,7 +27,7 @@ function instanceIdentity(): array
 
 function securityToken(int $exp): string
 {
-    $part = fn (array $data) => rtrim(strtr(base64_encode(json_encode($data)), '+/', '-_'), '=');
+    $part = fn (array $data): string => rtrim(strtr(base64_encode(json_encode($data)), '+/', '-_'), '=');
 
     return $part(['alg' => 'RS256']).'.'.$part(['exp' => $exp, 'sub' => 'ocid1.instance.oc1..vm']).'.sig';
 }
@@ -45,7 +45,7 @@ function fakeOciMetadata(array $identity, string $token, array $extra = []): voi
 
 beforeEach(fn () => OciInstancePrincipal::forget());
 
-it('federates the instance certificate into a security token signed with the session key', function () {
+it('federates the instance certificate into a security token signed with the session key', function (): void {
     $identity = instanceIdentity();
     $token = securityToken(time() + 1200);
     fakeOciMetadata($identity, $token);
@@ -54,7 +54,7 @@ it('federates the instance certificate into a security token signed with the ses
 
     expect($headers['Authorization'])->toContain('keyId="ST$'.$token.'"');
 
-    Http::assertSent(function (Request $request) use ($identity) {
+    Http::assertSent(function (Request $request) use ($identity): bool {
         if (! str_contains($request->url(), 'auth.sa-saopaulo-1.oraclecloud.com/v1/x509')) {
             return str_contains($request->url(), '169.254.169.254') && $request->header('Authorization')[0] === 'Bearer Oracle';
         }
@@ -71,11 +71,11 @@ it('federates the instance certificate into a security token signed with the ses
     });
 });
 
-it('reads the tenancy from the identity certificate', function () {
+it('reads the tenancy from the identity certificate', function (): void {
     expect(OciInstancePrincipal::tenancyFromCertificate(instanceIdentity()['cert']))->toBe(IP_TENANCY);
 });
 
-it('reuses the token until it nears expiry, then re-federates', function () {
+it('reuses the token until it nears expiry, then re-federates', function (): void {
     fakeOciMetadata(instanceIdentity(), '', ['auth.sa-saopaulo-1.oraclecloud.com/v1/x509' => Http::sequence()
         ->push(['token' => $long = securityToken(time() + 1200)])
         ->push(['token' => $short = securityToken(time() + 60)])
@@ -91,19 +91,19 @@ it('reuses the token until it nears expiry, then re-federates', function () {
         ->and($principal->credentials()[0])->toBe('ST$'.$next); // inside the refresh margin: never reused
 });
 
-it('fails clearly when not running on an OCI instance', function () {
+it('fails clearly when not running on an OCI instance', function (): void {
     Http::fake(['169.254.169.254/*' => Http::response('', 404)]);
 
     app(OciInstancePrincipal::class)->credentials();
 })->throws(OciException::class, 'requires Nimbus Panel to run on an OCI instance');
 
-it('fails when the auth service rejects the certificate', function () {
+it('fails when the auth service rejects the certificate', function (): void {
     fakeOciMetadata(instanceIdentity(), '', ['auth.sa-saopaulo-1.oraclecloud.com/v1/x509' => Http::response(['code' => 'NotAuthenticated'], 401)]);
 
     app(OciInstancePrincipal::class)->credentials();
 })->throws(OciException::class, 'federation failed');
 
-it('re-federates once when OCI rejects a cached token', function () {
+it('re-federates once when OCI rejects a cached token', function (): void {
     fakeOciMetadata(instanceIdentity(), securityToken(time() + 1200), [
         'iaas.us-ashburn-1.oraclecloud.com/*' => Http::sequence()->push(['code' => 'NotAuthenticated'], 401)->push(['id' => 'ok'], 200),
     ]);

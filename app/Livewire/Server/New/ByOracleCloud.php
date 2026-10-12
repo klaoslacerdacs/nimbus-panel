@@ -10,6 +10,8 @@ use App\Models\Server;
 use App\Models\Team;
 use App\Rules\ValidHostname;
 use App\Services\OciClient;
+use Illuminate\Contracts\View\Factory;
+use Illuminate\Contracts\View\View;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Illuminate\Support\Facades\DB;
 use Livewire\Attributes\Computed;
@@ -123,6 +125,7 @@ class ByOracleCloud extends Component
         $this->loadRegions();
     }
 
+    #[\Override]
     public function getListeners(): array
     {
         return [
@@ -153,7 +156,7 @@ class ByOracleCloud extends Component
     public function filteredImages(): array
     {
         $isArm = str_contains($this->shape, '.A1.') || str_contains($this->shape, '.A2.') || str_contains($this->shape, '.A4.');
-        $filtered = array_values(array_filter($this->images, fn ($img) => $isArm
+        $filtered = array_values(array_filter($this->images, fn (array $img): bool => $isArm
                 ? str_contains(strtolower($img['display_name'] ?? ''), 'aarch64')
                 : ! str_contains(strtolower($img['display_name'] ?? ''), 'aarch64')
         ));
@@ -240,7 +243,7 @@ class ByOracleCloud extends Component
         sort($names);
 
         // sa-saopaulo-1 always first
-        $names = array_values(array_filter($names, fn ($n) => $n !== 'sa-saopaulo-1'));
+        $names = array_values(array_filter($names, fn ($n): bool => $n !== 'sa-saopaulo-1'));
         array_unshift($names, 'sa-saopaulo-1');
 
         $this->regions = $names;
@@ -333,7 +336,7 @@ class ByOracleCloud extends Component
                 str_contains($name, 'Standard3') || str_contains($name, 'Standard2') || str_contains($name, 'Optimized') => 2,
                 default => 4,
             };
-            usort($shapeResult, fn ($a, $b) => $family($a['name']) <=> $family($b['name']) ?: strcmp($a['name'], $b['name']));
+            usort($shapeResult, fn (array $a, array $b): int => $family($a['name']) <=> $family($b['name']) ?: strcmp($a['name'], $b['name']));
             $this->shapes = $shapeResult;
         }
 
@@ -341,7 +344,7 @@ class ByOracleCloud extends Component
         if (! isset($imageResult['error'])) {
             // Group: Ubuntu first (Coolify-preferred), then Rocky, then Oracle Linux
             $order = ['Canonical Ubuntu' => 0, 'Rocky Linux' => 1, 'Oracle Linux' => 2];
-            usort($imageResult, fn ($a, $b) => ($order[$a['operating_system']] ?? 9) <=> ($order[$b['operating_system']] ?? 9));
+            usort($imageResult, fn (array $a, array $b): int => ($order[$a['operating_system']] ?? 9) <=> ($order[$b['operating_system']] ?? 9));
             $this->images = $imageResult;
             // Default: latest Ubuntu
             $ubuntu = collect($this->images)->firstWhere('operating_system', 'Canonical Ubuntu');
@@ -351,13 +354,13 @@ class ByOracleCloud extends Component
         }
     }
 
-    public function handleConnectionCreated($connectionId): void
+    public function handleConnectionCreated(?int $connectionId): void
     {
         $this->selected_connection_id = $connectionId;
         $this->nextStep();
     }
 
-    public function handlePrivateKeyCreated($keyId): void
+    public function handlePrivateKeyCreated(?int $keyId): void
     {
         $this->private_keys = PrivateKey::ownedAndOnlySShKeys()->where('id', '!=', 0)->get();
         $this->private_key_id = $keyId;
@@ -535,9 +538,9 @@ class ByOracleCloud extends Component
                 'boot_volume_size_in_gbs' => (string) $this->boot_volume_size_in_gbs,
                 'project_tag' => currentTeam()->name,
                 'environment_tag' => 'production',
-            ], fn ($v) => $v !== '');
+            ], fn ($v): bool => $v !== '');
 
-            [$server, $ociStack] = DB::transaction(function () use ($compartmentOcid, $tfVars) {
+            [$server, $ociStack] = DB::transaction(function () use ($compartmentOcid, $tfVars): array {
                 Team::ensureServerCapacity(currentTeam()->id);
                 $server = Server::create([
                     'name' => strtolower(trim($this->server_name)),
@@ -586,7 +589,7 @@ class ByOracleCloud extends Component
         }
     }
 
-    public function render()
+    public function render(): Factory|View
     {
         return view('livewire.server.new.by-oracle-cloud', [
             'connections' => OciConnection::ownedByCurrentTeam()->get(),

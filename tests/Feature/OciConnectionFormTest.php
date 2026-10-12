@@ -11,7 +11,7 @@ use Livewire\Livewire;
 
 uses(RefreshDatabase::class);
 
-beforeEach(function () {
+beforeEach(function (): void {
     InstanceSettings::unguarded(fn () => InstanceSettings::query()->create(['id' => 0]));
 
     $this->user = User::factory()->create();
@@ -21,11 +21,11 @@ beforeEach(function () {
     session(['currentTeam' => $this->team]);
 });
 
-it('renders the connection form', function () {
+it('renders the connection form', function (): void {
     Livewire::test(OciConnectionForm::class)->assertStatus(200);
 });
 
-it('creates a connection when OCI API validates successfully', function () {
+it('creates a connection when OCI API validates successfully', function (): void {
     $mock = Mockery::mock(OciClient::class);
     $mock->shouldReceive('validateConnection')->andReturn(['ok' => true]);
     app()->instance(OciClient::class, $mock);
@@ -53,11 +53,11 @@ it('creates a connection when OCI API validates successfully', function () {
     ]);
 });
 
-it('sends API-config key names in validateConnection request', function () {
+it('sends API-config key names in validateConnection request', function (): void {
     $mock = Mockery::mock(OciClient::class);
     $mock->shouldReceive('validateConnection')
         ->once()
-        ->with(Mockery::on(fn ($config) => isset($config['auth_mode'])     // API config key, not authentication_method
+        ->with(Mockery::on(fn ($config): bool => isset($config['auth_mode'])     // API config key, not authentication_method
             && isset($config['tenancy_id'])   // API config key, not tenancy_ocid
             && isset($config['user_id'])      // API config key, not user_ocid
             && isset($config['key_content'])  // API config key, not private_key
@@ -79,7 +79,7 @@ it('sends API-config key names in validateConnection request', function () {
         );
 });
 
-it('clears private_key from component state after addConnection runs', function () {
+it('clears private_key from component state after addConnection runs', function (): void {
     // Inject PEM alongside the call (same Livewire commit) so it IS populated when
     // addConnection executes. After the method returns, dehydrate() must zero it.
     // If dehydrate() was removed, private_key would survive in the snapshot.
@@ -97,7 +97,7 @@ it('clears private_key from component state after addConnection runs', function 
         ->assertSet('passphrase', null);
 });
 
-it('does not create connection when OCI API returns error', function () {
+it('does not create connection when OCI API returns error', function (): void {
     $mock = Mockery::mock(OciClient::class);
     $mock->shouldReceive('validateConnection')->andReturn(['error' => true, 'message' => 'Invalid credentials']);
     app()->instance(OciClient::class, $mock);
@@ -118,7 +118,7 @@ it('does not create connection when OCI API returns error', function () {
     $this->assertDatabaseMissing('oci_connections', ['name' => 'Bad Connection']);
 });
 
-it('denies addConnection to non-admin team members', function () {
+it('denies addConnection to non-admin team members', function (): void {
     $member = User::factory()->create();
     $this->team->members()->attach($member, ['role' => 'member']);
     $this->actingAs($member);
@@ -144,7 +144,7 @@ it('denies addConnection to non-admin team members', function () {
     $this->assertDatabaseMissing('oci_connections', ['name' => 'Sneaky Connection']);
 });
 
-it('restricts instance_principal auth to instance administrators', function () {
+it('restricts instance_principal auth to instance administrators', function (): void {
     $mock = Mockery::mock(OciClient::class);
     $mock->shouldNotReceive('validateConnection');
     app()->instance(OciClient::class, $mock);
@@ -159,7 +159,7 @@ it('restricts instance_principal auth to instance administrators', function () {
     $this->assertDatabaseMissing('oci_connections', ['name' => 'Instance Principal Conn']);
 });
 
-it('lets instance administrators create an instance_principal connection without key material', function () {
+it('lets instance administrators create an instance_principal connection without key material', function (): void {
     $root = Team::factory()->create(['id' => 0]);
     $root->members()->attach($this->user, ['role' => 'admin']);
     $this->user->refresh();
@@ -167,7 +167,7 @@ it('lets instance administrators create an instance_principal connection without
     $mock = Mockery::mock(OciClient::class);
     $mock->shouldReceive('validateConnection')
         ->once()
-        ->with(Mockery::on(fn ($config) => $config['auth_mode'] === 'instance_principal' && ! isset($config['key_content'])))
+        ->with(Mockery::on(fn ($config): bool => $config['auth_mode'] === 'instance_principal' && ! isset($config['key_content'])))
         ->andReturn(['ok' => true, 'tenancy_ocid' => 'ocid1.tenancy.oc1..host']);
     app()->instance(OciClient::class, $mock);
 

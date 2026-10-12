@@ -10,7 +10,7 @@ use Livewire\Livewire;
 
 uses(RefreshDatabase::class);
 
-beforeEach(function () {
+beforeEach(function (): void {
     InstanceSettings::unguarded(fn () => InstanceSettings::query()->create(['id' => 0]));
     $this->user = User::factory()->create();
     $this->team = Team::factory()->create();
@@ -19,13 +19,13 @@ beforeEach(function () {
     session(['currentTeam' => $this->team]);
 });
 
-it('can render form', function () {
+it('can render form', function (): void {
     $component = Livewire::test(OciStackForm::class);
 
     $component->assertStatus(200);
 });
 
-it('can create stack', function () {
+it('can create stack', function (): void {
     $connection = OciConnection::factory()->create(['team_id' => $this->team->id]);
 
     Livewire::test(OciStackForm::class)
@@ -46,7 +46,7 @@ it('can create stack', function () {
     ]);
 });
 
-it('shows validation errors', function () {
+it('shows validation errors', function (): void {
     $component = Livewire::test(OciStackForm::class)
         ->set('name', '')
         ->set('oci_connection_id', 0)
@@ -55,7 +55,7 @@ it('shows validation errors', function () {
     $component->assertHasErrors(['name', 'oci_connection_id']);
 });
 
-it('rejects a connection that belongs to another team', function () {
+it('rejects a connection that belongs to another team', function (): void {
     $foreign = OciConnection::factory()->create(['team_id' => Team::factory()->create()->id]);
 
     Livewire::test(OciStackForm::class)
@@ -70,7 +70,7 @@ it('rejects a connection that belongs to another team', function () {
     $this->assertDatabaseMissing('oci_stacks', ['oci_connection_id' => $foreign->id]);
 });
 
-it('forbids members without admin role from creating stacks', function () {
+it('forbids members without admin role from creating stacks', function (): void {
     $member = User::factory()->create();
     $this->team->members()->attach($member, ['role' => 'member']);
     $this->actingAs($member);

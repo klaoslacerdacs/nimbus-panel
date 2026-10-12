@@ -99,6 +99,6 @@ class OciClientTest extends TestCase
 
         (new OciClient)->listInstances($this->config, 'c', 'us-ashburn-1');
 
-        Http::assertSent(fn ($request) => str_starts_with($request->header('Authorization')[0] ?? '', 'Signature version="1"'));
+        Http::assertSent(fn ($request): bool => str_starts_with($request->header('Authorization')[0] ?? '', 'Signature version="1"'));
     }
 }

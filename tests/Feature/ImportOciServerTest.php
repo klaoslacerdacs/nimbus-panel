@@ -37,7 +37,7 @@ function mockImportClient(array $overrides = []): MockInterface
     return $mock;
 }
 
-beforeEach(function () {
+beforeEach(function (): void {
     Queue::fake();
     InstanceSettings::unguarded(fn () => InstanceSettings::query()->create(['id' => 0]));
 
@@ -64,7 +64,7 @@ function driveToStep3()
         ->set('private_key_id', test()->privateKey->id);
 }
 
-it('imports an existing OCI instance as a server without creating an OciStack', function () {
+it('imports an existing OCI instance as a server without creating an OciStack', function (): void {
     driveToStep3()
         ->call('createServer')
         ->assertHasNoErrors();
@@ -83,7 +83,7 @@ it('imports an existing OCI instance as a server without creating an OciStack', 
     expect(OciStack::count())->toBe(0);
 });
 
-it('filters out terminated instances from the selection list', function () {
+it('filters out terminated instances from the selection list', function (): void {
     Livewire::test(ImportOciServer::class)
         ->set('oci_connection_id', $this->connection->id)
         ->set('compartment_id', 'ocid1.compartment.oc1..c1')
@@ -92,7 +92,7 @@ it('filters out terminated instances from the selection list', function () {
         ->assertDontSee('zombie-vm');
 });
 
-it('rejects importing an instance that is already imported', function () {
+it('rejects importing an instance that is already imported', function (): void {
     Server::factory()->create([
         'team_id' => $this->team->id,
         'oci_instance_id' => 'ocid1.instance.oc1..running',
@@ -105,7 +105,7 @@ it('rejects importing an instance that is already imported', function () {
     expect(Server::where('oci_instance_id', 'ocid1.instance.oc1..running')->count())->toBe(1);
 });
 
-it('rejects import when the server limit is reached', function () {
+it('rejects import when the server limit is reached', function (): void {
     config(['constants.coolify.self_hosted' => false]);
     $this->team->update(['custom_server_limit' => '0']);
 
@@ -116,7 +116,7 @@ it('rejects import when the server limit is reached', function () {
     expect(Server::where('oci_instance_id', 'ocid1.instance.oc1..running')->exists())->toBeFalse();
 });
 
-it('rejects an instance OCID that was not listed for the selected compartment', function () {
+it('rejects an instance OCID that was not listed for the selected compartment', function (): void {
     Livewire::test(ImportOciServer::class)
         ->set('oci_connection_id', $this->connection->id)
         ->set('compartment_id', 'ocid1.compartment.oc1..c1')
@@ -126,7 +126,7 @@ it('rejects an instance OCID that was not listed for the selected compartment', 
         ->assertHasErrors(['oci_instance_id']);
 });
 
-it('rejects a compartment that was not listed for the connection', function () {
+it('rejects a compartment that was not listed for the connection', function (): void {
     Livewire::test(ImportOciServer::class)
         ->set('oci_connection_id', $this->connection->id)
         ->set('compartment_id', 'ocid1.compartment.oc1..unlisted')
@@ -134,7 +134,7 @@ it('rejects a compartment that was not listed for the connection', function () {
         ->assertHasErrors(['compartment_id']);
 });
 
-it('rejects an invalid server IP', function () {
+it('rejects an invalid server IP', function (): void {
     driveToStep3()
         ->set('ip', 'not an ip; rm -rf /')
         ->call('createServer')
@@ -143,12 +143,12 @@ it('rejects an invalid server IP', function () {
     expect(Server::where('oci_instance_id', 'ocid1.instance.oc1..running')->exists())->toBeFalse();
 });
 
-it('cannot tamper with the listed instances from the browser', function () {
+it('cannot tamper with the listed instances from the browser', function (): void {
     Livewire::test(ImportOciServer::class)
         ->set('instances', [['id' => 'ocid1.instance.oc1..forged']]);
 })->throws(CannotUpdateLockedPropertyException::class);
 
-it('accepts a typed compartment OCID when compartments cannot be listed', function () {
+it('accepts a typed compartment OCID when compartments cannot be listed', function (): void {
     app()->instance(OciClient::class, mockImportClient(['listCompartments' => ['error' => true, 'message' => 'NotAuthorized']]));
 
     Livewire::test(ImportOciServer::class)

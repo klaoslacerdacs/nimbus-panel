@@ -8,15 +8,15 @@ namespace App\Services\Oci;
  */
 class OciComputeService
 {
-    private const IAAS = '/20160918';
+    private const string IAAS = '/20160918';
 
-    private const LB = '/20170115';
+    private const string LB = '/20170115';
 
-    private const IMAGE_OPERATING_SYSTEMS = ['Oracle Linux', 'Canonical Ubuntu', 'Rocky Linux'];
+    private const array IMAGE_OPERATING_SYSTEMS = ['Oracle Linux', 'Canonical Ubuntu', 'Rocky Linux'];
 
-    private const INSTANCE_ACTIONS = ['START', 'SOFTSTOP', 'SOFTRESET'];
+    private const array INSTANCE_ACTIONS = ['START', 'SOFTSTOP', 'SOFTRESET'];
 
-    public function __construct(private OciApiClient $api) {}
+    public function __construct(private readonly OciApiClient $api) {}
 
     /**
      * @param  array<string, mixed>  $config

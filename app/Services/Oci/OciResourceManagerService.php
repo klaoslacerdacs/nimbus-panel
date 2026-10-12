@@ -9,9 +9,9 @@ namespace App\Services\Oci;
  */
 class OciResourceManagerService
 {
-    private const RM = '/20180917';
+    private const string RM = '/20180917';
 
-    public function __construct(private OciApiClient $api) {}
+    public function __construct(private readonly OciApiClient $api) {}
 
     /**
      * @param  array<string, mixed>  $config

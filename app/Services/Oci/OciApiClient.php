@@ -12,7 +12,7 @@ use Illuminate\Support\Facades\Http;
  */
 class OciApiClient
 {
-    public function __construct(private OciRequestSigner $signer) {}
+    public function __construct(private readonly OciRequestSigner $signer) {}
 
     /**
      * @param  array<string, mixed>  $config

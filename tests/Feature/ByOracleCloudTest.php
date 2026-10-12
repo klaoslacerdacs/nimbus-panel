@@ -14,7 +14,7 @@ use Livewire\Livewire;
 
 uses(RefreshDatabase::class);
 
-beforeEach(function () {
+beforeEach(function (): void {
     $this->user = User::factory()->create();
     $this->team = Team::factory()->create();
     $this->team->members()->attach($this->user, ['role' => 'owner']);
@@ -22,20 +22,20 @@ beforeEach(function () {
     session(['currentTeam' => $this->team]);
 });
 
-it('renders step 0 prerequisites by default', function () {
+it('renders step 0 prerequisites by default', function (): void {
     $component = Livewire::test(ByOracleCloud::class);
 
     $component->assertStatus(200)->assertSet('current_step', 0);
 });
 
-it('can advance from step 0 to step 1 without validation', function () {
+it('can advance from step 0 to step 1 without validation', function (): void {
     $component = Livewire::test(ByOracleCloud::class)
         ->call('nextStep');
 
     $component->assertSet('current_step', 1);
 });
 
-it('can advance to step 2 by selecting connection', function () {
+it('can advance to step 2 by selecting connection', function (): void {
     $connection = OciConnection::factory()->create(['team_id' => $this->team->id]);
 
     $component = Livewire::test(ByOracleCloud::class)
@@ -46,7 +46,7 @@ it('can advance to step 2 by selecting connection', function () {
     $component->assertSet('current_step', 2);
 });
 
-it('createServer creates Server and OciStack records', function () {
+it('createServer creates Server and OciStack records', function (): void {
     Queue::fake();
 
     $connection = OciConnection::factory()->create(['team_id' => $this->team->id]);
@@ -87,7 +87,7 @@ it('createServer creates Server and OciStack records', function () {
     ]);
 });
 
-it('createServer links oci_stack to server via server_id', function () {
+it('createServer links oci_stack to server via server_id', function (): void {
     Queue::fake();
 
     $connection = OciConnection::factory()->create(['team_id' => $this->team->id]);
@@ -113,7 +113,7 @@ it('createServer links oci_stack to server via server_id', function () {
     expect($stack->server_id)->toBe($server->id);
 });
 
-it('oci_connection toApiConfig uses API config key names', function () {
+it('oci_connection toApiConfig uses API config key names', function (): void {
     $connection = OciConnection::factory()->create([
         'team_id' => $this->team->id,
         'tenancy_ocid' => 'ocid1.tenancy.oc1..aaa',
@@ -131,7 +131,7 @@ it('oci_connection toApiConfig uses API config key names', function () {
         ->and($cfg)->not->toHaveKey('private_key');
 });
 
-it('cannot advance to step 2 with a connection from another team', function () {
+it('cannot advance to step 2 with a connection from another team', function (): void {
     $otherTeam = Team::factory()->create();
     $connectionB = OciConnection::factory()->create(['team_id' => $otherTeam->id]);
 
@@ -142,7 +142,7 @@ it('cannot advance to step 2 with a connection from another team', function () {
         ->assertHasErrors(['selected_connection_id']);
 });
 
-it('shows validation errors on empty submit in step 2', function () {
+it('shows validation errors on empty submit in step 2', function (): void {
     $connection = OciConnection::factory()->create(['team_id' => $this->team->id]);
     $privateKey = PrivateKey::factory()->create(['team_id' => $this->team->id]);
 
@@ -160,7 +160,7 @@ it('shows validation errors on empty submit in step 2', function () {
     ]);
 });
 
-it('does not create a server or stack when the team server limit is reached', function () {
+it('does not create a server or stack when the team server limit is reached', function (): void {
     Queue::fake();
     config(['constants.coolify.self_hosted' => false]);
     $this->team->update(['custom_server_limit' => '0']);

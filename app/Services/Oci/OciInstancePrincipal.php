@@ -13,9 +13,9 @@ use OpenSSLAsymmetricKey;
  */
 class OciInstancePrincipal
 {
-    private const METADATA = 'http://169.254.169.254/opc/v2';
+    private const string METADATA = 'http://169.254.169.254/opc/v2';
 
-    private const REFRESH_MARGIN = 300;
+    private const int REFRESH_MARGIN = 300;
 
     /**
      * ponytail: per-process cache — every FPM/Horizon worker federates once per token lifetime (~20 min); move to a shared lock if auth throttles.
@@ -24,7 +24,7 @@ class OciInstancePrincipal
      */
     private static ?array $session = null;
 
-    public function __construct(private OciRequestSigner $signer) {}
+    public function __construct(private readonly OciRequestSigner $signer) {}
 
     /**
      * @return array{0: string, 1: OpenSSLAsymmetricKey} keyId and signing key for OCI requests.

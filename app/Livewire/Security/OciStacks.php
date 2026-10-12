@@ -4,6 +4,8 @@ namespace App\Livewire\Security;
 
 use App\Jobs\OciStackDestroyJob;
 use App\Models\OciStack;
+use Illuminate\Contracts\View\Factory;
+use Illuminate\Contracts\View\View;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Livewire\Attributes\Locked;
 use Livewire\Component;
@@ -27,6 +29,7 @@ class OciStacks extends Component
         }
     }
 
+    #[\Override]
     public function getListeners(): array
     {
         return [
@@ -110,7 +113,7 @@ class OciStacks extends Component
         }
     }
 
-    public function render()
+    public function render(): Factory|View
     {
         return view('livewire.security.oci-stacks');
     }

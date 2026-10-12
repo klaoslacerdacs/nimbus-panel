@@ -18,7 +18,7 @@ function mockOciSequence(array ...$calls): void
     app()->instance(OciClient::class, $mock);
 }
 
-it('provisions stack: plan → apply → provisioned', function () {
+it('provisions stack: plan → apply → provisioned', function (): void {
     $stack = OciStack::factory()->create(['status' => 'pending']);
 
     $mock = Mockery::mock(OciClient::class);
@@ -35,13 +35,13 @@ it('provisions stack: plan → apply → provisioned', function () {
     ]);
     app()->instance(OciClient::class, $mock);
 
-    (new OciStackProvisionJob($stack))->handle(app(OciClient::class));
+    new OciStackProvisionJob($stack)->handle(app(OciClient::class));
 
     expect($stack->fresh()->status)->toBe('provisioned');
     expect($stack->fresh()->oci_instance_id)->toBe('ocid1.instance.test');
 });
 
-it('marks failed when plan job creation fails', function () {
+it('marks failed when plan job creation fails', function (): void {
     $stack = OciStack::factory()->create(['status' => 'pending']);
 
     $mock = Mockery::mock(OciClient::class);
@@ -50,12 +50,12 @@ it('marks failed when plan job creation fails', function () {
     $mock->shouldNotReceive('runStackJob', Mockery::any(), Mockery::any(), 'APPLY');
     app()->instance(OciClient::class, $mock);
 
-    (new OciStackProvisionJob($stack))->handle(app(OciClient::class));
+    new OciStackProvisionJob($stack)->handle(app(OciClient::class));
 
     expect($stack->fresh()->status)->toBe('failed');
 });
 
-it('marks failed when apply times out', function () {
+it('marks failed when apply times out', function (): void {
     $stack = OciStack::factory()->create(['status' => 'pending', 'stack_ocid' => 'ocid1.stack.existing']);
 
     $mock = Mockery::mock(OciClient::class);
@@ -66,14 +66,14 @@ it('marks failed when apply times out', function () {
     $mock->shouldReceive('getJobLogs')->with(Mockery::any(), 'job-apply-1')->once()->andReturn(['lines' => ['Error: quota exceeded for shape VM.Standard.E4.Flex']]);
     app()->instance(OciClient::class, $mock);
 
-    (new OciStackProvisionJob($stack))->handle(app(OciClient::class));
+    new OciStackProvisionJob($stack)->handle(app(OciClient::class));
 
     $fresh = $stack->fresh();
     expect($fresh->status)->toBe('failed');
     expect($fresh->last_plan_summary)->toContain('quota exceeded');
 });
 
-it('is dispatched when createServer succeeds', function () {
+it('is dispatched when createServer succeeds', function (): void {
     Queue::fake();
 
     // Just assert the job class is pushed — full flow covered above
@@ -84,21 +84,21 @@ it('is dispatched when createServer succeeds', function () {
     Queue::assertPushed(OciStackProvisionJob::class);
 });
 
-it('talks to OCI in the stack region, not the connection home region', function () {
+it('talks to OCI in the stack region, not the connection home region', function (): void {
     $stack = OciStack::factory()->create(['status' => 'pending', 'stack_ocid' => 'ocid1.stack.r', 'region' => 'sa-saopaulo-1']);
     $stack->ociConnection->update(['region' => 'us-ashburn-1']);
 
     $mock = Mockery::mock(OciClient::class);
     $mock->shouldReceive('runStackJob')->once()
-        ->with(Mockery::on(fn ($config) => $config['region'] === 'sa-saopaulo-1'), 'ocid1.stack.r', 'PLAN')
+        ->with(Mockery::on(fn ($config): bool => $config['region'] === 'sa-saopaulo-1'), 'ocid1.stack.r', 'PLAN')
         ->andReturn(['error' => true]);
 
-    (new OciStackProvisionJob($stack))->handle($mock);
+    new OciStackProvisionJob($stack)->handle($mock);
 
     expect($stack->fresh()->status)->toBe('failed');
 });
 
-it('stores the NSG even without firewall rules and reports failed rule application', function (array $rules, ?string $summary) {
+it('stores the NSG even without firewall rules and reports failed rule application', function (array $rules, ?string $summary): void {
     $stack = OciStack::factory()->create(['status' => 'pending', 'stack_ocid' => 'ocid1.stack.n', 'firewall_rules' => $rules]);
 
     $mock = Mockery::mock(OciClient::class);
@@ -107,7 +107,7 @@ it('stores the NSG even without firewall rules and reports failed rule applicati
     $mock->shouldReceive('getStackOutputs')->andReturn(['instance_id' => 'ocid1.instance.n', 'nsg_id' => 'ocid1.networksecuritygroup.n']);
     $mock->shouldReceive('addNsgRules')->andReturn(['error' => true, 'message' => 'quota']);
 
-    (new OciStackProvisionJob($stack))->handle($mock);
+    new OciStackProvisionJob($stack)->handle($mock);
 
     expect($stack->fresh()->nsg_ocid)->toBe('ocid1.networksecuritygroup.n')
         ->and($stack->fresh()->last_plan_summary)->toBe($summary);
@@ -116,7 +116,7 @@ it('stores the NSG even without firewall rules and reports failed rule applicati
     'rules fail' => [[['protocol' => 'TCP', 'port_min' => 80, 'port_max' => 80, 'source' => '0.0.0.0/0']], 'Instance created, but firewall rules could not be applied: quota. Add them from the OCI dashboard.'],
 ]);
 
-it('ships an environment.zip identical to the Terraform template sources', function () {
+it('ships an environment.zip identical to the Terraform template sources', function (): void {
     $zip = new ZipArchive;
     expect($zip->open(base_path('terraform/templates/environment.zip')))->toBeTrue();
 
@@ -126,16 +126,16 @@ it('ships an environment.zip identical to the Terraform template sources', funct
     expect($zip->numFiles)->toBe(count(glob(base_path('terraform/templates/environment/*.tf'))));
 });
 
-it('destroys in the stack region, not the connection home region', function () {
+it('destroys in the stack region, not the connection home region', function (): void {
     $stack = OciStack::factory()->create(['status' => 'destroying', 'stack_ocid' => 'ocid1.stack.d', 'region' => 'sa-saopaulo-1']);
     $stack->ociConnection->update(['region' => 'us-ashburn-1']);
 
     $mock = Mockery::mock(OciClient::class);
     $mock->shouldReceive('runStackJob')->once()
-        ->with(Mockery::on(fn ($config) => $config['region'] === 'sa-saopaulo-1'), 'ocid1.stack.d', 'DESTROY', true)
+        ->with(Mockery::on(fn ($config): bool => $config['region'] === 'sa-saopaulo-1'), 'ocid1.stack.d', 'DESTROY', true)
         ->andReturn(['error' => true]);
 
-    (new OciStackDestroyJob($stack))->handle($mock);
+    new OciStackDestroyJob($stack)->handle($mock);
 
     expect($stack->fresh()->status)->toBe('destroy_failed');
 });

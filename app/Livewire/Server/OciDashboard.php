@@ -5,6 +5,8 @@ namespace App\Livewire\Server;
 use App\Models\Server;
 use App\Models\ServerSetting;
 use App\Services\OciClient;
+use Illuminate\Contracts\View\Factory;
+use Illuminate\Contracts\View\View;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Livewire\Attributes\Locked;
 use Livewire\Component;
@@ -111,6 +113,7 @@ class OciDashboard extends Component
         }
     }
 
+    #[\Override]
     public function getListeners(): array
     {
         return [
@@ -526,7 +529,7 @@ class OciDashboard extends Component
             return;
         }
 
-        $rule = array_filter($this->newRule, fn ($v) => $v !== '' && $v !== null);
+        $rule = array_filter($this->newRule, fn ($v): bool => $v !== '' && $v !== null);
         $result = app(OciClient::class)->addNsgRules($connection->toApiConfig(), $ociStack->nsg_ocid, [$rule], $this->server->oci_region);
 
         if (isset($result['error'])) {
@@ -563,7 +566,7 @@ class OciDashboard extends Component
         $this->loadNsgRules();
     }
 
-    public function render()
+    public function render(): Factory|View
     {
         return view('livewire.server.oci-dashboard');
     }

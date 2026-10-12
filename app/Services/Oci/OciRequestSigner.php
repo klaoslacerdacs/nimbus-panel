@@ -13,9 +13,9 @@ use SensitiveParameter;
  */
 class OciRequestSigner
 {
-    private const BODY_METHODS = ['POST', 'PUT', 'PATCH'];
+    private const array BODY_METHODS = ['POST', 'PUT', 'PATCH'];
 
-    private const FINGERPRINT = '/^[0-9a-f]{2}(:[0-9a-f]{2})+$/i';
+    private const string FINGERPRINT = '/^[0-9a-f]{2}(:[0-9a-f]{2})+$/i';
 
     /**
      * @param  array<string, mixed>  $config

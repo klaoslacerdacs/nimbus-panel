@@ -36,6 +36,7 @@ class OciStack extends BaseModel
         'managed_by' => 'terraform',
     ];
 
+    #[\Override]
     protected function casts(): array
     {
         return [

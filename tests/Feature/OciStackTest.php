@@ -7,7 +7,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 
 uses(RefreshDatabase::class);
 
-it('belongs to a team and a connection', function () {
+it('belongs to a team and a connection', function (): void {
     $team = Team::factory()->create();
     $connection = OciConnection::factory()->for($team)->create();
     $stack = OciStack::factory()->for($team)->for($connection)->create();
@@ -16,7 +16,7 @@ it('belongs to a team and a connection', function () {
         ->and($stack->ociConnection->is($connection))->toBeTrue();
 });
 
-it('scopes stack queries to the requested team', function () {
+it('scopes stack queries to the requested team', function (): void {
     $team = Team::factory()->create();
     $otherTeam = Team::factory()->create();
     $ownStack = OciStack::factory()->for($team)->create();
@@ -28,7 +28,7 @@ it('scopes stack queries to the requested team', function () {
         ->and($stacks->contains($otherStack))->toBeFalse();
 });
 
-it('team_id is fillable but enforced by the controller', function () {
+it('team_id is fillable but enforced by the controller', function (): void {
     // team_id is fillable so OciStack::create(['team_id' => ...]) works.
     // The security guarantee is that OciStackForm always uses currentTeam()->id,
     // never accepts team_id from user input.
@@ -40,20 +40,20 @@ it('team_id is fillable but enforced by the controller', function () {
         ->and($stack->oci_connection_id)->toBe($connection->id);
 });
 
-it('defaults status to pending', function () {
+it('defaults status to pending', function (): void {
     $stack = new OciStack;
 
     expect($stack->status)->toBe('pending')
         ->and($stack->managed_by)->toBe('terraform');
 });
 
-it('casts tf_vars to array', function () {
+it('casts tf_vars to array', function (): void {
     $stack = OciStack::factory()->create(['tf_vars' => ['shape' => 'VM.Standard.A1.Flex']]);
 
     expect($stack->fresh()->tf_vars)->toBe(['shape' => 'VM.Standard.A1.Flex']);
 });
 
-it('isActive returns true for in-flight statuses including destroying', function () {
+it('isActive returns true for in-flight statuses including destroying', function (): void {
     foreach (['pending', 'planning', 'applying', 'destroying'] as $status) {
         $stack = new OciStack(['status' => $status]);
         expect($stack->isActive())->toBeTrue("expected isActive for status={$status}");

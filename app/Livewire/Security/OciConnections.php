@@ -3,6 +3,8 @@
 namespace App\Livewire\Security;
 
 use App\Models\OciConnection;
+use Illuminate\Contracts\View\Factory;
+use Illuminate\Contracts\View\View;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Livewire\Component;
 
@@ -22,6 +24,7 @@ class OciConnections extends Component
         }
     }
 
+    #[\Override]
     public function getListeners(): array
     {
         return [
@@ -56,7 +59,7 @@ class OciConnections extends Component
         }
     }
 
-    public function render()
+    public function render(): Factory|View
     {
         return view('livewire.security.oci-connections');
     }

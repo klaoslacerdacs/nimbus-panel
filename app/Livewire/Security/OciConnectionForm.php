@@ -4,6 +4,8 @@ namespace App\Livewire\Security;
 
 use App\Models\OciConnection;
 use App\Services\OciClient;
+use Illuminate\Contracts\View\Factory;
+use Illuminate\Contracts\View\View;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Illuminate\Validation\Rule;
 use Livewire\Component;
@@ -67,7 +69,7 @@ class OciConnectionForm extends Component
         ];
 
         if ($this->authentication_method === 'api_key') {
-            $rules = array_merge($rules, [
+            return array_merge($rules, [
                 'tenancy_ocid' => 'required|string|max:255',
                 'user_ocid' => 'required|string|max:255',
                 'fingerprint' => ['required', 'string', 'regex:/^([0-9a-f]{2}:){15}[0-9a-f]{2}$/'],
@@ -149,17 +151,17 @@ class OciConnectionForm extends Component
             }
 
             // Auto-fill from tenancy response if the user left them blank.
-            if (empty($this->name) && ! empty($result['tenancy_name'])) {
+            if (blank($this->name) && ! empty($result['tenancy_name'])) {
                 $this->name = $result['tenancy_name'];
             }
             if ($this->authentication_method === 'instance_principal') {
                 $this->tenancy_ocid = $result['tenancy_ocid'] ?? null;
             }
-            if (empty($this->compartment_ocid) && ! empty($result['tenancy_ocid'])) {
+            if (blank($this->compartment_ocid) && ! empty($result['tenancy_ocid'])) {
                 $this->compartment_ocid = $result['tenancy_ocid'];
             }
 
-            if (empty($this->name)) {
+            if (blank($this->name)) {
                 $this->dispatch('error', 'Connection name could not be determined. Please fill it in.');
 
                 return;
@@ -196,7 +198,7 @@ class OciConnectionForm extends Component
         }
     }
 
-    public function render()
+    public function render(): Factory|View
     {
         return view('livewire.security.oci-connection-form');
     }

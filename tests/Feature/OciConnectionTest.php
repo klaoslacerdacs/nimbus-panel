@@ -9,7 +9,7 @@ use Illuminate\Support\Facades\DB;
 
 uses(RefreshDatabase::class);
 
-it('belongs to a team', function () {
+it('belongs to a team', function (): void {
     $team = Team::factory()->create();
     $connection = OciConnection::factory()->for($team)->create();
 
@@ -17,13 +17,13 @@ it('belongs to a team', function () {
         ->and($team->ociConnections->contains($connection))->toBeTrue();
 });
 
-it('defaults to api key authentication', function () {
+it('defaults to api key authentication', function (): void {
     $connection = new OciConnection;
 
     expect($connection->authentication_method)->toBe(OciAuthenticationMethod::API_KEY);
 });
 
-it('allows instance principal credentials to remain null', function () {
+it('allows instance principal credentials to remain null', function (): void {
     $connection = OciConnection::factory()->create([
         'authentication_method' => OciAuthenticationMethod::INSTANCE_PRINCIPAL,
         'region' => null,
@@ -42,7 +42,7 @@ it('allows instance principal credentials to remain null', function () {
         ->and($stored->passphrase)->toBeNull();
 });
 
-it('scopes connection queries to the requested team', function () {
+it('scopes connection queries to the requested team', function (): void {
     $team = Team::factory()->create();
     $otherTeam = Team::factory()->create();
     $ownConnection = OciConnection::factory()->for($team)->create();
@@ -54,7 +54,7 @@ it('scopes connection queries to the requested team', function () {
         ->and($connections->contains($otherConnection))->toBeFalse();
 });
 
-it('allows team_id to be set by the application', function () {
+it('allows team_id to be set by the application', function (): void {
     // team_id is fillable so application code can set it; cross-team protection
     // is enforced at the policy layer (OciConnectionPolicy) and ownedByCurrentTeam() scope.
     $connection = new OciConnection([
@@ -66,7 +66,7 @@ it('allows team_id to be set by the application', function () {
     expect($connection->team_id)->toBe(123);
 });
 
-it('encrypts and hides api key secrets', function () {
+it('encrypts and hides api key secrets', function (): void {
     $privateKey = "-----BEGIN PRIVATE KEY-----\nprivate-key-contents\n-----END PRIVATE KEY-----";
     $connection = OciConnection::factory()->create([
         'authentication_method' => OciAuthenticationMethod::API_KEY,

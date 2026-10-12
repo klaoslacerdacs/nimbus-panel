@@ -34,6 +34,7 @@ class OciConnection extends BaseModel
         'authentication_method' => OciAuthenticationMethod::API_KEY->value,
     ];
 
+    #[\Override]
     protected function casts(): array
     {
         return [

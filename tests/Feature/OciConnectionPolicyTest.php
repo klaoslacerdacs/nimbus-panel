@@ -8,7 +8,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 
 uses(RefreshDatabase::class);
 
-it('allows admin to create connection', function () {
+it('allows admin to create connection', function (): void {
     $team = Team::factory()->create();
     $admin = User::factory()->create();
     $team->members()->attach($admin, ['role' => 'admin']);
@@ -16,7 +16,7 @@ it('allows admin to create connection', function () {
     expect($admin->isAdminOfTeam($team->id))->toBeTrue();
 });
 
-it('denies member from deleting connection', function () {
+it('denies member from deleting connection', function (): void {
     $team = Team::factory()->create();
     $member = User::factory()->create();
     $team->members()->attach($member, ['role' => 'member']);
@@ -24,7 +24,7 @@ it('denies member from deleting connection', function () {
     expect($member->isAdminOfTeam($team->id))->toBeFalse();
 });
 
-it('isolates connections by team', function () {
+it('isolates connections by team', function (): void {
     $teamA = Team::factory()->create();
     $teamB = Team::factory()->create();
 
@@ -40,7 +40,7 @@ it('isolates connections by team', function () {
         ->and($teamBConns->first()->id)->toBe($connB->id);
 });
 
-it('hides private key and passphrase from array output', function () {
+it('hides private key and passphrase from array output', function (): void {
     $team = Team::factory()->create();
     $connection = OciConnection::factory()->for($team)->create([
         'private_key' => 'secret-key',
@@ -53,7 +53,7 @@ it('hides private key and passphrase from array output', function () {
         ->and($array)->not->toHaveKey('passphrase');
 });
 
-it('supports instance principal without api key fields', function () {
+it('supports instance principal without api key fields', function (): void {
     $team = Team::factory()->create();
     $connection = OciConnection::factory()->for($team)->create([
         'authentication_method' => OciAuthenticationMethod::INSTANCE_PRINCIPAL,

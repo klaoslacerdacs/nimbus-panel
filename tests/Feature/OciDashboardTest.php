@@ -34,14 +34,14 @@ function mockClient(array $overrides = []): MockInterface
 
     $mock = Mockery::mock(OciClient::class);
     // An override of `false` leaves the method unstubbed so the test can set a stricter expectation.
-    foreach (array_filter(array_merge($defaults, $overrides), fn ($v) => $v !== false) as $method => $returnValue) {
+    foreach (array_filter(array_merge($defaults, $overrides), fn ($v): bool => $v !== false) as $method => $returnValue) {
         $mock->shouldReceive($method)->andReturn($returnValue);
     }
 
     return $mock;
 }
 
-beforeEach(function () {
+beforeEach(function (): void {
     InstanceSettings::unguarded(fn () => InstanceSettings::query()->create(['id' => 0]));
 
     $this->user = User::factory()->create();
@@ -71,7 +71,7 @@ beforeEach(function () {
     ]);
 });
 
-it('renders without error when instance is provisioned', function () {
+it('renders without error when instance is provisioned', function (): void {
     $mock = mockClient(['getInstanceStatus' => ['lifecycle_state' => 'RUNNING'], 'getInstanceMetrics' => ['cpu_percent' => 12.5, 'memory_percent' => null, 'net_bytes_in' => null, 'net_bytes_out' => null], 'listNsgRules' => [['id' => 'rule1', 'protocol' => '6', 'port_min' => 22, 'port_max' => 22, 'source' => '0.0.0.0/0', 'description' => '']]]);
     app()->instance(OciClient::class, $mock);
 
@@ -80,7 +80,7 @@ it('renders without error when instance is provisioned', function () {
         ->assertSee('RUNNING');
 });
 
-it('shows provisioning progress when stack is applying', function () {
+it('shows provisioning progress when stack is applying', function (): void {
     $this->stack->update(['status' => 'applying', 'last_plan_summary' => 'Applying Terraform...']);
 
     Livewire::test(OciDashboard::class, ['server_uuid' => $this->server->uuid])
@@ -89,7 +89,7 @@ it('shows provisioning progress when stack is applying', function () {
         ->assertSee('Applying Terraform...');
 });
 
-it('shows failed banner when stack failed', function () {
+it('shows failed banner when stack failed', function (): void {
     $this->stack->update(['status' => 'failed', 'last_plan_summary' => 'Apply failed or timed out']);
 
     Livewire::test(OciDashboard::class, ['server_uuid' => $this->server->uuid])
@@ -98,7 +98,7 @@ it('shows failed banner when stack failed', function () {
         ->assertSee('Apply failed or timed out');
 });
 
-it('shows destroying banner when stack is destroying', function () {
+it('shows destroying banner when stack is destroying', function (): void {
     $this->stack->update(['status' => 'destroying', 'last_plan_summary' => 'Running Terraform destroy...']);
 
     Livewire::test(OciDashboard::class, ['server_uuid' => $this->server->uuid])
@@ -106,7 +106,7 @@ it('shows destroying banner when stack is destroying', function () {
         ->assertSee('Destroying resources');
 });
 
-it('denies power actions to team members without admin role', function () {
+it('denies power actions to team members without admin role', function (): void {
     $this->withoutVite();
 
     $member = User::factory()->create();
@@ -122,11 +122,11 @@ it('denies power actions to team members without admin role', function () {
         ->assertForbidden();
 });
 
-it('adds NSG rule via OCI client', function () {
+it('adds NSG rule via OCI client', function (): void {
     $mock = mockClient();
     $mock->shouldReceive('addNsgRules')
         ->once()
-        ->with(Mockery::any(), 'ocid1.networksecuritygroup.oc1..example', Mockery::on(fn ($rules) => $rules[0]['protocol'] === 'TCP' && $rules[0]['port_min'] === '443'), 'us-ashburn-1')
+        ->with(Mockery::any(), 'ocid1.networksecuritygroup.oc1..example', Mockery::on(fn ($rules): bool => $rules[0]['protocol'] === 'TCP' && $rules[0]['port_min'] === '443'), 'us-ashburn-1')
         ->andReturn(['success' => true]);
     app()->instance(OciClient::class, $mock);
 
@@ -139,7 +139,7 @@ it('adds NSG rule via OCI client', function () {
         ->assertHasNoErrors();
 });
 
-it('removes NSG rule via OCI client', function () {
+it('removes NSG rule via OCI client', function (): void {
     $mock = mockClient();
     $mock->shouldReceive('removeNsgRules')
         ->once()
@@ -152,7 +152,7 @@ it('removes NSG rule via OCI client', function () {
         ->assertHasNoErrors();
 });
 
-it('triggers stop confirmation then calls OCI on confirm', function () {
+it('triggers stop confirmation then calls OCI on confirm', function (): void {
     $mock = mockClient();
     $mock->shouldReceive('instanceAction')
         ->once()
@@ -167,7 +167,7 @@ it('triggers stop confirmation then calls OCI on confirm', function () {
         ->assertSet('confirmingStop', false);
 });
 
-it('cancel clears confirmation flags', function () {
+it('cancel clears confirmation flags', function (): void {
     Livewire::test(OciDashboard::class, ['server_uuid' => $this->server->uuid])
         ->set('confirmingStop', true)
         ->call('cancelConfirm')
@@ -176,7 +176,7 @@ it('cancel clears confirmation flags', function () {
 
 // ── P4 tests ──────────────────────────────────────────────────────────────
 
-it('loads and displays block volume attachments', function () {
+it('loads and displays block volume attachments', function (): void {
     $volumeData = [
         ['id' => 'ocid1.volumeattachment.oc1..att1', 'volume_id' => 'ocid1.volume.oc1..vol1', 'display_name' => 'vol1', 'lifecycle_state' => 'ATTACHED', 'attachment_type' => 'paravirtualized', 'is_read_only' => false],
     ];
@@ -188,7 +188,7 @@ it('loads and displays block volume attachments', function () {
         ->assertSee('Block volumes');
 });
 
-it('attaches a block volume via OCI client', function () {
+it('attaches a block volume via OCI client', function (): void {
     $mock = mockClient();
     $mock->shouldReceive('attachVolume')
         ->once()
@@ -203,7 +203,7 @@ it('attaches a block volume via OCI client', function () {
         ->assertSet('attachVolumeOcid', '');
 });
 
-it('rejects attach with invalid volume OCID format', function () {
+it('rejects attach with invalid volume OCID format', function (): void {
     $mock = mockClient();
     app()->instance(OciClient::class, $mock);
 
@@ -213,7 +213,7 @@ it('rejects attach with invalid volume OCID format', function () {
         ->assertHasErrors(['attachVolumeOcid']);
 });
 
-it('confirms then detaches a block volume', function () {
+it('confirms then detaches a block volume', function (): void {
     $mock = mockClient(['listVolumeAttachments' => [['id' => 'att1', 'volume_id' => 'vol1', 'display_name' => null, 'lifecycle_state' => 'ATTACHED', 'attachment_type' => 'paravirtualized', 'is_read_only' => false]]]);
     $mock->shouldReceive('detachVolume')
         ->once()
@@ -230,7 +230,7 @@ it('confirms then detaches a block volume', function () {
         ->assertSet('pendingDetachId', null);
 });
 
-it('loads and displays load balancers', function () {
+it('loads and displays load balancers', function (): void {
     $lbData = [
         ['id' => 'ocid1.loadbalancer.oc1..lb1', 'display_name' => 'prod-lb', 'lifecycle_state' => 'ACTIVE', 'shape_name' => 'flexible', 'ip_addresses' => ['10.0.0.1'], 'backend_sets' => ['bs1']],
     ];
@@ -242,7 +242,7 @@ it('loads and displays load balancers', function () {
         ->assertSee('prod-lb');
 });
 
-it('loads and displays autonomous databases with connection strings', function () {
+it('loads and displays autonomous databases with connection strings', function (): void {
     $adbData = [
         ['id' => 'ocid1.autonomousdatabase.oc1..adb1', 'display_name' => 'prod-adb', 'db_name' => 'PRODADB', 'lifecycle_state' => 'AVAILABLE', 'db_workload' => 'OLTP', 'cpu_core_count' => 2, 'data_storage_size_in_tbs' => 1, 'connection_strings' => ['high' => 'jdbc:...high']],
     ];
@@ -255,7 +255,7 @@ it('loads and displays autonomous databases with connection strings', function (
         ->assertSee('OLTP');
 });
 
-it('denies block volume actions to non-admin members', function () {
+it('denies block volume actions to non-admin members', function (): void {
     $this->withoutVite();
 
     $member = User::factory()->create();
@@ -272,7 +272,7 @@ it('denies block volume actions to non-admin members', function () {
         ->assertForbidden();
 });
 
-it('creates block volumes in the instance availability domain', function () {
+it('creates block volumes in the instance availability domain', function (): void {
     $mock = mockClient(['getInstanceStatus' => ['lifecycle_state' => 'RUNNING', 'availability_domain' => 'Uocm:US-ASHBURN-AD-2']]);
     $mock->shouldNotReceive('listAvailabilityDomains');
     $mock->shouldReceive('createVolume')->once()
@@ -287,7 +287,7 @@ it('creates block volumes in the instance availability domain', function () {
         ->assertHasNoErrors();
 });
 
-it('lists buckets of the server compartment', function () {
+it('lists buckets of the server compartment', function (): void {
     $mock = mockClient(['listBuckets' => false]);
     $mock->shouldReceive('listBuckets')->atLeast()->once()
         ->with(Mockery::any(), 'ocid1.compartment.oc1..example', 'us-ashburn-1')

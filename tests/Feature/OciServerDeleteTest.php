@@ -15,7 +15,7 @@ use Livewire\Livewire;
 
 uses(RefreshDatabase::class);
 
-beforeEach(function () {
+beforeEach(function (): void {
     Server::flushIdentityMap();
     Queue::fake();
     config(['app.maintenance.store' => 'array']);
@@ -47,7 +47,7 @@ beforeEach(function () {
 
 afterEach(fn () => Server::flushIdentityMap());
 
-it('keeps OCI resources when the destroy option is not selected', function () {
+it('keeps OCI resources when the destroy option is not selected', function (): void {
     Livewire::test(Delete::class, ['server_uuid' => $this->server->uuid])
         ->call('delete', 'password', ['force_delete_resources']);
 
@@ -55,28 +55,28 @@ it('keeps OCI resources when the destroy option is not selected', function () {
     expect($this->stack->fresh()->server_id)->toBeNull();
 });
 
-it('destroys the OCI stack only when explicitly selected', function () {
+it('destroys the OCI stack only when explicitly selected', function (): void {
     Livewire::test(Delete::class, ['server_uuid' => $this->server->uuid])
         ->call('delete', 'password', ['delete_from_oci']);
 
-    Queue::assertPushed(OciStackDestroyJob::class, fn ($job) => $job->ociStack->is($this->stack) && $job->queue === 'oci');
+    Queue::assertPushed(OciStackDestroyJob::class, fn ($job): bool => $job->ociStack->is($this->stack) && $job->queue === 'oci');
 });
 
-it('does not destroy OCI resources when a server is deleted outside the UI flow', function () {
+it('does not destroy OCI resources when a server is deleted outside the UI flow', function (): void {
     $this->server->delete();
 
     Queue::assertNotPushed(OciStackDestroyJob::class);
     expect($this->stack->fresh()->server_id)->toBeNull();
 });
 
-it('offers the OCI destroy option only for servers backed by a stack', function () {
+it('offers the OCI destroy option only for servers backed by a stack', function (): void {
     Livewire::test(Delete::class, ['server_uuid' => $this->server->uuid])->assertSee('Also destroy OCI stack');
 
     $this->stack->delete();
     Livewire::test(Delete::class, ['server_uuid' => $this->server->uuid])->assertDontSee('Also destroy OCI stack');
 });
 
-it('marks the stack as destroying when queuing the destroy, and never queues it twice', function () {
+it('marks the stack as destroying when queuing the destroy, and never queues it twice', function (): void {
     Livewire::test(Delete::class, ['server_uuid' => $this->server->uuid])
         ->call('delete', 'password', ['delete_from_oci']);
 

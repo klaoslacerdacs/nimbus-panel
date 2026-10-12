@@ -34,7 +34,7 @@ function mockValidClient(): MockInterface
     return $mock;
 }
 
-beforeEach(function () {
+beforeEach(function (): void {
     InstanceSettings::unguarded(fn () => InstanceSettings::query()->create(['id' => 0]));
 
     $this->user = User::factory()->create();
@@ -46,7 +46,7 @@ beforeEach(function () {
     $this->connection = makeConnection($this->team);
 });
 
-it('renders the edit form with existing values', function () {
+it('renders the edit form with existing values', function (): void {
     Livewire::test(OciConnectionEdit::class, ['connection' => $this->connection])
         ->assertSet('name', 'Test Conn')
         ->assertSet('region', 'us-ashburn-1')
@@ -54,7 +54,7 @@ it('renders the edit form with existing values', function () {
         ->assertStatus(200);
 });
 
-it('updates metadata without rotating PEM', function () {
+it('updates metadata without rotating PEM', function (): void {
     app()->instance(OciClient::class, mockValidClient());
 
     Livewire::test(OciConnectionEdit::class, ['connection' => $this->connection])
@@ -74,7 +74,7 @@ it('updates metadata without rotating PEM', function () {
     expect($fresh->private_key)->toContain('original');
 });
 
-it('rotates PEM when new key provided', function () {
+it('rotates PEM when new key provided', function (): void {
     app()->instance(OciClient::class, mockValidClient());
 
     Livewire::test(OciConnectionEdit::class, ['connection' => $this->connection])
@@ -87,7 +87,7 @@ it('rotates PEM when new key provided', function () {
     expect($this->connection->fresh()->private_key)->toContain('rotated');
 });
 
-it('does not update when OCI API returns error', function () {
+it('does not update when OCI API returns error', function (): void {
     $mock = Mockery::mock(OciClient::class);
     $mock->shouldReceive('validateConnection')->andReturn(['error' => true, 'message' => 'Bad creds']);
     app()->instance(OciClient::class, $mock);
@@ -100,7 +100,7 @@ it('does not update when OCI API returns error', function () {
     $this->assertDatabaseMissing('oci_connections', ['name' => 'Should Not Save']);
 });
 
-it('clears PEM from snapshot after updateConnection', function () {
+it('clears PEM from snapshot after updateConnection', function (): void {
     Livewire::test(OciConnectionEdit::class, ['connection' => $this->connection])
         ->update(
             calls: [['method' => 'updateConnection', 'params' => [], 'path' => '']],
@@ -113,7 +113,7 @@ it('clears PEM from snapshot after updateConnection', function () {
         ->assertSet('private_key', null);
 });
 
-it('blocks cross-team IDOR — other team cannot edit', function () {
+it('blocks cross-team IDOR — other team cannot edit', function (): void {
     $otherUser = User::factory()->create();
     $otherTeam = Team::factory()->create();
     $otherTeam->members()->attach($otherUser, ['role' => 'owner']);
@@ -130,7 +130,7 @@ it('blocks cross-team IDOR — other team cannot edit', function () {
     $this->assertDatabaseHas('oci_connections', ['name' => 'Test Conn', 'team_id' => $this->team->id]);
 });
 
-it('denies update to non-admin members', function () {
+it('denies update to non-admin members', function (): void {
     $member = User::factory()->create();
     $this->team->members()->attach($member, ['role' => 'member']);
     $this->actingAs($member);
@@ -149,7 +149,7 @@ it('denies update to non-admin members', function () {
     $this->assertDatabaseHas('oci_connections', ['name' => 'Test Conn']);
 });
 
-it('switching to instance_principal drops stored API key material', function () {
+it('switching to instance_principal drops stored API key material', function (): void {
     $root = Team::factory()->create(['id' => 0]);
     $root->members()->attach($this->user, ['role' => 'admin']);
     $this->user->refresh();

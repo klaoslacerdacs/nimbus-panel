@@ -4,6 +4,8 @@ namespace App\Livewire\Security;
 
 use App\Models\OciConnection;
 use App\Models\OciStack;
+use Illuminate\Contracts\View\Factory;
+use Illuminate\Contracts\View\View;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Illuminate\Validation\Rule;
 use Livewire\Component;
@@ -35,7 +37,7 @@ class OciStackForm extends Component
 
     protected function rules(): array
     {
-        $rules = [
+        return [
             'name' => 'required|string|max:255',
             'oci_connection_id' => ['required', Rule::exists('oci_connections', 'id')->where('team_id', currentTeam()->id)],
             'config_source' => 'required|string|in:template_zip,git_repo,compartment_discovery',
@@ -43,8 +45,6 @@ class OciStackForm extends Component
             'compartment_ocid' => 'required|string|max:255',
             'region' => 'required|string|max:50',
         ];
-
-        return $rules;
     }
 
     protected function messages(): array
@@ -92,7 +92,7 @@ class OciStackForm extends Component
         }
     }
 
-    public function render()
+    public function render(): Factory|View
     {
         return view('livewire.security.oci-stack-form', [
             'connections' => OciConnection::ownedByCurrentTeam()->get(),

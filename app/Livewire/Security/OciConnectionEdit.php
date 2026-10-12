@@ -4,6 +4,8 @@ namespace App\Livewire\Security;
 
 use App\Models\OciConnection;
 use App\Services\OciClient;
+use Illuminate\Contracts\View\Factory;
+use Illuminate\Contracts\View\View;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Illuminate\Validation\Rule;
 use Livewire\Attributes\Locked;
@@ -66,7 +68,7 @@ class OciConnectionEdit extends Component
         ];
 
         if ($this->authentication_method === 'api_key') {
-            $rules = array_merge($rules, [
+            return array_merge($rules, [
                 'tenancy_ocid' => 'required|string|max:255',
                 'user_ocid' => 'required|string|max:255',
                 'fingerprint' => ['required', 'string', 'regex:/^([0-9a-f]{2}:){15}[0-9a-f]{2}$/'],
@@ -215,7 +217,7 @@ class OciConnectionEdit extends Component
         }
     }
 
-    public function render()
+    public function render(): Factory|View
     {
         return view('livewire.security.oci-connection-edit');
     }

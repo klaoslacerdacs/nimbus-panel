@@ -9,9 +9,9 @@ namespace App\Services\Oci;
  */
 class OciMonitoringService
 {
-    private const PATH = '/20180401/metrics/actions/summarizeMetricsData';
+    private const string PATH = '/20180401/metrics/actions/summarizeMetricsData';
 
-    public function __construct(private OciApiClient $api) {}
+    public function __construct(private readonly OciApiClient $api) {}
 
     /**
      * @param  array<string, mixed>  $config
