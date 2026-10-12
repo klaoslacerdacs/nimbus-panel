@@ -565,3 +565,41 @@ it('never detaches the VM own Terraform security group and shows other groups re
 
     Queue::assertNothingPushed();
 });
+
+it('attaches several security groups at once to an imported VM', function (): void {
+    $this->stack->delete();
+    $mock = mockClient(['setVnicNsgs' => false, 'listVcnNsgs' => [
+        ['id' => 'ocid1.networksecuritygroup.oc1..example', 'display_name' => 'web-nsg'],
+        ['id' => 'ocid1.networksecuritygroup.oc1..db', 'display_name' => 'db-access'],
+        ['id' => 'ocid1.networksecuritygroup.oc1..mon', 'display_name' => 'monitoring'],
+    ]]);
+    $mock->shouldReceive('setVnicNsgs')->once()
+        ->with(Mockery::any(), 'ocid1.vnic.oc1..v', ['ocid1.networksecuritygroup.oc1..example', 'ocid1.networksecuritygroup.oc1..db', 'ocid1.networksecuritygroup.oc1..mon'], 'us-ashburn-1')
+        ->andReturn(['nsg_ids' => []]);
+    app()->instance(OciClient::class, $mock);
+
+    Livewire::test(OciDashboard::class, ['server_uuid' => $this->server->uuid])
+        ->assertSee('Attach selected')
+        ->set('nsgsToAttach', ['ocid1.networksecuritygroup.oc1..db', 'ocid1.networksecuritygroup.oc1..mon', 'ocid1.networksecuritygroup.oc1..forged'])
+        ->call('attachSelectedNsgs')
+        ->assertDispatched('success');
+});
+
+it('creates a new security group and attaches it to a Terraform VM through plan and apply', function (): void {
+    Queue::fake();
+    $this->stack->update(['status' => 'provisioned', 'stack_ocid' => 'ocid1.ormstack.d', 'attached_nsg_ids' => []]);
+    $mock = mockClient(['listVcnNsgs' => [['id' => 'ocid1.networksecuritygroup.oc1..example', 'display_name' => 'web-nsg']]]);
+    $mock->shouldReceive('createNsg')->once()
+        ->with(Mockery::any(), 'ocid1.compartment.oc1..example', 'ocid1.vcn.oc1..n', 'database-access', 'us-ashburn-1')
+        ->andReturn(['id' => 'ocid1.networksecuritygroup.oc1..new']);
+    app()->instance(OciClient::class, $mock);
+
+    Livewire::test(OciDashboard::class, ['server_uuid' => $this->server->uuid])
+        ->assertSee('No other security group exists')
+        ->set('newNsgName', 'database-access')
+        ->call('createAndAttachNsg')
+        ->assertDispatched('success');
+
+    expect($this->stack->fresh()->attached_nsg_ids)->toBe(['ocid1.networksecuritygroup.oc1..new']);
+    Queue::assertPushed(OciStackFirewallJob::class);
+});

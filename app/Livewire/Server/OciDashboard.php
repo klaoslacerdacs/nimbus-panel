@@ -246,33 +246,73 @@ class OciDashboard extends Component
         }
     }
 
+    /** @var list<string> */
+    public array $nsgsToAttach = [];
+
+    public string $newNsgName = '';
+
     /**
-     * Attach a security group that already exists in the VM's VCN (e.g. created in the OCI console).
+     * Attach one or more security groups that already exist in the VM's VCN (e.g. created in the OCI console).
      */
+    public function attachSelectedNsgs(): void
+    {
+        $this->changeAttachedNsgs(add: $this->nsgsToAttach, remove: []);
+        $this->nsgsToAttach = [];
+    }
+
     public function attachExistingNsg(string $nsgId): void
     {
-        $this->changeAttachedNsgs($nsgId, attach: true);
+        $this->changeAttachedNsgs(add: [$nsgId], remove: []);
     }
 
     public function detachExistingNsg(string $nsgId): void
     {
-        $this->changeAttachedNsgs($nsgId, attach: false);
+        $this->changeAttachedNsgs(add: [], remove: [$nsgId]);
     }
 
-    private function changeAttachedNsgs(string $nsgId, bool $attach): void
+    /**
+     * Create a new security group in the VM's VCN and attach it (Terraform VMs: through plan → apply).
+     */
+    public function createAndAttachNsg(): void
     {
         $this->authorize('update', $this->server);
-        // Only NSGs of this VM's VCN, as listed server-side, can be attached; detaching only what is attached.
-        $known = $attach ? array_column($this->availableNsgs, 'id') : ($this->firewall['nsg_ids'] ?? []);
-        if (! in_array($nsgId, $known, true) || empty($this->firewall['vnic_id'])) {
+        $this->validate(['newNsgName' => ['required', 'string', 'max:255', 'regex:/^[A-Za-z0-9._ -]+$/']]);
+        if (empty($this->firewall['vcn_id'])) {
             return;
         }
 
+        $created = app(OciClient::class)->createNsg($this->apiConfig(), $this->firewall['compartment_id'], $this->firewall['vcn_id'], $this->newNsgName, $this->server->oci_region);
+        if (! empty($created['error'])) {
+            $this->dispatch('error', 'Could not create the security group.', e($created['message'] ?? ''));
+
+            return;
+        }
+
+        auditLog('ui.oci_nsg.created', ['server_uuid' => $this->server->uuid, 'nsg_id' => $created['id']]);
+        $this->availableNsgs[] = ['id' => $created['id'], 'display_name' => $this->newNsgName];
+        $this->newNsgName = '';
+        $this->changeAttachedNsgs(add: [$created['id']], remove: []);
+    }
+
+    /**
+     * @param  list<string>  $add
+     * @param  list<string>  $remove
+     */
+    private function changeAttachedNsgs(array $add, array $remove): void
+    {
+        $this->authorize('update', $this->server);
         $current = $this->firewall['nsg_ids'] ?? [];
-        $next = $attach ? array_values(array_unique([...$current, $nsgId])) : array_values(array_diff($current, [$nsgId]));
+        // Only NSGs of this VM's VCN, as listed server-side, can be attached; only attached ones can be detached.
+        $add = array_values(array_intersect($add, array_column($this->availableNsgs, 'id')));
+        $remove = array_values(array_intersect($remove, $current));
+        if (($add === [] && $remove === []) || empty($this->firewall['vnic_id'])) {
+            return;
+        }
+
+        $next = array_values(array_diff(array_unique([...$current, ...$add]), $remove));
 
         if ($stack = $this->terraformStack()) {
-            if ($nsgId === $stack->nsg_ocid) {
+            if (in_array($stack->nsg_ocid, $remove, true)) {
                 $this->dispatch('error', 'This is the VM\'s own security group managed by Terraform; it cannot be detached.');
 
                 return;
@@ -291,11 +331,11 @@ class OciDashboard extends Component
 
                 return;
             }
-            $this->dispatch('success', $attach ? 'Security group attached.' : 'Security group detached.');
+            $this->dispatch('success', 'Security groups updated.');
             $this->loadNsgRules();
         }
 
-        auditLog('ui.oci_nsg.'.($attach ? 'attached' : 'detached'), ['server_uuid' => $this->server->uuid, 'nsg_id' => $nsgId]);
+        auditLog('ui.oci_nsg.attachments_changed', ['server_uuid' => $this->server->uuid, 'attached' => $add, 'detached' => $remove]);
     }
 
     public function updatedSelectedNsgId(): void

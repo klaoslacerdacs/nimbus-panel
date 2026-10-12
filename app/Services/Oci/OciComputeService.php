@@ -232,6 +232,32 @@ class OciComputeService
     }
 
     /**
+     * Create an NSG in a VCN and wait until it is AVAILABLE (attachment is a separate step).
+     *
+     * @param  array<string, mixed>  $config
+     * @return array{id: string}
+     */
+    public function createNsg(array $config, string $compartmentId, string $vcnId, string $displayName, string $region): array
+    {
+        $nsg = $this->api->post($config, 'iaas', $region, self::IAAS.'/networkSecurityGroups', [
+            'compartmentId' => $compartmentId,
+            'vcnId' => $vcnId,
+            'displayName' => $displayName,
+            'freeformTags' => ['nimbus:managed_by' => 'panel'],
+        ]);
+
+        foreach (range(1, 10) as $attempt) {
+            if (($nsg['lifecycleState'] ?? null) === 'AVAILABLE') {
+                break;
+            }
+            Sleep::for(2)->seconds();
+            $nsg = $this->api->get($config, 'iaas', $region, self::IAAS."/networkSecurityGroups/{$nsg['id']}");
+        }
+
+        return ['id' => $nsg['id']];
+    }
+
+    /**
      * Create an NSG in the instance's VCN and attach it to the VNIC, keeping the NSGs already attached.
      *
      * @param  array<string, mixed>  $config

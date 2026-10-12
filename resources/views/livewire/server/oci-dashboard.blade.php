@@ -277,15 +277,29 @@
                             @endif
                         </div>
                     @endforeach
-                    @if ($attachableNsgs->isNotEmpty())
-                        <div class="mt-2 flex flex-wrap items-center gap-2 text-[12px]">
-                            <span class="text-neutral-500 dark:text-fg-dim">Attach existing security group:</span>
-                            @foreach ($attachableNsgs as $nsg)
-                                <button type="button" wire:key="attach-nsg-{{ $nsg['id'] }}" wire:click="attachExistingNsg('{{ $nsg['id'] }}')" wire:loading.attr="disabled" @disabled($firewallApplying)
-                                    class="button button-secondary text-xs">{{ $nsg['display_name'] ?? $nsg['id'] }}</button>
-                            @endforeach
+                    <div class="mt-3 grid gap-3 md:grid-cols-2">
+                        <div class="flex flex-col gap-2">
+                            @if ($attachableNsgs->isNotEmpty())
+                                <x-forms.listbox id="nsgsToAttach" label="Attach existing security groups" multiple searchable portal
+                                    placeholder="Choose one or more"
+                                    :options="$attachableNsgs->map(fn ($nsg) => ['value' => $nsg['id'], 'label' => $nsg['display_name'] ?? $nsg['id']])->values()->all()" />
+                                <div>
+                                    <x-forms.button type="button" wire:click="attachSelectedNsgs" wire:loading.attr="disabled" :disabled="$firewallApplying">Attach selected</x-forms.button>
+                                </div>
+                            @else
+                                <p class="text-[12px] text-neutral-500 dark:text-fg-dim">
+                                    No other security group exists in this VM's VCN yet. Create one here, or in the OCI console (it will show up in this list).
+                                </p>
+                            @endif
                         </div>
-                    @endif
+                        <div class="flex flex-col gap-2">
+                            <x-forms.input id="newNsgName" label="Create security group" placeholder="e.g. database-access" />
+                            <div>
+                                <x-forms.button type="button" wire:click="createAndAttachNsg" wire:loading.attr="disabled" :disabled="$firewallApplying">Create and attach</x-forms.button>
+                            </div>
+                            @error('newNsgName') <p class="text-[12px] text-error">{{ $message }}</p> @enderror
+                        </div>
+                    </div>
                 </div>
             @endif
 

@@ -142,6 +142,11 @@ class OciClient
         return $this->guard(fn (): array => $this->compute->setVnicNsgs($config, $vnicId, $nsgIds, $region));
     }
 
+    public function createNsg(array $config, string $compartmentId, string $vcnId, string $displayName, string $region): array
+    {
+        return $this->guard(fn (): array => $this->compute->createNsg($config, $compartmentId, $vcnId, $displayName, $region));
+    }
+
     public function createAttachedNsg(array $config, string $compartmentId, string $vcnId, string $vnicId, array $attachedNsgIds, string $displayName, string $region): array
     {
         return $this->guard(fn (): array => $this->compute->createAttachedNsg($config, $compartmentId, $vcnId, $vnicId, $attachedNsgIds, $displayName, $region));
