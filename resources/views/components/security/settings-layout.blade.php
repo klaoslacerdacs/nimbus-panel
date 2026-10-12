@@ -49,6 +49,12 @@
             'icon' => 'shield',
         ],
         [
+            'label' => 'Cloudflare',
+            'route' => 'security.cloudflare',
+            'active' => request()->routeIs('security.cloudflare'),
+            'icon' => 'cloud',
+        ],
+        [
             'label' => 'Terraform Jobs',
             'route' => 'security.oci-jobs',
             'active' => request()->routeIs('security.oci-jobs'),

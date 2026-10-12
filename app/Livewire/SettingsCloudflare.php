@@ -17,6 +17,8 @@ class SettingsCloudflare extends Component
 
     public ?string $clientId = null;
 
+    public ?string $scopes = null;
+
     /** Write-only: never loaded from the database and cleared before every response. */
     public ?string $clientSecret = null;
 
@@ -28,6 +30,7 @@ class SettingsCloudflare extends Component
 
         $this->settings = instanceSettings();
         $this->clientId = $this->settings->cloudflare_oauth_client_id;
+        $this->scopes = $this->settings->cloudflare_oauth_scopes;
     }
 
     public function dehydrate(): void
@@ -42,12 +45,14 @@ class SettingsCloudflare extends Component
 
         $this->validate([
             'clientId' => ['required', 'string', 'max:255', 'regex:/^[A-Za-z0-9._-]+$/'],
+            'scopes' => ['required', 'string', 'max:1000', 'regex:/^[A-Za-z0-9._:\-\s,]+$/'],
             'clientSecret' => [$hasStoredSecret ? 'nullable' : 'required', 'string', 'max:1024'],
         ], [
             'clientSecret.required' => 'Paste the client secret shown when you created the OAuth client.',
         ]);
 
         $this->settings->cloudflare_oauth_client_id = $this->clientId;
+        $this->settings->cloudflare_oauth_scopes = trim($this->scopes);
         if (filled($this->clientSecret)) {
             $this->settings->cloudflare_oauth_client_secret = $this->clientSecret;
         }
@@ -61,7 +66,7 @@ class SettingsCloudflare extends Component
     {
         abort_unless(isInstanceAdmin(), 403);
 
-        $this->settings->update(['cloudflare_oauth_client_id' => null, 'cloudflare_oauth_client_secret' => null]);
+        $this->settings->update(['cloudflare_oauth_client_id' => null, 'cloudflare_oauth_client_secret' => null, 'cloudflare_oauth_scopes' => null]);
         $this->clientId = null;
 
         auditLog('ui.instance.cloudflare_oauth.removed', []);

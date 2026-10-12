@@ -29,6 +29,7 @@ it('shows the callback URL and the values to use in Cloudflare', function (): vo
 it('stores the OAuth client with the secret encrypted and never sends it back', function (): void {
     Livewire::test(SettingsCloudflare::class)
         ->set('clientId', 'cf-client-123')
+        ->set('scopes', 'tunnel:edit dns:edit')
         ->update(calls: [['method' => 'save', 'params' => [], 'path' => '']], updates: ['clientSecret' => 'super-secret-value'])
         ->assertHasNoErrors()
         ->assertSet('clientSecret', null)
@@ -38,6 +39,7 @@ it('stores the OAuth client with the secret encrypted and never sends it back', 
     $settings = InstanceSettings::get();
     expect($settings->cloudflare_oauth_client_id)->toBe('cf-client-123')
         ->and($settings->cloudflare_oauth_client_secret)->toBe('super-secret-value')
+        ->and($settings->cloudflare_oauth_scopes)->toBe('tunnel:edit dns:edit')
         ->and(DB::table('instance_settings')->value('cloudflare_oauth_client_secret'))->not->toContain('super-secret-value');
 });
 
@@ -46,6 +48,7 @@ it('keeps the stored secret when the secret field is left blank', function (): v
 
     Livewire::test(SettingsCloudflare::class)
         ->set('clientId', 'new-id')
+        ->set('scopes', 'tunnel:edit')
         ->call('save')
         ->assertHasNoErrors();
 

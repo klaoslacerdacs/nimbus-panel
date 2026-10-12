@@ -35,6 +35,7 @@ class InstanceSettings extends Model
         'smtp_password',
         'cloudflare_oauth_client_id',
         'cloudflare_oauth_client_secret',
+        'cloudflare_oauth_scopes',
         'smtp_timeout',
         'smtp_ehlo_domain',
         'resend_enabled',

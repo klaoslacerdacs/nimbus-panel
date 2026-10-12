@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\CloudflareConnectController;
 use App\Http\Controllers\Controller;
 use App\Http\Controllers\OauthController;
 use App\Http\Controllers\ProfileAvatarController;
@@ -46,6 +47,7 @@ use App\Livewire\Project\Shared\ExecuteContainerCommand;
 use App\Livewire\Project\Shared\Logs;
 use App\Livewire\Project\Show as ProjectShow;
 use App\Livewire\Security\ApiTokens;
+use App\Livewire\Security\Cloudflare as SecurityCloudflare;
 use App\Livewire\Security\CloudInitScript\Show as SecurityCloudInitScriptShow;
 use App\Livewire\Security\CloudInitScripts;
 use App\Livewire\Security\CloudProviderToken\Show as SecurityCloudProviderTokenShow;
@@ -138,6 +140,11 @@ Route::get('/email/verify/{id}/{hash}', [Controller::class, 'email_verify'])->mi
 Route::get('/auth/link', [Controller::class, 'link'])->name('auth.link');
 Route::post('/auth/link', [Controller::class, 'acceptLink'])->middleware('throttle:magic-link')->name('auth.link.accept');
 
+// Registered before the login provider routes so /auth/cloudflare/* never reaches OauthController.
+Route::middleware(['auth', 'verified'])->group(function () {
+    Route::get('/auth/cloudflare/redirect', [CloudflareConnectController::class, 'redirect'])->name('cloudflare.connect');
+    Route::get('/auth/cloudflare/callback', [CloudflareConnectController::class, 'callback'])->name('cloudflare.callback');
+});
 Route::get('/auth/{provider}/redirect', [OauthController::class, 'redirect'])->name('auth.redirect');
 Route::get('/auth/{provider}/callback', [OauthController::class, 'callback'])->name('auth.callback');
 
@@ -443,6 +450,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('/security/cloud-init-scripts/{cloud_init_script_uuid}', SecurityCloudInitScriptShow::class)->name('security.cloud-init-scripts.show');
     Route::get('/security/oci-stacks', OciStacks::class)->name('security.oci-stacks');
     Route::get('/security/oci-stacks/{stack}', OciStackShow::class)->name('security.oci-stacks.show');
+    Route::get('/security/cloudflare', SecurityCloudflare::class)->name('security.cloudflare');
     Route::get('/security/oci-jobs', OciStackJobs::class)->name('security.oci-jobs');
     Route::get('/security/oci-firewall-policies', OciFirewallPolicies::class)->name('security.oci-firewall-policies');
     Route::get('/security/api-tokens', ApiTokens::class)->name('security.api-tokens');

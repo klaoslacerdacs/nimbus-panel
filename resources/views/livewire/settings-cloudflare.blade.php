@@ -20,6 +20,11 @@
                     </div>
 
                     <div class="mt-4">
+                        <x-forms.input id="scopes" label="Scopes" required placeholder="Scope names exactly as listed on the OAuth client, separated by spaces"
+                            helper="offline_access is always added so the connection can refresh its token." />
+                    </div>
+
+                    <div class="mt-4">
                         <x-forms.copy-input label="Callback URL (Redirect URL in Cloudflare)" :text="$callbackUrl" />
                     </div>
 
