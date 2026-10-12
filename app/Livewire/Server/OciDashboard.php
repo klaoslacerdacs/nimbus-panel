@@ -285,8 +285,9 @@ class OciDashboard extends Component
      */
     private function applyFirewallThroughTerraform(OciStack $stack, array $rules, string $auditAction): void
     {
-        if (! $stack->queueFirewallChange($rules)) {
-            $this->dispatch('error', 'Terraform is still applying the previous change. Try again when it finishes.');
+        $result = $stack->queueFirewallChange($rules);
+        if ($result !== 'queued') {
+            $this->dispatch('error', OciStack::firewallChangeError($result));
 
             return;
         }
@@ -315,7 +316,13 @@ class OciDashboard extends Component
         }
 
         $stack->firewallPolicies()->toggle($policy->id);
-        $stack->queueFirewallChange();
+        $result = $stack->queueFirewallChange();
+        if ($result !== 'queued') {
+            $stack->firewallPolicies()->toggle($policy->id);
+            $this->dispatch('error', OciStack::firewallChangeError($result));
+
+            return;
+        }
         auditLog('ui.oci_firewall.policy_toggled', ['server_uuid' => $this->server->uuid, 'oci_firewall_policy_id' => $policy->id]);
         $this->dispatch('success', 'Firewall change queued: Terraform runs plan → apply.');
     }

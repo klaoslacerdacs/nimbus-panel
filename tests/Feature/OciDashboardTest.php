@@ -12,6 +12,7 @@ use App\Models\Team;
 use App\Models\User;
 use App\Services\OciClient;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Queue;
 use Livewire\Livewire;
 use Mockery\MockInterface;
@@ -415,6 +416,7 @@ it('sends firewall changes of Terraform-managed VMs through plan and apply', fun
     expect(collect($this->stack->fresh()->firewall_rules)->pluck('port_min')->all())->toBe([22, 3000]);
     Queue::assertPushed(OciStackFirewallJob::class, 1);
 
+    Cache::forget($this->stack->pendingFirewallKey()); // previous change finished
     $component->call('removeNsgRule', 'TCP-22-22-0.0.0.0/0');
     expect(collect($this->stack->fresh()->firewall_rules)->pluck('port_min')->all())->toBe([3000]);
 });
@@ -481,4 +483,23 @@ it('attaches and detaches a shared firewall policy on a Terraform-managed VM', f
 
     $component->call('toggleFirewallPolicy', $foreignPolicy->id);
     expect($this->stack->firewallPolicies()->count())->toBe(1);
+});
+
+it('keeps using the VM team for firewall policies after the session switches team', function (): void {
+    Queue::fake();
+    $this->stack->update(['status' => 'provisioned', 'stack_ocid' => 'ocid1.ormstack.d']);
+    $vmPolicy = OciFirewallPolicy::factory()->create(['team_id' => $this->team->id, 'name' => 'VM team policy']);
+    $otherTeam = Team::factory()->create();
+    $otherTeam->members()->attach($this->user, ['role' => 'owner']);
+    $otherPolicy = OciFirewallPolicy::factory()->create(['team_id' => $otherTeam->id, 'name' => 'Other team policy']);
+    app()->instance(OciClient::class, mockClient());
+
+    $component = Livewire::test(OciDashboard::class, ['server_uuid' => $this->server->uuid]);
+    session(['currentTeam' => $otherTeam]); // switched in another tab
+
+    $component->call('toggleFirewallPolicy', $otherPolicy->id);
+    expect($this->stack->firewallPolicies()->count())->toBe(0);
+
+    $component->call('toggleFirewallPolicy', $vmPolicy->id);
+    expect($this->stack->firewallPolicies()->pluck('name')->all())->toBe(['VM team policy']);
 });

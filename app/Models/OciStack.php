@@ -10,6 +10,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Cache;
 
 class OciStack extends BaseModel
 {
@@ -118,12 +119,12 @@ class OciStack extends BaseModel
      *
      * @return array<string, string>
      */
-    public function terraformVariables(): array
+    public function terraformVariables(?array $effectiveRules = null): array
     {
         return array_map('strval', [
             'tenancy_ocid' => $this->ociConnection?->tenancy_ocid,
             ...($this->tf_vars ?? []),
-            'ingress_rules_json' => json_encode($this->effectiveFirewallRules(), JSON_UNESCAPED_SLASHES),
+            'ingress_rules_json' => json_encode($effectiveRules ?? $this->effectiveFirewallRules(), JSON_UNESCAPED_SLASHES),
         ]);
     }
 
@@ -161,29 +162,67 @@ class OciStack extends BaseModel
         ];
     }
 
+    /** OCI limit of security rules per network security group. */
+    public const int MAX_NSG_RULES = 120;
+
+    /**
+     * Set from queueing until the firewall job finishes, covering the gap before its first job record exists.
+     */
+    public function pendingFirewallKey(): string
+    {
+        return "nimbus:oci-firewall-pending:{$this->id}";
+    }
+
     public function hasRunningJob(): bool
     {
-        return $this->jobs()->whereIn('status', OciStackJob::RUNNING)->get()->contains(fn (OciStackJob $job): bool => $job->isRunning());
+        return Cache::has($this->pendingFirewallKey()) || $this->jobs()->whereIn('status', OciStackJob::RUNNING)->get()->contains(fn (OciStackJob $job): bool => $job->isRunning());
     }
 
     /**
-     * Set the desired firewall and let Terraform apply it (plan → apply). False while another change is applying.
+     * Set the desired firewall and let Terraform apply it (plan → apply).
+     * null keeps the VM's own rules and re-applies after a policy change.
      *
-     * @param  array<int, array<string, mixed>>  $rules
+     * @param  array<int, array<string, mixed>>|null  $rules
+     * @return 'queued'|'busy'|'too_many_rules'|'not_managed'
      */
-    public function queueFirewallChange(?array $rules = null): bool
+    public function queueFirewallChange(?array $rules = null): string
     {
-        if ($this->status !== 'provisioned' || ! $this->stack_ocid || $this->hasRunningJob()) {
-            return false;
+        if ($this->status !== 'provisioned' || ! $this->stack_ocid) {
+            return 'not_managed';
         }
 
-        // null keeps the VM's own rules and re-applies after a policy change.
-        if ($rules !== null) {
-            $this->update(['firewall_rules' => self::normalizeFirewallRules($rules)]);
-        }
-        OciStackFirewallJob::dispatch($this);
+        // Check-and-set under a lock so two quick changes cannot both pass the "busy" check.
+        return Cache::lock("nimbus:oci-firewall-lock:{$this->id}", 10)->block(5, function () use ($rules): string {
+            if ($this->hasRunningJob()) {
+                return 'busy';
+            }
 
-        return true;
+            $own = $rules === null ? ($this->firewall_rules ?? []) : self::normalizeFirewallRules($rules);
+            $policyRules = $this->firewallPolicies()->get()->flatMap(fn (OciFirewallPolicy $policy): array => $policy->rules ?? [])->all();
+            if (count(self::normalizeFirewallRules([...$own, ...$policyRules])) > self::MAX_NSG_RULES) {
+                return 'too_many_rules';
+            }
+
+            if ($rules !== null) {
+                $this->update(['firewall_rules' => $own]);
+            }
+            Cache::put($this->pendingFirewallKey(), true, 3900);
+            OciStackFirewallJob::dispatch($this);
+
+            return 'queued';
+        });
+    }
+
+    /**
+     * Message for a queueFirewallChange() result that did not queue.
+     */
+    public static function firewallChangeError(string $result): string
+    {
+        return match ($result) {
+            'busy' => 'Terraform is still applying the previous change. Try again when it finishes.',
+            'too_many_rules' => 'OCI allows at most '.self::MAX_NSG_RULES.' rules per security group (including shared policies).',
+            default => 'This VM is not managed by Terraform.',
+        };
     }
 
     /**

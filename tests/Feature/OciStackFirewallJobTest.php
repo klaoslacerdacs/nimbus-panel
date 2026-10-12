@@ -5,6 +5,7 @@ use App\Models\OciStack;
 use App\Models\OciStackJob;
 use App\Services\OciClient;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Queue;
 use Mockery\MockInterface;
 
 uses(RefreshDatabase::class);
@@ -26,6 +27,7 @@ function firewallJobMock(array $outputs = ['ingress_rule_ids' => ['managed-1']])
     $mock->shouldReceive('getStackJob')->andReturn(['status' => 'SUCCEEDED'])->byDefault();
     $mock->shouldReceive('getJobLogs')->andReturn(['lines' => ['Apply complete! Resources: 1 added']])->byDefault();
     $mock->shouldReceive('getStackOutputs')->andReturn($outputs)->byDefault();
+    $mock->shouldReceive('listNsgRules')->andReturn([])->byDefault();
 
     return $mock;
 }
@@ -50,9 +52,13 @@ it('updates the stack to the current template with the rules, then plans and app
         ->and($this->stack->fresh()->last_plan_summary)->toContain('Firewall rules applied by Terraform');
 });
 
-it('adopts rules created by the SDK before Terraform managed them, removing them only after apply', function (): void {
-    $mock = firewallJobMock(['ingress_rule_ids' => ['managed-1']]);
-    $mock->shouldReceive('listNsgRules')->once()->andReturn([['id' => 'managed-1'], ['id' => 'legacy-80'], ['id' => 'legacy-443']]);
+it('adopts rules created by the SDK before Terraform managed them, removing duplicates only after apply', function (): void {
+    $mock = firewallJobMock(['ingress_rule_ids' => ['managed-1', 'managed-2', 'managed-3']]);
+    $mock->shouldReceive('listNsgRules')->twice()->andReturn([
+        ['id' => 'legacy-80', 'protocol' => '6', 'source' => '0.0.0.0/0', 'port_min' => 80, 'port_max' => 80],
+        ['id' => 'legacy-443', 'protocol' => '6', 'source' => '0.0.0.0/0', 'port_min' => 443, 'port_max' => 443],
+        ['id' => 'from-other-nsg', 'protocol' => '6', 'source' => 'ocid1.networksecuritygroup.oc1..peer', 'source_type' => 'NETWORK_SECURITY_GROUP'],
+    ]);
     $mock->shouldReceive('removeNsgRules')->once()
         ->with(Mockery::any(), 'ocid1.networksecuritygroup.fw', ['legacy-80', 'legacy-443'], $this->stack->region)
         ->andReturn(['removed' => 2]);
@@ -85,4 +91,65 @@ it('never touches stacks that are not provisioned', function (): void {
     $mock->shouldNotReceive('updateStack');
 
     (new OciStackFirewallJob($this->stack))->handle($mock);
+});
+
+it('aborts before apply when the plan would destroy or replace anything', function (string $planLog): void {
+    $mock = firewallJobMock();
+    $mock->shouldReceive('runStackJob')->with(Mockery::any(), 'ocid1.ormstack.fw', 'PLAN')->once()->andReturn(['job_id' => 'job-plan']);
+    $mock->shouldReceive('getJobLogs')->with(Mockery::any(), 'job-plan', 2000)->andReturn(['lines' => explode("\n", $planLog)]);
+    $mock->shouldReceive('runStackJob')->with(Mockery::any(), 'ocid1.ormstack.fw', 'APPLY')->never();
+    $mock->shouldReceive('listNsgRules')->andReturn([]);
+
+    (new OciStackFirewallJob($this->stack))->handle($mock);
+
+    expect($this->stack->fresh()->last_plan_summary)->toContain('apply was not run');
+})->with([
+    'destroy' => ['Plan: 1 to add, 0 to change, 1 to destroy.'],
+    'replace' => ["# oci_core_instance.server must be replaced\nPlan: 1 to add, 0 to change, 1 to destroy."],
+]);
+
+it('keeps rules that existed on the NSG before Terraform managed it', function (): void {
+    $mock = firewallJobMock(['ingress_rule_ids' => ['managed-1', 'managed-2']]);
+    $mock->shouldReceive('listNsgRules')->andReturn([
+        ['id' => 'legacy-22', 'protocol' => '6', 'source' => '0.0.0.0/0', 'port_min' => 22, 'port_max' => 22, 'description' => 'SSH'],
+    ]);
+    $mock->shouldReceive('updateStack')->once()
+        ->with(Mockery::any(), Mockery::any(), Mockery::any(), Mockery::on(fn ($vars) => collect(json_decode($vars['ingress_rules_json'], true))->pluck('port_min')->sort()->values()->all() === [22, 3000]))
+        ->andReturn(['stack_id' => 'ocid1.ormstack.fw']);
+    $mock->shouldReceive('removeNsgRules')->once()->with(Mockery::any(), Mockery::any(), ['legacy-22'], Mockery::any())->andReturn([]);
+
+    (new OciStackFirewallJob($this->stack))->handle($mock);
+
+    expect(collect($this->stack->fresh()->firewall_rules)->pluck('port_min')->sort()->values()->all())->toBe([22, 3000]);
+});
+
+it('re-queues itself when the desired rules changed while it was applying', function (): void {
+    Queue::fake();
+    OciStackJob::factory()->create(['oci_stack_id' => $this->stack->id, 'operation' => 'apply', 'status' => 'succeeded', 'firewall_rules' => []]);
+    $mock = firewallJobMock();
+    $mock->shouldReceive('runStackJob')->with(Mockery::any(), Mockery::any(), 'APPLY')->andReturnUsing(function () {
+        // Someone saves a new rule while Terraform applies the previous version.
+        $this->stack->update(['firewall_rules' => [...$this->stack->firewall_rules, ['protocol' => 'TCP', 'port_min' => 9000, 'source' => '0.0.0.0/0']]]);
+
+        return ['job_id' => 'job-apply'];
+    });
+
+    (new OciStackFirewallJob($this->stack))->handle($mock);
+
+    Queue::assertPushed(OciStackFirewallJob::class, 1);
+});
+
+it('refuses more rules than an OCI security group allows', function (): void {
+    Queue::fake();
+    $rules = collect(range(1, 121))->map(fn ($port) => ['protocol' => 'TCP', 'port_min' => 1000 + $port, 'source' => '0.0.0.0/0'])->all();
+
+    expect($this->stack->queueFirewallChange($rules))->toBe('too_many_rules');
+    Queue::assertNothingPushed();
+});
+
+it('marks a change as pending until the job starts, so concurrent changes are refused', function (): void {
+    Queue::fake();
+
+    expect($this->stack->queueFirewallChange([]))->toBe('queued')
+        ->and($this->stack->queueFirewallChange([['protocol' => 'TCP', 'port_min' => 1, 'source' => '0.0.0.0/0']]))->toBe('busy');
 });

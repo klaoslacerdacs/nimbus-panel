@@ -120,12 +120,13 @@ class OciFirewallPolicies extends Component
     private function reapply(array $stackIds): void
     {
         $skipped = OciStack::query()->whereIn('id', $stackIds)->get()
-            ->reject(fn (OciStack $stack): bool => $stack->queueFirewallChange())
+            // Busy VMs converge on their own: the running firewall job re-queues when the desired rules changed.
+            ->reject(fn (OciStack $stack): bool => in_array($stack->queueFirewallChange(), ['queued', 'busy'], true))
             ->pluck('name');
 
         $this->dispatch('success', $skipped->isEmpty()
             ? 'Policy saved. Terraform is applying it on '.count($stackIds).' VM(s).'
-            : 'Policy saved. Busy VMs to re-apply later: '.$skipped->implode(', ').'.');
+            : 'Policy saved, but it was not applied on: '.$skipped->implode(', ').' (over the '.OciStack::MAX_NSG_RULES.'-rule OCI limit or not Terraform-managed).');
     }
 
     /**

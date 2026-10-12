@@ -77,8 +77,9 @@ class OciStackJobs extends Component
         }
         $this->authorize('update', $job->stack);
 
-        if (! $job->stack->queueFirewallChange($job->firewall_rules)) {
-            $this->dispatch('error', 'This stack cannot be updated now (not provisioned, or another change is applying).');
+        $result = $job->stack->queueFirewallChange($job->firewall_rules);
+        if ($result !== 'queued') {
+            $this->dispatch('error', OciStack::firewallChangeError($result));
 
             return;
         }
