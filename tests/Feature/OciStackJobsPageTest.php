@@ -1,6 +1,7 @@
 <?php
 
 use App\Jobs\OciStackDestroyJob;
+use App\Jobs\OciStackFirewallJob;
 use App\Jobs\OciStackProvisionJob;
 use App\Livewire\Security\OciStackJobs;
 use App\Models\InstanceSettings;
@@ -10,6 +11,7 @@ use App\Models\Team;
 use App\Models\User;
 use App\Services\OciClient;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Queue;
 use Livewire\Livewire;
 
 uses(RefreshDatabase::class);
@@ -93,4 +95,36 @@ it('ignores malformed job ids in the URL', function (): void {
     Livewire::withQueryParams(['job' => 'abc', 'stack' => ['x']])
         ->test(OciStackJobs::class)
         ->assertOk();
+});
+
+it('restores the firewall version of a successful apply', function (): void {
+    Queue::fake();
+    $this->stack->update(['status' => 'provisioned', 'stack_ocid' => 'ocid1.ormstack.j', 'firewall_rules' => []]);
+    $this->apply->update(['status' => 'succeeded', 'firewall_rules' => [['protocol' => 'TCP', 'port_min' => 443, 'port_max' => 443, 'source' => '0.0.0.0/0', 'description' => '']]]);
+
+    Livewire::test(OciStackJobs::class)
+        ->call('selectJob', $this->apply->id)
+        ->assertSee('TCP 443 from 0.0.0.0/0')
+        ->assertSee('Restore this firewall version')
+        ->call('restoreSelectedVersion')
+        ->assertDispatched('success');
+
+    expect($this->stack->fresh()->firewall_rules[0]['port_min'])->toBe(443);
+    Queue::assertPushed(OciStackFirewallJob::class);
+});
+
+it('forbids members from restoring firewall versions', function (): void {
+    Queue::fake();
+    $this->stack->update(['status' => 'provisioned', 'stack_ocid' => 'ocid1.ormstack.j']);
+    $this->apply->update(['status' => 'succeeded', 'firewall_rules' => []]);
+    $member = User::factory()->create();
+    $this->team->members()->attach($member, ['role' => 'member']);
+    $this->actingAs($member);
+
+    Livewire::test(OciStackJobs::class)
+        ->call('selectJob', $this->apply->id)
+        ->call('restoreSelectedVersion')
+        ->assertForbidden();
+
+    Queue::assertNothingPushed();
 });

@@ -432,3 +432,33 @@ it('blocks a new firewall change while Terraform is still applying', function ()
     expect($this->stack->fresh()->firewall_rules)->toBe([]);
     Queue::assertNothingPushed();
 });
+
+it('restores a previous firewall version through Terraform', function (): void {
+    Queue::fake();
+    $this->stack->update(['status' => 'provisioned', 'stack_ocid' => 'ocid1.ormstack.d', 'firewall_rules' => [['protocol' => 'TCP', 'port_min' => 8080, 'source' => '0.0.0.0/0']]]);
+    $old = OciStackJob::factory()->create(['oci_stack_id' => $this->stack->id, 'operation' => 'apply', 'status' => 'succeeded', 'finished_at' => now()->subDay(),
+        'firewall_rules' => [['protocol' => 'TCP', 'port_min' => 80, 'port_max' => 80, 'source' => '0.0.0.0/0', 'description' => 'HTTP']]]);
+    app()->instance(OciClient::class, mockClient());
+
+    Livewire::test(OciDashboard::class, ['server_uuid' => $this->server->uuid])
+        ->assertSee('Firewall versions')
+        ->assertSee('Restore')
+        ->call('restoreFirewallVersion', $old->id)
+        ->assertDispatched('success');
+
+    expect(collect($this->stack->fresh()->firewall_rules)->pluck('port_min')->all())->toBe([80]);
+    Queue::assertPushed(OciStackFirewallJob::class);
+});
+
+it('refuses to restore a version that belongs to another stack', function (): void {
+    Queue::fake();
+    $this->stack->update(['status' => 'provisioned', 'stack_ocid' => 'ocid1.ormstack.d']);
+    $foreign = OciStackJob::factory()->create(['operation' => 'apply', 'status' => 'succeeded', 'firewall_rules' => [['protocol' => 'ALL', 'source' => '0.0.0.0/0']]]);
+    app()->instance(OciClient::class, mockClient());
+
+    Livewire::test(OciDashboard::class, ['server_uuid' => $this->server->uuid])
+        ->call('restoreFirewallVersion', $foreign->id)
+        ->assertDispatched('error');
+
+    Queue::assertNothingPushed();
+});

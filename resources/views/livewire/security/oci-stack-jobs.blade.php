@@ -56,6 +56,11 @@
                 :description="'Status: '.str($selectedJob->status)->replace('_', ' ').($selectedJob->finished_at ? ' · finished '.$selectedJob->finished_at->diffForHumans() : '')">
                 <x-slot:actions>
                     <div class="flex items-center gap-2">
+                        @if ($selectedJob->operation === 'apply' && $selectedJob->status === 'succeeded' && $selectedJob->firewall_rules !== null)
+                            <x-forms.button type="button" wire:click="restoreSelectedVersion" wire:loading.attr="disabled">
+                                Restore this firewall version
+                            </x-forms.button>
+                        @endif
                         @if ($selectedJob->isRunning())
                             <x-forms.button type="button" wire:click="refreshLiveLog" wire:loading.attr="disabled">
                                 Refresh log from OCI
@@ -69,6 +74,12 @@
                         @endif
                     </div>
                 </x-slot:actions>
+                @if ($selectedJob->firewall_rules !== null)
+                    <p class="mb-2 text-[12px] text-neutral-600 dark:text-neutral-300">
+                        Firewall rules in this version:
+                        <span class="font-mono">{{ collect($selectedJob->firewall_rules)->map(fn ($rule) => $rule['protocol'].' '.(isset($rule['port_min']) ? $rule['port_min'].($rule['port_max'] !== $rule['port_min'] ? '-'.$rule['port_max'] : '') : 'all').' from '.$rule['source'])->implode(' · ') ?: 'none' }}</span>
+                    </p>
+                @endif
                 @if ($selectedJob->log)
                     <pre class="max-h-[32rem] overflow-auto whitespace-pre-wrap break-words rounded-lg bg-neutral-950 p-4 font-mono text-xs text-neutral-100">{{ $selectedJob->log }}</pre>
                 @else

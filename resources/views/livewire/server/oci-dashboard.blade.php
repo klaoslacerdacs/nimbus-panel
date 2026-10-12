@@ -249,6 +249,41 @@
                 </p>
             @endif
 
+            @if ($terraformStack && $firewallVersions->isNotEmpty())
+                @php $currentKeys = collect($managedRules)->pluck('id')->sort()->values()->all(); @endphp
+                <div class="border-t border-neutral-200 px-4 pt-3 pb-3 dark:border-white/[0.08]">
+                    <p class="text-[12px] font-medium">Firewall versions <span class="font-normal text-neutral-500 dark:text-fg-dim">(successful Terraform applies, newest first)</span></p>
+                    <ul class="mt-2 flex flex-col gap-1.5">
+                        @foreach ($firewallVersions as $version)
+                            @php
+                                $versionKeys = collect($version->firewall_rules)->map(fn ($rule) => App\Models\OciStack::firewallRuleKey($rule));
+                                $isCurrent = $versionKeys->sort()->values()->all() === $currentKeys;
+                                $added = $versionKeys->diff($currentKeys)->count();
+                                $removed = collect($currentKeys)->diff($versionKeys)->count();
+                            @endphp
+                            <li wire:key="fw-version-{{ $version->id }}" class="flex flex-wrap items-center justify-between gap-2 text-[12px]">
+                                <span>
+                                    <span class="font-mono">{{ $version->finished_at?->format('Y-m-d H:i') }}</span>
+                                    · {{ count($version->firewall_rules) }} rules
+                                    <span class="text-neutral-500 dark:text-fg-dim">
+                                        ({{ collect($version->firewall_rules)->map(fn ($rule) => $rule['protocol'].' '.($rule['port_min'] ?? 'all'))->implode(', ') }})
+                                    </span>
+                                    @if ($isCurrent)
+                                        <x-status-badge label="Current" type="success" />
+                                    @else
+                                        <span class="text-neutral-500 dark:text-fg-dim">· restoring {{ $added ? '+'.$added : '' }}{{ $added && $removed ? ' / ' : '' }}{{ $removed ? '−'.$removed : '' }} rules</span>
+                                    @endif
+                                </span>
+                                @unless ($isCurrent)
+                                    <button type="button" wire:click="restoreFirewallVersion({{ $version->id }})" wire:loading.attr="disabled" @disabled($firewallApplying)
+                                        class="button button-secondary text-xs">Restore</button>
+                                @endunless
+                            </li>
+                        @endforeach
+                    </ul>
+                </div>
+            @endif
+
             @foreach ($firewall['security_lists'] ?? [] as $list)
                 <div class="border-t border-neutral-200 px-4 pt-3 pb-2 dark:border-white/[0.08]">
                     <p class="text-[12px] font-medium">Subnet security list · {{ $list['display_name'] ?? $list['id'] }} <span class="font-normal text-neutral-500 dark:text-fg-dim">(read-only, shared by every VM in the subnet)</span></p>

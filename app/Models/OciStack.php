@@ -2,11 +2,13 @@
 
 namespace App\Models;
 
+use App\Jobs\OciStackFirewallJob;
 use App\Traits\ClearsGlobalSearchCache;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Collection;
 
 class OciStack extends BaseModel
 {
@@ -122,5 +124,37 @@ class OciStack extends BaseModel
             ...($this->tf_vars ?? []),
             'ingress_rules_json' => json_encode(self::normalizeFirewallRules($this->firewall_rules ?? []), JSON_UNESCAPED_SLASHES),
         ]);
+    }
+
+    public function hasRunningJob(): bool
+    {
+        return $this->jobs()->whereIn('status', OciStackJob::RUNNING)->get()->contains(fn (OciStackJob $job): bool => $job->isRunning());
+    }
+
+    /**
+     * Set the desired firewall and let Terraform apply it (plan → apply). False while another change is applying.
+     *
+     * @param  array<int, array<string, mixed>>  $rules
+     */
+    public function queueFirewallChange(array $rules): bool
+    {
+        if ($this->status !== 'provisioned' || ! $this->stack_ocid || $this->hasRunningJob()) {
+            return false;
+        }
+
+        $this->update(['firewall_rules' => self::normalizeFirewallRules($rules)]);
+        OciStackFirewallJob::dispatch($this);
+
+        return true;
+    }
+
+    /**
+     * Firewall versions: rule snapshots of successful applies, newest first.
+     *
+     * @return Collection<int, OciStackJob>
+     */
+    public function firewallVersions(int $limit = 20): Collection
+    {
+        return $this->jobs()->where('operation', 'apply')->where('status', 'succeeded')->whereNotNull('firewall_rules')->limit($limit)->get();
     }
 }

@@ -2,9 +2,7 @@
 
 namespace App\Livewire\Server;
 
-use App\Jobs\OciStackFirewallJob;
 use App\Models\OciStack;
-use App\Models\OciStackJob;
 use App\Models\Server;
 use App\Models\ServerSetting;
 use App\Services\OciClient;
@@ -286,18 +284,33 @@ class OciDashboard extends Component
      */
     private function applyFirewallThroughTerraform(OciStack $stack, array $rules, string $auditAction): void
     {
-        if ($stack->jobs()->whereIn('status', OciStackJob::RUNNING)->get()->contains(fn (OciStackJob $job) => $job->isRunning())) {
+        if (! $stack->queueFirewallChange($rules)) {
             $this->dispatch('error', 'Terraform is still applying the previous change. Try again when it finishes.');
 
             return;
         }
 
-        $stack->update(['firewall_rules' => OciStack::normalizeFirewallRules($rules)]);
-        OciStackFirewallJob::dispatch($stack);
         auditLog('ui.oci_firewall.'.$auditAction, ['server_uuid' => $this->server->uuid, 'oci_stack_id' => $stack->id]);
 
         $this->newRule = ['protocol' => 'TCP', 'port_min' => '', 'port_max' => '', 'source' => '0.0.0.0/0', 'description' => ''];
         $this->dispatch('success', 'Firewall change queued: Terraform runs plan → apply (see Terraform Jobs).');
+    }
+
+    /**
+     * Roll the firewall back to a previous successful apply of this VM's stack.
+     */
+    public function restoreFirewallVersion(int $jobId): void
+    {
+        $this->authorize('update', $this->server);
+        $stack = $this->terraformStack();
+        $version = $stack?->firewallVersions(100)->firstWhere('id', $jobId);
+        if (! $version) {
+            $this->dispatch('error', 'That firewall version does not exist for this VM.');
+
+            return;
+        }
+
+        $this->applyFirewallThroughTerraform($stack, $version->firewall_rules, 'version_restored');
     }
 
     /**
@@ -694,7 +707,8 @@ class OciDashboard extends Component
                 'id' => OciStack::firewallRuleKey($rule),
                 'protocol_label' => $rule['protocol'],
             ], OciStack::normalizeFirewallRules($stack->firewall_rules ?? [])) : [],
-            'firewallApplying' => (bool) $stack?->jobs()->whereIn('status', OciStackJob::RUNNING)->get()->contains(fn (OciStackJob $job) => $job->isRunning()),
+            'firewallApplying' => (bool) $stack?->hasRunningJob(),
+            'firewallVersions' => $stack?->firewallVersions() ?? collect(),
         ]);
     }
 }

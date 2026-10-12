@@ -66,6 +66,27 @@ class OciStackJobs extends Component
         $job->update(['log' => implode("\n", $result['lines'] ?? [])]);
     }
 
+    /**
+     * Roll the stack's firewall back to the rules this (successful apply) job applied.
+     */
+    public function restoreSelectedVersion(): void
+    {
+        $job = is_numeric($this->selectedJobId) ? $this->findJob((int) $this->selectedJobId) : null;
+        if (! $job?->stack || $job->operation !== 'apply' || $job->status !== 'succeeded' || $job->firewall_rules === null) {
+            return;
+        }
+        $this->authorize('update', $job->stack);
+
+        if (! $job->stack->queueFirewallChange($job->firewall_rules)) {
+            $this->dispatch('error', 'This stack cannot be updated now (not provisioned, or another change is applying).');
+
+            return;
+        }
+
+        auditLog('ui.oci_firewall.version_restored', ['oci_stack_id' => $job->stack->id, 'oci_stack_job_id' => $job->id]);
+        $this->dispatch('success', 'Firewall version queued: Terraform runs plan → apply.');
+    }
+
     private function findJob(int $jobId): ?OciStackJob
     {
         return OciStackJob::ownedByCurrentTeam()->with('stack.ociConnection')->find($jobId);
