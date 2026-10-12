@@ -42,6 +42,10 @@
                     View Server
                 </a>
             @endif
+            <a href="{{ route('security.oci-jobs', ['stack' => $stack->uuid]) }}" wire:navigate
+                class="rounded border border-neutral-200 px-3 py-1.5 text-xs hover:bg-neutral-50 dark:border-white/[0.08] dark:hover:bg-neutral-800">
+                Terraform jobs
+            </a>
             @if ($stack->stack_ocid)
                 <a href="https://cloud.oracle.com/resourcemanager/stacks/{{ $stack->stack_ocid }}?region={{ $stack->region }}"
                     target="_blank" rel="noopener noreferrer"

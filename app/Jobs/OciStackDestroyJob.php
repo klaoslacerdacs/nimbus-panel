@@ -5,6 +5,7 @@ namespace App\Jobs;
 use App\Events\OciStackStatusChanged;
 use App\Models\OciStack;
 use App\Services\OciClient;
+use App\Traits\RunsOciStackJobs;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -14,14 +15,14 @@ use Illuminate\Queue\SerializesModels;
 
 class OciStackDestroyJob implements ShouldBeUnique, ShouldQueue
 {
-    use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
+    use Dispatchable, InteractsWithQueue, Queueable, RunsOciStackJobs, SerializesModels;
 
-    // ponytail: blocks queue worker for up to 30min — move to polling job if throughput matters
-    public int $timeout = 1800;
+    // ponytail: blocks a queue worker for up to 30min — move to a self-rescheduling job if throughput matters
+    public int $timeout = 1900;
 
     public int $tries = 1;
 
-    public int $uniqueFor = 1800;
+    public int $uniqueFor = 1900;
 
     public function __construct(public OciStack $ociStack)
     {
@@ -59,56 +60,32 @@ class OciStackDestroyJob implements ShouldBeUnique, ShouldQueue
         $stack->update(['status' => 'destroying', 'last_plan_summary' => 'Running Terraform destroy...']);
         OciStackStatusChanged::dispatch($stack->team_id);
 
-        $destroy = $oci->runStackJob($config, $stack->stack_ocid, 'DESTROY', confirmDestroy: true);
+        $destroy = $this->runTrackedStackJob($oci, $config, $stack, 'destroy');
 
-        if (! isset($destroy['job_id'])) {
-            $stack->update(['status' => 'destroy_failed', 'last_plan_summary' => 'Destroy job creation failed']);
-
-            return;
+        if ($destroy['ok']) {
+            auditLog('job.oci_stack.destroyed', [
+                'team_id' => $stack->team_id,
+                'oci_stack_name' => $stack->name,
+                'stack_ocid' => $stack->stack_ocid,
+            ]);
+            // Kept as history so users can tell "removed on OCI" from "removed only in the panel".
+            $stack->update([
+                'status' => 'destroyed',
+                'last_plan_summary' => 'Terraform destroy succeeded at '.now()->toDateTimeString().' UTC. OCI resources removed.',
+            ]);
+        } else {
+            $stack->update(['status' => 'destroy_failed', 'last_plan_summary' => "Terraform destroy failed.\n\n".($this->logTail($destroy['log']) ?? '')]);
         }
 
-        $deadline = now()->addMinutes(30);
-
-        while (now()->lt($deadline)) {
-            $result = $oci->getStackJob($config, $destroy['job_id']);
-            $status = strtolower($result['status'] ?? '');
-
-            if ($status === 'succeeded') {
-                auditLog('job.oci_stack.destroyed', [
-                    'team_id' => $stack->team_id,
-                    'oci_stack_name' => $stack->name,
-                    'stack_ocid' => $stack->stack_ocid,
-                ]);
-                // Kept as history so users can tell "removed on OCI" from "removed only in the panel".
-                $stack->update([
-                    'status' => 'destroyed',
-                    'last_plan_summary' => 'Terraform destroy succeeded at '.now()->toDateTimeString().' UTC. OCI resources removed.',
-                ]);
-                OciStackStatusChanged::dispatch($stack->team_id);
-
-                return;
-            }
-
-            if ($status === '') {
-                // OCI API unreachable (already retried) — treat as transient, keep polling
-                sleep(30);
-
-                continue;
-            }
-
-            if (! in_array($status, ['in_progress', 'accepted', 'waiting'])) {
-                $lines = $oci->getJobLogs($config, $destroy['job_id'])['lines'] ?? [];
-                $summary = "Destroy job ended with status: {$status}".($lines ? "\n\n".implode("\n", $lines) : '');
-                $stack->update(['status' => 'destroy_failed', 'last_plan_summary' => $summary]);
-                OciStackStatusChanged::dispatch($stack->team_id);
-
-                return;
-            }
-
-            sleep(30);
-        }
-
-        $stack->update(['status' => 'destroy_failed', 'last_plan_summary' => 'Destroy timed out after 30 minutes']);
         OciStackStatusChanged::dispatch($stack->team_id);
+    }
+
+    /**
+     * Horizon kills the job on timeout without running the end of handle(); never leave the stack "destroying".
+     */
+    public function failed(\Throwable $exception): void
+    {
+        $this->ociStack->update(['status' => 'destroy_failed', 'last_plan_summary' => 'Destroy stopped: '.$exception->getMessage()]);
+        OciStackStatusChanged::dispatch($this->ociStack->team_id);
     }
 }

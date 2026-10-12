@@ -42,6 +42,12 @@
             'active' => request()->routeIs('security.oci-stacks*'),
             'icon' => 'layers',
         ],
+        [
+            'label' => 'Terraform Jobs',
+            'route' => 'security.oci-jobs',
+            'active' => request()->routeIs('security.oci-jobs'),
+            'icon' => 'file-content',
+        ],
     ])->filter();
 @endphp
 

@@ -6,6 +6,7 @@ use App\Events\OciStackStatusChanged;
 use App\Models\OciStack;
 use App\Models\Server;
 use App\Services\OciClient;
+use App\Traits\RunsOciStackJobs;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -17,7 +18,7 @@ use Illuminate\Support\Sleep;
 
 class OciStackProvisionJob implements ShouldBeUnique, ShouldQueue
 {
-    use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
+    use Dispatchable, InteractsWithQueue, Queueable, RunsOciStackJobs, SerializesModels;
 
     // ponytail: blocks queue worker for up to 30min — move to polling job if throughput matters
     // Plan (≤30m) + apply (≤30m) + SSH wait (≤5m).
@@ -93,16 +94,9 @@ class OciStackProvisionJob implements ShouldBeUnique, ShouldQueue
             OciStackStatusChanged::dispatch($stack->team_id);
         }
 
-        $plan = $oci->runStackJob($config, $stack->stack_ocid, 'PLAN');
-        if (! isset($plan['job_id'])) {
-            $this->markFailed($stack, 'Plan job creation failed');
-
-            return;
-        }
-
-        $planLogs = null;
-        if (! $this->pollUntilDone($oci, $config, $plan['job_id'], $planLogs)) {
-            $this->markFailed($stack, 'Terraform plan failed', $planLogs);
+        $plan = $this->runTrackedStackJob($oci, $config, $stack, 'plan');
+        if (! $plan['ok']) {
+            $this->markFailed($stack, 'Terraform plan failed', $this->logTail($plan['log']));
 
             return;
         }
@@ -110,16 +104,9 @@ class OciStackProvisionJob implements ShouldBeUnique, ShouldQueue
         $stack->update(['status' => 'applying', 'last_plan_summary' => 'Applying Terraform — creating OCI resources (this can take up to 30 min)...']);
         OciStackStatusChanged::dispatch($stack->team_id);
 
-        $apply = $oci->runStackJob($config, $stack->stack_ocid, 'APPLY');
-        if (! isset($apply['job_id'])) {
-            $this->markFailed($stack, 'Apply job creation failed');
-
-            return;
-        }
-
-        $applyLogs = null;
-        if (! $this->pollUntilDone($oci, $config, $apply['job_id'], $applyLogs)) {
-            $this->markFailed($stack, 'Terraform apply failed', $applyLogs);
+        $apply = $this->runTrackedStackJob($oci, $config, $stack, 'apply');
+        if (! $apply['ok']) {
+            $this->markFailed($stack, 'Terraform apply failed', $this->logTail($apply['log']));
 
             return;
         }
@@ -176,40 +163,6 @@ class OciStackProvisionJob implements ShouldBeUnique, ShouldQueue
     public function failed(\Throwable $exception): void
     {
         $this->markFailed($this->ociStack, 'Provisioning stopped: '.$exception->getMessage());
-    }
-
-    private function pollUntilDone(OciClient $oci, array $config, string $jobId, ?string &$errorLogs = null): bool
-    {
-        $deadline = now()->addMinutes(30);
-
-        while (now()->lt($deadline)) {
-            $result = $oci->getStackJob($config, $jobId);
-            $status = strtolower($result['status'] ?? '');
-
-            if ($status === 'succeeded') {
-                return true;
-            }
-
-            if ($status === '') {
-                // OCI API unreachable (already retried) — treat as transient, keep polling
-                sleep(30);
-
-                continue;
-            }
-
-            if (! in_array($status, ['in_progress', 'accepted', 'waiting'])) {
-                $logResult = $oci->getJobLogs($config, $jobId);
-                if (! empty($logResult['lines'])) {
-                    $errorLogs = implode("\n", $logResult['lines']);
-                }
-
-                return false;
-            }
-
-            sleep(30);
-        }
-
-        return false;
     }
 
     private function getTemplateZipBase64(): string

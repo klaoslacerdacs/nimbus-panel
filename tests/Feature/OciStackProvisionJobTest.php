@@ -15,6 +15,7 @@ uses(RefreshDatabase::class);
 function mockOciSequence(array ...$calls): void
 {
     $mock = Mockery::mock(OciClient::class);
+    $mock->shouldReceive('getJobLogs')->andReturn(['lines' => ['Terraform log line']])->byDefault();
     foreach ($calls as [$method, $args, $return]) {
         $mock->shouldReceive($method)->with(...$args)->andReturn($return);
     }
@@ -25,6 +26,7 @@ it('provisions stack: plan → apply → provisioned', function (): void {
     $stack = OciStack::factory()->create(['status' => 'pending']);
 
     $mock = Mockery::mock(OciClient::class);
+    $mock->shouldReceive('getJobLogs')->andReturn(['lines' => ['Terraform log line']])->byDefault();
     $mock->shouldReceive('createStack')->once()->andReturn(['stack_id' => 'ocid1.stack.test']);
     $mock->shouldReceive('runStackJob')->with(Mockery::any(), 'ocid1.stack.test', 'PLAN')->once()->andReturn(['job_id' => 'job-plan-1']);
     $mock->shouldReceive('getStackJob')->with(Mockery::any(), 'job-plan-1')->once()->andReturn(['status' => 'SUCCEEDED']);
@@ -48,6 +50,7 @@ it('marks failed when plan job creation fails', function (): void {
     $stack = OciStack::factory()->create(['status' => 'pending']);
 
     $mock = Mockery::mock(OciClient::class);
+    $mock->shouldReceive('getJobLogs')->andReturn(['lines' => ['Terraform log line']])->byDefault();
     $mock->shouldReceive('createStack')->once()->andReturn(['stack_id' => 'ocid1.stack.test']);
     $mock->shouldReceive('runStackJob')->with(Mockery::any(), 'ocid1.stack.test', 'PLAN')->once()->andReturn(['error' => 'plan job rejected']);
     $mock->shouldNotReceive('runStackJob', Mockery::any(), Mockery::any(), 'APPLY');
@@ -62,11 +65,12 @@ it('marks failed when apply times out', function (): void {
     $stack = OciStack::factory()->create(['status' => 'pending', 'stack_ocid' => 'ocid1.stack.existing']);
 
     $mock = Mockery::mock(OciClient::class);
+    $mock->shouldReceive('getJobLogs')->andReturn(['lines' => ['Terraform log line']])->byDefault();
     $mock->shouldReceive('runStackJob')->with(Mockery::any(), 'ocid1.stack.existing', 'PLAN')->once()->andReturn(['job_id' => 'job-plan-1']);
     $mock->shouldReceive('getStackJob')->with(Mockery::any(), 'job-plan-1')->once()->andReturn(['status' => 'succeeded']);
     $mock->shouldReceive('runStackJob')->with(Mockery::any(), 'ocid1.stack.existing', 'APPLY')->once()->andReturn(['job_id' => 'job-apply-1']);
     $mock->shouldReceive('getStackJob')->with(Mockery::any(), 'job-apply-1')->once()->andReturn(['status' => 'FAILED']);
-    $mock->shouldReceive('getJobLogs')->with(Mockery::any(), 'job-apply-1')->once()->andReturn(['lines' => ['Error: quota exceeded for shape VM.Standard.E4.Flex']]);
+    $mock->shouldReceive('getJobLogs')->with(Mockery::any(), 'job-apply-1', 2000)->once()->andReturn(['lines' => ['Error: quota exceeded for shape VM.Standard.E4.Flex']]);
     app()->instance(OciClient::class, $mock);
 
     new OciStackProvisionJob($stack)->handle(app(OciClient::class));
@@ -92,6 +96,7 @@ it('talks to OCI in the stack region, not the connection home region', function 
     $stack->ociConnection->update(['region' => 'us-ashburn-1']);
 
     $mock = Mockery::mock(OciClient::class);
+    $mock->shouldReceive('getJobLogs')->andReturn(['lines' => ['Terraform log line']])->byDefault();
     $mock->shouldReceive('runStackJob')->once()
         ->with(Mockery::on(fn ($config): bool => $config['region'] === 'sa-saopaulo-1'), 'ocid1.stack.r', 'PLAN')
         ->andReturn(['error' => true]);
@@ -105,6 +110,7 @@ it('stores the NSG even without firewall rules and reports failed rule applicati
     $stack = OciStack::factory()->create(['status' => 'pending', 'stack_ocid' => 'ocid1.stack.n', 'firewall_rules' => $rules]);
 
     $mock = Mockery::mock(OciClient::class);
+    $mock->shouldReceive('getJobLogs')->andReturn(['lines' => ['Terraform log line']])->byDefault();
     $mock->shouldReceive('runStackJob')->andReturn(['job_id' => 'job']);
     $mock->shouldReceive('getStackJob')->andReturn(['status' => 'SUCCEEDED']);
     $mock->shouldReceive('getStackOutputs')->andReturn(['instance_id' => 'ocid1.instance.n', 'nsg_id' => 'ocid1.networksecuritygroup.n']);
@@ -134,6 +140,7 @@ it('destroys in the stack region, not the connection home region', function (): 
     $stack->ociConnection->update(['region' => 'us-ashburn-1']);
 
     $mock = Mockery::mock(OciClient::class);
+    $mock->shouldReceive('getJobLogs')->andReturn(['lines' => ['Terraform log line']])->byDefault();
     $mock->shouldReceive('runStackJob')->once()
         ->with(Mockery::on(fn ($config): bool => $config['region'] === 'sa-saopaulo-1'), 'ocid1.stack.d', 'DESTROY', true)
         ->andReturn(['error' => true]);
@@ -151,6 +158,7 @@ it('waits until the new VM accepts SSH before validating it', function (): void 
     $stack->update(['server_id' => $server->id]);
 
     $mock = Mockery::mock(OciClient::class);
+    $mock->shouldReceive('getJobLogs')->andReturn(['lines' => ['Terraform log line']])->byDefault();
     $mock->shouldReceive('runStackJob')->andReturn(['job_id' => 'job']);
     $mock->shouldReceive('getStackJob')->andReturn(['status' => 'SUCCEEDED']);
     $mock->shouldReceive('getStackOutputs')->andReturn(['public_ip' => '203.0.113.9', 'instance_id' => 'ocid1.instance.s']);
@@ -180,6 +188,7 @@ it('keeps a destroyed stack as history instead of deleting it', function (): voi
     $stack = OciStack::factory()->create(['status' => 'destroying', 'stack_ocid' => 'ocid1.stack.h']);
 
     $mock = Mockery::mock(OciClient::class);
+    $mock->shouldReceive('getJobLogs')->andReturn(['lines' => ['Terraform log line']])->byDefault();
     $mock->shouldReceive('runStackJob')->andReturn(['job_id' => 'job-d']);
     $mock->shouldReceive('getStackJob')->andReturn(['status' => 'SUCCEEDED']);
 
@@ -190,4 +199,43 @@ it('keeps a destroyed stack as history instead of deleting it', function (): voi
         ->and($stack->status)->toBe('destroyed')
         ->and($stack->last_plan_summary)->toContain('OCI resources removed')
         ->and($stack->isActive())->toBeFalse();
+});
+
+it('records every Terraform job with its status and log', function (): void {
+    Sleep::fake();
+    $stack = OciStack::factory()->create(['status' => 'pending', 'stack_ocid' => 'ocid1.stack.rec']);
+
+    $mock = Mockery::mock(OciClient::class);
+    $mock->shouldReceive('runStackJob')->with(Mockery::any(), 'ocid1.stack.rec', 'PLAN')->andReturn(['job_id' => 'job-plan']);
+    $mock->shouldReceive('runStackJob')->with(Mockery::any(), 'ocid1.stack.rec', 'APPLY')->andReturn(['job_id' => 'job-apply']);
+    $mock->shouldReceive('getStackJob')->with(Mockery::any(), 'job-plan')->andReturn(['status' => 'IN_PROGRESS'], ['status' => 'SUCCEEDED']);
+    $mock->shouldReceive('getStackJob')->with(Mockery::any(), 'job-apply')->andReturn(['status' => 'FAILED']);
+    $mock->shouldReceive('getJobLogs')->with(Mockery::any(), 'job-plan', 2000)->andReturn(['lines' => ['Plan: 6 to add']]);
+    $mock->shouldReceive('getJobLogs')->with(Mockery::any(), 'job-apply', 2000)->andReturn(['lines' => ['Error: Out of host capacity']]);
+
+    (new OciStackProvisionJob($stack))->handle($mock);
+
+    $jobs = $stack->jobs()->get()->keyBy('operation');
+    expect($jobs['plan']->status)->toBe('succeeded')
+        ->and($jobs['plan']->log)->toBe('Plan: 6 to add')
+        ->and($jobs['plan']->finished_at)->not->toBeNull()
+        ->and($jobs['apply']->status)->toBe('failed')
+        ->and($jobs['apply']->log)->toContain('Out of host capacity')
+        ->and($jobs['apply']->team_id)->toBe($stack->team_id)
+        ->and($stack->fresh()->last_plan_summary)->toContain('Out of host capacity');
+});
+
+it('records the destroy job and the reason when OCI rejects it', function (): void {
+    $stack = OciStack::factory()->create(['status' => 'destroying', 'stack_ocid' => 'ocid1.stack.d2']);
+
+    $mock = Mockery::mock(OciClient::class);
+    $mock->shouldReceive('runStackJob')->andReturn(['error' => true, 'message' => 'Stack is locked by another job']);
+
+    (new OciStackDestroyJob($stack))->handle($mock);
+
+    $job = $stack->jobs()->sole();
+    expect($job->operation)->toBe('destroy')
+        ->and($job->status)->toBe('failed')
+        ->and($job->log)->toContain('Stack is locked by another job')
+        ->and($stack->fresh()->status)->toBe('destroy_failed');
 });

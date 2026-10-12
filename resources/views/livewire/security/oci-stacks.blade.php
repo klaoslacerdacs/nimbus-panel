@@ -53,6 +53,10 @@
                                     class="button button-secondary text-sm" wire:navigate>
                                     Details
                                 </a>
+                                <a href="{{ route('security.oci-jobs', ['stack' => $stack->uuid]) }}"
+                                    class="button button-secondary text-sm" wire:navigate>
+                                    Jobs
+                                </a>
 
                                 @if($stackPendingDestroy === $stack->id)
                                     <span class="text-xs text-error">Destroy OCI resources?</span>

@@ -117,9 +117,9 @@ class OciClient
         return $this->guard(fn (): array => $this->resourceManager->getStackOutputs($config, $jobId));
     }
 
-    public function getJobLogs(array $config, string $jobId): array
+    public function getJobLogs(array $config, string $jobId, int $maxLines = 50): array
     {
-        return $this->guard(fn (): array => $this->resourceManager->getJobLogs($config, $jobId));
+        return $this->guard(fn (): array => $this->resourceManager->getJobLogs($config, $jobId, $maxLines));
     }
 
     public function getInstanceStatus(array $config, string $instanceId, string $region): array

@@ -6,6 +6,7 @@ use App\Traits\ClearsGlobalSearchCache;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class OciStack extends BaseModel
 {
@@ -69,5 +70,10 @@ class OciStack extends BaseModel
     public static function ownedByCurrentTeam(array $select = ['*']): Builder
     {
         return self::ownedByTeam(currentTeam()->id)->select($select);
+    }
+
+    public function jobs(): HasMany
+    {
+        return $this->hasMany(OciStackJob::class)->latest('id');
     }
 }
