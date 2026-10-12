@@ -4,7 +4,7 @@ namespace App\Livewire\Server;
 
 use App\Models\Server;
 use App\Models\ServerSetting;
-use App\Services\OciBridgeClient;
+use App\Services\OciClient;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Livewire\Attributes\Locked;
 use Livewire\Component;
@@ -128,8 +128,8 @@ class OciDashboard extends Component
             return;
         }
 
-        $client = app(OciBridgeClient::class);
-        $result = $client->getInstanceStatus($connection->toBridgeConfig(), $instanceId, $this->server->oci_region);
+        $client = app(OciClient::class);
+        $result = $client->getInstanceStatus($connection->toApiConfig(), $instanceId, $this->server->oci_region);
         $this->instanceStatus = isset($result['lifecycle_state']) ? $result : null;
 
         if (isset($result['lifecycle_state'])) {
@@ -168,9 +168,9 @@ class OciDashboard extends Component
             }
         }
 
-        $client = app(OciBridgeClient::class);
+        $client = app(OciClient::class);
         $result = $client->getInstanceMetrics(
-            $connection->toBridgeConfig(),
+            $connection->toApiConfig(),
             $instanceId,
             $this->server->oci_compartment_id ?? '',
             $this->server->oci_region
@@ -199,8 +199,8 @@ class OciDashboard extends Component
             return;
         }
 
-        $client = app(OciBridgeClient::class);
-        $result = $client->listNsgRules($connection->toBridgeConfig(), $ociStack->nsg_ocid, $this->server->oci_region);
+        $client = app(OciClient::class);
+        $result = $client->listNsgRules($connection->toApiConfig(), $ociStack->nsg_ocid, $this->server->oci_region);
         $this->nsgRules = isset($result['error']) ? [] : $result;
     }
 
@@ -254,8 +254,8 @@ class OciDashboard extends Component
             return;
         }
 
-        $result = app(OciBridgeClient::class)->listVolumeAttachments(
-            $connection->toBridgeConfig(),
+        $result = app(OciClient::class)->listVolumeAttachments(
+            $connection->toApiConfig(),
             $compartmentId,
             $instanceId,
             $this->server->oci_region,
@@ -273,8 +273,8 @@ class OciDashboard extends Component
             return;
         }
 
-        $result = app(OciBridgeClient::class)->listVolumes(
-            $connection->toBridgeConfig(),
+        $result = app(OciClient::class)->listVolumes(
+            $connection->toApiConfig(),
             $compartmentId,
             $this->server->oci_region,
         );
@@ -300,8 +300,8 @@ class OciDashboard extends Component
             return;
         }
 
-        $ads = app(OciBridgeClient::class)->listAvailabilityDomains(
-            $connection->toBridgeConfig(),
+        $ads = app(OciClient::class)->listAvailabilityDomains(
+            $connection->toApiConfig(),
             $compartmentId,
             $this->server->oci_region,
         );
@@ -313,8 +313,8 @@ class OciDashboard extends Component
             return;
         }
 
-        $result = app(OciBridgeClient::class)->createVolume(
-            $connection->toBridgeConfig(),
+        $result = app(OciClient::class)->createVolume(
+            $connection->toApiConfig(),
             $compartmentId,
             $ad,
             $this->newVolumeName,
@@ -348,8 +348,8 @@ class OciDashboard extends Component
             return;
         }
 
-        $result = app(OciBridgeClient::class)->attachVolume(
-            $connection->toBridgeConfig(),
+        $result = app(OciClient::class)->attachVolume(
+            $connection->toApiConfig(),
             $instanceId,
             $this->attachVolumeOcid,
             $this->server->oci_region,
@@ -386,8 +386,8 @@ class OciDashboard extends Component
             return;
         }
 
-        $result = app(OciBridgeClient::class)->detachVolume(
-            $connection->toBridgeConfig(),
+        $result = app(OciClient::class)->detachVolume(
+            $connection->toApiConfig(),
             $this->pendingDetachId,
             $this->server->oci_region,
         );
@@ -410,8 +410,8 @@ class OciDashboard extends Component
             return;
         }
 
-        $result = app(OciBridgeClient::class)->listLoadBalancers(
-            $connection->toBridgeConfig(),
+        $result = app(OciClient::class)->listLoadBalancers(
+            $connection->toApiConfig(),
             $compartmentId,
             $this->server->oci_region,
         );
@@ -428,8 +428,8 @@ class OciDashboard extends Component
             return;
         }
 
-        $result = app(OciBridgeClient::class)->listAutonomousDatabases(
-            $connection->toBridgeConfig(),
+        $result = app(OciClient::class)->listAutonomousDatabases(
+            $connection->toApiConfig(),
             $compartmentId,
             $this->server->oci_region,
         );
@@ -446,8 +446,8 @@ class OciDashboard extends Component
             return;
         }
 
-        $result = app(OciBridgeClient::class)->listRouteTables(
-            $connection->toBridgeConfig(),
+        $result = app(OciClient::class)->listRouteTables(
+            $connection->toApiConfig(),
             $ociStack->compartment_ocid,
             $ociStack->vcn_ocid,
             $this->server->oci_region,
@@ -464,8 +464,8 @@ class OciDashboard extends Component
         }
 
         // Use tenancy as compartment to list all accessible buckets
-        $result = app(OciBridgeClient::class)->listBuckets(
-            $connection->toBridgeConfig(),
+        $result = app(OciClient::class)->listBuckets(
+            $connection->toApiConfig(),
             $connection->tenancy_ocid,
             $this->server->oci_region,
         );
@@ -485,8 +485,8 @@ class OciDashboard extends Component
         }
 
         $this->actionLoading = true;
-        $client = app(OciBridgeClient::class);
-        $result = $client->instanceAction($connection->toBridgeConfig(), $instanceId, $this->server->oci_region, $action);
+        $client = app(OciClient::class);
+        $result = $client->instanceAction($connection->toApiConfig(), $instanceId, $this->server->oci_region, $action);
 
         if (isset($result['lifecycle_state'])) {
             $this->server->update(['oci_instance_status' => $result['lifecycle_state']]);
@@ -528,7 +528,7 @@ class OciDashboard extends Component
         }
 
         $rule = array_filter($this->newRule, fn ($v) => $v !== '' && $v !== null);
-        $result = app(OciBridgeClient::class)->addNsgRules($connection->toBridgeConfig(), $ociStack->nsg_ocid, [$rule], $connection->region);
+        $result = app(OciClient::class)->addNsgRules($connection->toApiConfig(), $ociStack->nsg_ocid, [$rule], $connection->region);
 
         if (isset($result['error'])) {
             $this->dispatch('error', 'Failed to update firewall rules.');
@@ -553,7 +553,7 @@ class OciDashboard extends Component
             return;
         }
 
-        $result = app(OciBridgeClient::class)->removeNsgRules($connection->toBridgeConfig(), $ociStack->nsg_ocid, [$ruleId], $connection->region);
+        $result = app(OciClient::class)->removeNsgRules($connection->toApiConfig(), $ociStack->nsg_ocid, [$ruleId], $connection->region);
 
         if (isset($result['error'])) {
             $this->dispatch('error', 'Failed to update firewall rules.');

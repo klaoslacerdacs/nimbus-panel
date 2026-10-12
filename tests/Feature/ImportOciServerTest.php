@@ -8,7 +8,7 @@ use App\Models\PrivateKey;
 use App\Models\Server;
 use App\Models\Team;
 use App\Models\User;
-use App\Services\OciBridgeClient;
+use App\Services\OciClient;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Queue;
 use Livewire\Livewire;
@@ -28,7 +28,7 @@ function mockImportClient(array $overrides = []): MockInterface
         'getInstancePrimaryVnic' => ['public_ip' => '203.0.113.10', 'private_ip' => '10.0.0.5'],
     ];
 
-    $mock = Mockery::mock(OciBridgeClient::class);
+    $mock = Mockery::mock(OciClient::class);
     foreach (array_merge($defaults, $overrides) as $method => $returnValue) {
         $mock->shouldReceive($method)->andReturn($returnValue);
     }
@@ -49,7 +49,7 @@ beforeEach(function () {
     $this->connection = OciConnection::factory()->create(['team_id' => $this->team->id]);
     $this->privateKey = PrivateKey::factory()->create(['team_id' => $this->team->id, 'is_git_related' => false]);
 
-    app()->instance(OciBridgeClient::class, mockImportClient());
+    app()->instance(OciClient::class, mockImportClient());
 });
 
 function driveToStep3()

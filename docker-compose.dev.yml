@@ -148,19 +148,6 @@ services:
     networks:
       - coolify
 
-  oci-bridge:
-    build:
-      context: ./oci-bridge
-      dockerfile: Dockerfile
-    ports:
-      - "${OCI_BRIDGE_PORT:-8888}:8080"
-    environment:
-      OCI_BRIDGE_AUTH_TOKEN: "${OCI_BRIDGE_AUTH_TOKEN:-dev-secret}"
-    volumes:
-      - ./oci-bridge:/app:cached
-      - "${OCI_KEY_FILE:-/dev/null}:/run/secrets/oci_key.pem:ro"
-    networks:
-      - coolify
 
 volumes:
   dev_backups_data:

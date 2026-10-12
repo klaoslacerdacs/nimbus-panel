@@ -5,7 +5,7 @@ use App\Models\InstanceSettings;
 use App\Models\OciConnection;
 use App\Models\Team;
 use App\Models\User;
-use App\Services\OciBridgeClient;
+use App\Services\OciClient;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Livewire\Livewire;
 use Mockery\MockInterface;
@@ -28,7 +28,7 @@ function makeConnection(Team $team): OciConnection
 
 function mockValidClient(): MockInterface
 {
-    $mock = Mockery::mock(OciBridgeClient::class);
+    $mock = Mockery::mock(OciClient::class);
     $mock->shouldReceive('validateConnection')->andReturn(['ok' => true]);
 
     return $mock;
@@ -55,7 +55,7 @@ it('renders the edit form with existing values', function () {
 });
 
 it('updates metadata without rotating PEM', function () {
-    app()->instance(OciBridgeClient::class, mockValidClient());
+    app()->instance(OciClient::class, mockValidClient());
 
     Livewire::test(OciConnectionEdit::class, ['connection' => $this->connection])
         ->set('name', 'Updated Name')
@@ -75,7 +75,7 @@ it('updates metadata without rotating PEM', function () {
 });
 
 it('rotates PEM when new key provided', function () {
-    app()->instance(OciBridgeClient::class, mockValidClient());
+    app()->instance(OciClient::class, mockValidClient());
 
     Livewire::test(OciConnectionEdit::class, ['connection' => $this->connection])
         ->update(
@@ -87,10 +87,10 @@ it('rotates PEM when new key provided', function () {
     expect($this->connection->fresh()->private_key)->toContain('rotated');
 });
 
-it('does not update when bridge returns error', function () {
-    $mock = Mockery::mock(OciBridgeClient::class);
+it('does not update when OCI API returns error', function () {
+    $mock = Mockery::mock(OciClient::class);
     $mock->shouldReceive('validateConnection')->andReturn(['error' => true, 'message' => 'Bad creds']);
-    app()->instance(OciBridgeClient::class, $mock);
+    app()->instance(OciClient::class, $mock);
 
     Livewire::test(OciConnectionEdit::class, ['connection' => $this->connection])
         ->set('name', 'Should Not Save')
@@ -106,7 +106,7 @@ it('clears PEM from snapshot after updateConnection', function () {
             calls: [['method' => 'updateConnection', 'params' => [], 'path' => '']],
             updates: [
                 'private_key' => "-----BEGIN RSA PRIVATE KEY-----\nsecret\n-----END RSA PRIVATE KEY-----",
-                'name' => '',   // force validation error so we can assert null without bridge
+                'name' => '',   // force validation error so we can assert null without OCI call
             ],
         )
         ->assertHasErrors(['name'])

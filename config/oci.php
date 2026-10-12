@@ -34,9 +34,4 @@ return [
         'af-johannesburg-1',
     ],
 
-    // Deprecated Python-bridge keys — kept for silent fallback, unused by the native client.
-    'bridge_url' => env('OCI_BRIDGE_URL'),
-    'bridge_timeout' => env('OCI_BRIDGE_TIMEOUT', 30),
-    'bridge_retry_max' => env('OCI_BRIDGE_RETRY_MAX', 3),
-    'bridge_auth_token' => env('OCI_BRIDGE_AUTH_TOKEN'),
 ];

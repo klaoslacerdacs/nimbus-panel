@@ -3,7 +3,7 @@
 namespace App\Livewire\Security;
 
 use App\Models\OciConnection;
-use App\Services\OciBridgeClient;
+use App\Services\OciClient;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Livewire\Attributes\Locked;
 use Livewire\Component;
@@ -105,9 +105,9 @@ class OciConnectionEdit extends Component
             $activeKey = $this->private_key ?: $connection->private_key;
             $activePassphrase = $this->private_key ? $this->passphrase : $connection->passphrase;
 
-            $bridgeConfig = ['auth_mode' => $this->authentication_method, 'region' => $this->region];
+            $apiConfig = ['auth_mode' => $this->authentication_method, 'region' => $this->region];
             if ($this->authentication_method === 'api_key') {
-                $bridgeConfig = array_merge($bridgeConfig, [
+                $apiConfig = array_merge($apiConfig, [
                     'tenancy_id' => $this->tenancy_ocid ?? $connection->tenancy_ocid,
                     'user_id' => $this->user_ocid ?? $connection->user_ocid,
                     'fingerprint' => $this->fingerprint ?? $connection->fingerprint,
@@ -116,7 +116,7 @@ class OciConnectionEdit extends Component
                 ]);
             }
 
-            $result = app(OciBridgeClient::class)->validateConnection($bridgeConfig);
+            $result = app(OciClient::class)->validateConnection($apiConfig);
 
             if (isset($result['error']) && $result['error']) {
                 $this->dispatch('error', $result['message'] ?? 'Connection test failed.');
@@ -152,10 +152,10 @@ class OciConnectionEdit extends Component
         $activePassphrase = $newKey ? $newPassphrase : $connection->passphrase;
 
         try {
-            $bridgeConfig = ['auth_mode' => $this->authentication_method, 'region' => $this->region];
+            $apiConfig = ['auth_mode' => $this->authentication_method, 'region' => $this->region];
 
             if ($this->authentication_method === 'api_key') {
-                $bridgeConfig = array_merge($bridgeConfig, [
+                $apiConfig = array_merge($apiConfig, [
                     'tenancy_id' => $this->tenancy_ocid,
                     'user_id' => $this->user_ocid,
                     'fingerprint' => $this->fingerprint,
@@ -164,8 +164,8 @@ class OciConnectionEdit extends Component
                 ]);
             }
 
-            $client = app(OciBridgeClient::class);
-            $result = $client->validateConnection($bridgeConfig);
+            $client = app(OciClient::class);
+            $result = $client->validateConnection($apiConfig);
 
             if (isset($result['error']) && $result['error']) {
                 $this->dispatch('error', $result['message'] ?? 'Validation failed.');

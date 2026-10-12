@@ -2,11 +2,11 @@
 
 namespace Tests\Unit;
 
-use App\Services\OciBridgeClient;
+use App\Services\OciClient;
 use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
 
-class OciBridgeClientTest extends TestCase
+class OciClientTest extends TestCase
 {
     private array $config;
 
@@ -29,7 +29,7 @@ class OciBridgeClientTest extends TestCase
 
     public function test_list_regions_returns_named_entries_with_saopaulo(): void
     {
-        $regions = (new OciBridgeClient)->listRegions();
+        $regions = (new OciClient)->listRegions();
 
         $names = array_column($regions, 'name');
         $this->assertContains('sa-saopaulo-1', $names);
@@ -40,7 +40,7 @@ class OciBridgeClientTest extends TestCase
     {
         Http::fake(['https://identity.*' => Http::response(['id' => 'ocid1.tenancy.oc1..aaaa'])]);
 
-        $result = (new OciBridgeClient)->validateConnection($this->config);
+        $result = (new OciClient)->validateConnection($this->config);
 
         $this->assertTrue($result['ok']);
         $this->assertSame('ocid1.tenancy.oc1..aaaa', $result['tenancy_ocid']);
@@ -53,7 +53,7 @@ class OciBridgeClientTest extends TestCase
             ['id' => 'ocid1.instance.oc1..x', 'displayName' => 'web-1', 'lifecycleState' => 'RUNNING', 'shape' => 'VM.Standard.A1.Flex'],
         ])]);
 
-        $result = (new OciBridgeClient)->listInstances($this->config, 'ocid1.compartment.oc1..c', 'us-ashburn-1');
+        $result = (new OciClient)->listInstances($this->config, 'ocid1.compartment.oc1..c', 'us-ashburn-1');
 
         $this->assertCount(1, $result);
         $this->assertSame('web-1', $result[0]['display_name']);
@@ -65,7 +65,7 @@ class OciBridgeClientTest extends TestCase
     {
         Http::fake(['https://resourcemanager.*/jobs' => Http::response(['id' => 'ocid1.ormjob.oc1..j'])]);
 
-        $result = (new OciBridgeClient)->runStackJob($this->config, 'ocid1.ormstack.oc1..s', 'PLAN');
+        $result = (new OciClient)->runStackJob($this->config, 'ocid1.ormstack.oc1..s', 'PLAN');
 
         $this->assertSame('ocid1.ormjob.oc1..j', $result['job_id']);
         $this->assertSame('plan', $result['operation']);
@@ -75,7 +75,7 @@ class OciBridgeClientTest extends TestCase
     {
         Http::fake();
 
-        $result = (new OciBridgeClient)->runStackJob($this->config, 'ocid1.ormstack.oc1..s', 'DESTROY');
+        $result = (new OciClient)->runStackJob($this->config, 'ocid1.ormstack.oc1..s', 'DESTROY');
 
         $this->assertTrue($result['error']);
         Http::assertNothingSent();
@@ -85,7 +85,7 @@ class OciBridgeClientTest extends TestCase
     {
         Http::fake(['https://iaas.*' => Http::response(['code' => 'NotAuthenticated', 'message' => 'Not authenticated'], 401)]);
 
-        $result = (new OciBridgeClient)->listInstances($this->config, 'c', 'us-ashburn-1');
+        $result = (new OciClient)->listInstances($this->config, 'c', 'us-ashburn-1');
 
         $this->assertTrue($result['error']);
         $this->assertSame('Not authenticated', $result['message']);
@@ -97,7 +97,7 @@ class OciBridgeClientTest extends TestCase
     {
         Http::fake(['https://iaas.*' => Http::response([])]);
 
-        (new OciBridgeClient)->listInstances($this->config, 'c', 'us-ashburn-1');
+        (new OciClient)->listInstances($this->config, 'c', 'us-ashburn-1');
 
         Http::assertSent(fn ($request) => str_starts_with($request->header('Authorization')[0] ?? '', 'Signature version="1"'));
     }

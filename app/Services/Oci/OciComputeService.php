@@ -4,8 +4,7 @@ namespace App\Services\Oci;
 
 /**
  * Compute + network + block volume + load balancer + autonomous DB inventory
- * and actions. Mirrors the Python bridge's compute.py 1:1 (field mapping,
- * filters, allowed actions).
+ * and actions, mapped to snake_case arrays for the Livewire layer.
  */
 class OciComputeService
 {

@@ -12,10 +12,9 @@ use Throwable;
 /**
  * Thin facade over the native OCI services. Keeps the exact public surface the
  * Livewire components and jobs already call: unwrapped `data` array on success,
- * {success:false, error:true, message, code, details} on failure. The former
- * Python HTTP bridge has been replaced by in-process REST calls.
+ * {success:false, error:true, message, code, details} on failure.
  */
-class OciBridgeClient
+class OciClient
 {
     public function __construct(
         private ?OciComputeService $compute = null,

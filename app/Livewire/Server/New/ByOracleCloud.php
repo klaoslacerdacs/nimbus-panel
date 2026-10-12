@@ -9,7 +9,7 @@ use App\Models\PrivateKey;
 use App\Models\Server;
 use App\Models\Team;
 use App\Rules\ValidHostname;
-use App\Services\OciBridgeClient;
+use App\Services\OciClient;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Illuminate\Support\Facades\DB;
 use Livewire\Attributes\Computed;
@@ -231,7 +231,7 @@ class ByOracleCloud extends Component
 
     private function loadRegions(): void
     {
-        $result = (new OciBridgeClient)->listRegions();
+        $result = app(OciClient::class)->listRegions();
         if (isset($result['error'])) {
             return;
         }
@@ -253,8 +253,8 @@ class ByOracleCloud extends Component
             return;
         }
 
-        $client = new OciBridgeClient;
-        $result = $client->listCompartments($connection->toBridgeConfig(), $this->region);
+        $client = app(OciClient::class);
+        $result = $client->listCompartments($connection->toApiConfig(), $this->region);
         $this->compartments = isset($result['error']) ? [] : $result;
     }
 
@@ -269,8 +269,8 @@ class ByOracleCloud extends Component
             return;
         }
 
-        $client = new OciBridgeClient;
-        $result = $client->listVcns($connection->toBridgeConfig(), $this->compartment_ocid, $this->region);
+        $client = app(OciClient::class);
+        $result = $client->listVcns($connection->toApiConfig(), $this->compartment_ocid, $this->region);
         $this->vcns = isset($result['error']) ? [] : $result;
     }
 
@@ -285,8 +285,8 @@ class ByOracleCloud extends Component
             return;
         }
 
-        $client = new OciBridgeClient;
-        $result = $client->listSubnets($connection->toBridgeConfig(), $this->vcn_ocid, $this->compartment_ocid, $this->region);
+        $client = app(OciClient::class);
+        $result = $client->listSubnets($connection->toApiConfig(), $this->vcn_ocid, $this->compartment_ocid, $this->region);
         $this->subnets = isset($result['error']) ? [] : $result;
         if ($this->subnets && ! $this->subnet_ocid) {
             $this->subnet_ocid = $this->subnets[0]['id'] ?? '';
@@ -309,8 +309,8 @@ class ByOracleCloud extends Component
             return;
         }
 
-        $client = new OciBridgeClient;
-        $config = $connection->toBridgeConfig();
+        $client = app(OciClient::class);
+        $config = $connection->toApiConfig();
 
         // Reset region-scoped selections so stale OCIDs from a previous region/compartment are not submitted
         $this->image_id = '';

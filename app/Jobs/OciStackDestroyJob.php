@@ -4,7 +4,7 @@ namespace App\Jobs;
 
 use App\Events\OciStackStatusChanged;
 use App\Models\OciStack;
-use App\Services\OciBridgeClient;
+use App\Services\OciClient;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -39,7 +39,7 @@ class OciStackDestroyJob implements ShouldBeUnique, ShouldQueue
         return ["oci-stack:{$this->ociStack->id}", "team:{$this->ociStack->team_id}"];
     }
 
-    public function handle(OciBridgeClient $bridge): void
+    public function handle(OciClient $oci): void
     {
         $stack = $this->ociStack->loadMissing('ociConnection');
 
@@ -55,11 +55,11 @@ class OciStackDestroyJob implements ShouldBeUnique, ShouldQueue
             return;
         }
 
-        $config = $stack->ociConnection->toBridgeConfig();
+        $config = $stack->ociConnection->toApiConfig();
         $stack->update(['status' => 'destroying', 'last_plan_summary' => 'Running Terraform destroy...']);
         OciStackStatusChanged::dispatch($stack->team_id);
 
-        $destroy = $bridge->runStackJob($config, $stack->stack_ocid, 'DESTROY', confirmDestroy: true);
+        $destroy = $oci->runStackJob($config, $stack->stack_ocid, 'DESTROY', confirmDestroy: true);
 
         if (! isset($destroy['job_id'])) {
             $stack->update(['status' => 'destroy_failed', 'last_plan_summary' => 'Destroy job creation failed']);
@@ -70,7 +70,7 @@ class OciStackDestroyJob implements ShouldBeUnique, ShouldQueue
         $deadline = now()->addMinutes(30);
 
         while (now()->lt($deadline)) {
-            $result = $bridge->getStackJob($config, $destroy['job_id']);
+            $result = $oci->getStackJob($config, $destroy['job_id']);
             $status = strtolower($result['status'] ?? '');
 
             if ($status === 'succeeded') {
@@ -85,14 +85,14 @@ class OciStackDestroyJob implements ShouldBeUnique, ShouldQueue
             }
 
             if ($status === '') {
-                // Bridge unreachable (already retried 3x) — treat as transient, keep polling
+                // OCI API unreachable (already retried) — treat as transient, keep polling
                 sleep(30);
 
                 continue;
             }
 
             if (! in_array($status, ['in_progress', 'accepted', 'waiting'])) {
-                $lines = $bridge->getJobLogs($config, $destroy['job_id'])['lines'] ?? [];
+                $lines = $oci->getJobLogs($config, $destroy['job_id'])['lines'] ?? [];
                 $summary = "Destroy job ended with status: {$status}".($lines ? "\n\n".implode("\n", $lines) : '');
                 $stack->update(['status' => 'destroy_failed', 'last_plan_summary' => $summary]);
                 OciStackStatusChanged::dispatch($stack->team_id);

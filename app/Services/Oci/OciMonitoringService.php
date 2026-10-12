@@ -6,7 +6,6 @@ namespace App\Services\Oci;
  * Instance metrics via the Monitoring SummarizeMetricsData action. CPU comes
  * from the oci_compute namespace (no agent); memory/network from
  * oci_computeagent (agent required) — those return null when unavailable,
- * matching the Python bridge.
  */
 class OciMonitoringService
 {

@@ -9,7 +9,7 @@ use App\Models\PrivateKey;
 use App\Models\Server;
 use App\Models\Team;
 use App\Rules\ValidHostname;
-use App\Services\OciBridgeClient;
+use App\Services\OciClient;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Livewire\Attributes\Locked;
 use Livewire\Component;
@@ -108,7 +108,7 @@ class ImportOciServer extends Component
 
     private function loadRegions(): void
     {
-        $result = app(OciBridgeClient::class)->listRegions();
+        $result = app(OciClient::class)->listRegions();
         if (isset($result['error'])) {
             return;
         }
@@ -127,7 +127,7 @@ class ImportOciServer extends Component
             return;
         }
 
-        $result = app(OciBridgeClient::class)->listCompartments($connection->toBridgeConfig(), $this->region);
+        $result = app(OciClient::class)->listCompartments($connection->toApiConfig(), $this->region);
         $this->compartments = isset($result['error']) ? [] : $result;
     }
 
@@ -140,7 +140,7 @@ class ImportOciServer extends Component
             return;
         }
 
-        $result = app(OciBridgeClient::class)->listInstances($connection->toBridgeConfig(), $this->compartment_id, $this->region);
+        $result = app(OciClient::class)->listInstances($connection->toApiConfig(), $this->compartment_id, $this->region);
         $this->instances = isset($result['error'])
             ? []
             : array_values(array_filter($result, fn ($i) => ! in_array($i['lifecycle_state'] ?? '', ['TERMINATED', 'TERMINATING'], true)));
@@ -160,7 +160,7 @@ class ImportOciServer extends Component
 
         $connection = $this->getConnection();
         if ($connection) {
-            $vnic = app(OciBridgeClient::class)->getInstancePrimaryVnic($connection->toBridgeConfig(), $this->compartment_id, $instanceId, $this->region);
+            $vnic = app(OciClient::class)->getInstancePrimaryVnic($connection->toApiConfig(), $this->compartment_id, $instanceId, $this->region);
             if (! isset($vnic['error'])) {
                 $this->ip = $vnic['public_ip'] ?? $vnic['private_ip'] ?? '';
             }

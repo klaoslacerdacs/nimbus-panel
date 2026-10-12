@@ -7,7 +7,7 @@ use App\Models\OciStack;
 use App\Models\Server;
 use App\Models\Team;
 use App\Models\User;
-use App\Services\OciBridgeClient;
+use App\Services\OciClient;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Livewire\Livewire;
 use Mockery\MockInterface;
@@ -15,7 +15,7 @@ use Mockery\MockInterface;
 uses(RefreshDatabase::class);
 
 /**
- * Build a mock OciBridgeClient with safe defaults for all load methods.
+ * Build a mock OciClient with safe defaults for all load methods.
  * Pass an array of method => value pairs to override specific return values.
  */
 function mockClient(array $overrides = []): MockInterface
@@ -32,7 +32,7 @@ function mockClient(array $overrides = []): MockInterface
         'listVolumes' => [],
     ];
 
-    $mock = Mockery::mock(OciBridgeClient::class);
+    $mock = Mockery::mock(OciClient::class);
     foreach (array_merge($defaults, $overrides) as $method => $returnValue) {
         $mock->shouldReceive($method)->andReturn($returnValue);
     }
@@ -72,7 +72,7 @@ beforeEach(function () {
 
 it('renders without error when instance is provisioned', function () {
     $mock = mockClient(['getInstanceStatus' => ['lifecycle_state' => 'RUNNING'], 'getInstanceMetrics' => ['cpu_percent' => 12.5, 'memory_percent' => null, 'net_bytes_in' => null, 'net_bytes_out' => null], 'listNsgRules' => [['id' => 'rule1', 'protocol' => '6', 'port_min' => 22, 'port_max' => 22, 'source' => '0.0.0.0/0', 'description' => '']]]);
-    app()->instance(OciBridgeClient::class, $mock);
+    app()->instance(OciClient::class, $mock);
 
     Livewire::test(OciDashboard::class, ['server_uuid' => $this->server->uuid])
         ->assertStatus(200)
@@ -114,20 +114,20 @@ it('denies power actions to team members without admin role', function () {
     session(['currentTeam' => $this->team]);
 
     $mock = mockClient();
-    app()->instance(OciBridgeClient::class, $mock);
+    app()->instance(OciClient::class, $mock);
 
     Livewire::test(OciDashboard::class, ['server_uuid' => $this->server->uuid])
         ->call('startInstance')
         ->assertForbidden();
 });
 
-it('adds NSG rule via bridge client', function () {
+it('adds NSG rule via OCI client', function () {
     $mock = mockClient();
     $mock->shouldReceive('addNsgRules')
         ->once()
         ->with(Mockery::any(), 'ocid1.networksecuritygroup.oc1..example', Mockery::on(fn ($rules) => $rules[0]['protocol'] === 'TCP' && $rules[0]['port_min'] === '443'), Mockery::any())
         ->andReturn(['success' => true]);
-    app()->instance(OciBridgeClient::class, $mock);
+    app()->instance(OciClient::class, $mock);
 
     Livewire::test(OciDashboard::class, ['server_uuid' => $this->server->uuid])
         ->set('newRule.protocol', 'TCP')
@@ -138,26 +138,26 @@ it('adds NSG rule via bridge client', function () {
         ->assertHasNoErrors();
 });
 
-it('removes NSG rule via bridge client', function () {
+it('removes NSG rule via OCI client', function () {
     $mock = mockClient();
     $mock->shouldReceive('removeNsgRules')
         ->once()
         ->with(Mockery::any(), 'ocid1.networksecuritygroup.oc1..example', ['rule-abc'], Mockery::any())
         ->andReturn(['success' => true]);
-    app()->instance(OciBridgeClient::class, $mock);
+    app()->instance(OciClient::class, $mock);
 
     Livewire::test(OciDashboard::class, ['server_uuid' => $this->server->uuid])
         ->call('removeNsgRule', 'rule-abc')
         ->assertHasNoErrors();
 });
 
-it('triggers stop confirmation then calls bridge on confirm', function () {
+it('triggers stop confirmation then calls OCI on confirm', function () {
     $mock = mockClient();
     $mock->shouldReceive('instanceAction')
         ->once()
         ->with(Mockery::any(), 'ocid1.instance.oc1..example', 'us-ashburn-1', 'SOFTSTOP')
         ->andReturn(['lifecycle_state' => 'STOPPING']);
-    app()->instance(OciBridgeClient::class, $mock);
+    app()->instance(OciClient::class, $mock);
 
     Livewire::test(OciDashboard::class, ['server_uuid' => $this->server->uuid])
         ->call('confirmStop')
@@ -180,20 +180,20 @@ it('loads and displays block volume attachments', function () {
         ['id' => 'ocid1.volumeattachment.oc1..att1', 'volume_id' => 'ocid1.volume.oc1..vol1', 'display_name' => 'vol1', 'lifecycle_state' => 'ATTACHED', 'attachment_type' => 'paravirtualized', 'is_read_only' => false],
     ];
     $mock = mockClient(['listVolumeAttachments' => $volumeData]);
-    app()->instance(OciBridgeClient::class, $mock);
+    app()->instance(OciClient::class, $mock);
 
     Livewire::test(OciDashboard::class, ['server_uuid' => $this->server->uuid])
         ->assertSet('volumeAttachments', $volumeData)
         ->assertSee('Block volumes');
 });
 
-it('attaches a block volume via bridge client', function () {
+it('attaches a block volume via OCI client', function () {
     $mock = mockClient();
     $mock->shouldReceive('attachVolume')
         ->once()
         ->with(Mockery::any(), 'ocid1.instance.oc1..example', 'ocid1.volume.oc1..newvol', 'us-ashburn-1')
         ->andReturn(['id' => 'ocid1.volumeattachment.oc1..new', 'volume_id' => 'ocid1.volume.oc1..newvol', 'lifecycle_state' => 'ATTACHING', 'attachment_type' => 'paravirtualized']);
-    app()->instance(OciBridgeClient::class, $mock);
+    app()->instance(OciClient::class, $mock);
 
     Livewire::test(OciDashboard::class, ['server_uuid' => $this->server->uuid])
         ->set('attachVolumeOcid', 'ocid1.volume.oc1..newvol')
@@ -204,7 +204,7 @@ it('attaches a block volume via bridge client', function () {
 
 it('rejects attach with invalid volume OCID format', function () {
     $mock = mockClient();
-    app()->instance(OciBridgeClient::class, $mock);
+    app()->instance(OciClient::class, $mock);
 
     Livewire::test(OciDashboard::class, ['server_uuid' => $this->server->uuid])
         ->set('attachVolumeOcid', 'not-an-ocid')
@@ -218,7 +218,7 @@ it('confirms then detaches a block volume', function () {
         ->once()
         ->with(Mockery::any(), 'att1', 'us-ashburn-1')
         ->andReturn(['detached' => true]);
-    app()->instance(OciBridgeClient::class, $mock);
+    app()->instance(OciClient::class, $mock);
 
     Livewire::test(OciDashboard::class, ['server_uuid' => $this->server->uuid])
         ->call('confirmDetachVolume', 'att1')
@@ -234,7 +234,7 @@ it('loads and displays load balancers', function () {
         ['id' => 'ocid1.loadbalancer.oc1..lb1', 'display_name' => 'prod-lb', 'lifecycle_state' => 'ACTIVE', 'shape_name' => 'flexible', 'ip_addresses' => ['10.0.0.1'], 'backend_sets' => ['bs1']],
     ];
     $mock = mockClient(['listLoadBalancers' => $lbData]);
-    app()->instance(OciBridgeClient::class, $mock);
+    app()->instance(OciClient::class, $mock);
 
     Livewire::test(OciDashboard::class, ['server_uuid' => $this->server->uuid])
         ->assertSet('loadBalancers', $lbData)
@@ -246,7 +246,7 @@ it('loads and displays autonomous databases with connection strings', function (
         ['id' => 'ocid1.autonomousdatabase.oc1..adb1', 'display_name' => 'prod-adb', 'db_name' => 'PRODADB', 'lifecycle_state' => 'AVAILABLE', 'db_workload' => 'OLTP', 'cpu_core_count' => 2, 'data_storage_size_in_tbs' => 1, 'connection_strings' => ['high' => 'jdbc:...high']],
     ];
     $mock = mockClient(['listAutonomousDatabases' => $adbData]);
-    app()->instance(OciBridgeClient::class, $mock);
+    app()->instance(OciClient::class, $mock);
 
     Livewire::test(OciDashboard::class, ['server_uuid' => $this->server->uuid])
         ->assertSet('autonomousDatabases', $adbData)
@@ -263,7 +263,7 @@ it('denies block volume actions to non-admin members', function () {
     session(['currentTeam' => $this->team]);
 
     $mock = mockClient();
-    app()->instance(OciBridgeClient::class, $mock);
+    app()->instance(OciClient::class, $mock);
 
     Livewire::test(OciDashboard::class, ['server_uuid' => $this->server->uuid])
         ->set('attachVolumeOcid', 'ocid1.volume.oc1..vol1')

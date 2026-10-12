@@ -4,7 +4,7 @@ namespace App\Jobs;
 
 use App\Events\OciStackStatusChanged;
 use App\Models\OciStack;
-use App\Services\OciBridgeClient;
+use App\Services\OciClient;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -40,7 +40,7 @@ class OciStackProvisionJob implements ShouldBeUnique, ShouldQueue
         return ["oci-stack:{$this->ociStack->id}", "team:{$this->ociStack->team_id}"];
     }
 
-    public function handle(OciBridgeClient $bridge): void
+    public function handle(OciClient $oci): void
     {
         $stack = $this->ociStack->loadMissing('ociConnection');
 
@@ -50,7 +50,7 @@ class OciStackProvisionJob implements ShouldBeUnique, ShouldQueue
             return;
         }
 
-        $config = $stack->ociConnection->toBridgeConfig();
+        $config = $stack->ociConnection->toApiConfig();
 
         // When creating a new compartment, the RM stack itself lives in parent/tenancy root
         $stackCompartmentId = $stack->compartment_ocid
@@ -71,7 +71,7 @@ class OciStackProvisionJob implements ShouldBeUnique, ShouldQueue
                 $stack->tf_vars ?? []
             );
 
-            $result = $bridge->createStack(
+            $result = $oci->createStack(
                 $config,
                 $stack->name,
                 $stackCompartmentId,
@@ -90,7 +90,7 @@ class OciStackProvisionJob implements ShouldBeUnique, ShouldQueue
             OciStackStatusChanged::dispatch($stack->team_id);
         }
 
-        $plan = $bridge->runStackJob($config, $stack->stack_ocid, 'PLAN');
+        $plan = $oci->runStackJob($config, $stack->stack_ocid, 'PLAN');
         if (! isset($plan['job_id'])) {
             $this->markFailed($stack, 'Plan job creation failed');
 
@@ -98,7 +98,7 @@ class OciStackProvisionJob implements ShouldBeUnique, ShouldQueue
         }
 
         $planLogs = null;
-        if (! $this->pollUntilDone($bridge, $config, $plan['job_id'], $planLogs)) {
+        if (! $this->pollUntilDone($oci, $config, $plan['job_id'], $planLogs)) {
             $this->markFailed($stack, 'Terraform plan failed', $planLogs);
 
             return;
@@ -107,7 +107,7 @@ class OciStackProvisionJob implements ShouldBeUnique, ShouldQueue
         $stack->update(['status' => 'applying', 'last_plan_summary' => 'Applying Terraform — creating OCI resources (this can take up to 30 min)...']);
         OciStackStatusChanged::dispatch($stack->team_id);
 
-        $apply = $bridge->runStackJob($config, $stack->stack_ocid, 'APPLY');
+        $apply = $oci->runStackJob($config, $stack->stack_ocid, 'APPLY');
         if (! isset($apply['job_id'])) {
             $this->markFailed($stack, 'Apply job creation failed');
 
@@ -115,13 +115,13 @@ class OciStackProvisionJob implements ShouldBeUnique, ShouldQueue
         }
 
         $applyLogs = null;
-        if (! $this->pollUntilDone($bridge, $config, $apply['job_id'], $applyLogs)) {
+        if (! $this->pollUntilDone($oci, $config, $apply['job_id'], $applyLogs)) {
             $this->markFailed($stack, 'Terraform apply failed', $applyLogs);
 
             return;
         }
 
-        $outputs = $bridge->getStackOutputs($config, $apply['job_id']);
+        $outputs = $oci->getStackOutputs($config, $apply['job_id']);
 
         $serverUpdate = [];
         if (! empty($outputs['public_ip'])) {
@@ -150,7 +150,7 @@ class OciStackProvisionJob implements ShouldBeUnique, ShouldQueue
         $nsgId = $outputs['nsg_id'] ?? null;
         if ($nsgId && $stack->firewall_rules) {
             $stack->update(['nsg_ocid' => $nsgId]);
-            $bridge->addNsgRules($config, $nsgId, $stack->firewall_rules, $config['region']);
+            $oci->addNsgRules($config, $nsgId, $stack->firewall_rules, $config['region']);
         }
 
         if ($stack->server && isset($outputs['public_ip'])) {
@@ -159,12 +159,12 @@ class OciStackProvisionJob implements ShouldBeUnique, ShouldQueue
         }
     }
 
-    private function pollUntilDone(OciBridgeClient $bridge, array $config, string $jobId, ?string &$errorLogs = null): bool
+    private function pollUntilDone(OciClient $oci, array $config, string $jobId, ?string &$errorLogs = null): bool
     {
         $deadline = now()->addMinutes(30);
 
         while (now()->lt($deadline)) {
-            $result = $bridge->getStackJob($config, $jobId);
+            $result = $oci->getStackJob($config, $jobId);
             $status = strtolower($result['status'] ?? '');
 
             if ($status === 'succeeded') {
@@ -172,14 +172,14 @@ class OciStackProvisionJob implements ShouldBeUnique, ShouldQueue
             }
 
             if ($status === '') {
-                // Bridge unreachable (already retried 3x) — treat as transient, keep polling
+                // OCI API unreachable (already retried) — treat as transient, keep polling
                 sleep(30);
 
                 continue;
             }
 
             if (! in_array($status, ['in_progress', 'accepted', 'waiting'])) {
-                $logResult = $bridge->getJobLogs($config, $jobId);
+                $logResult = $oci->getJobLogs($config, $jobId);
                 if (! empty($logResult['lines'])) {
                     $errorLogs = implode("\n", $logResult['lines']);
                 }

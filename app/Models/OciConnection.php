@@ -43,7 +43,7 @@ class OciConnection extends BaseModel
         ];
     }
 
-    public function toBridgeConfig(): array
+    public function toApiConfig(): array
     {
         if ($this->authentication_method === OciAuthenticationMethod::INSTANCE_PRINCIPAL) {
             return ['auth_mode' => 'instance_principal', 'region' => $this->region];

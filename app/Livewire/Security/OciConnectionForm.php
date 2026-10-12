@@ -3,7 +3,7 @@
 namespace App\Livewire\Security;
 
 use App\Models\OciConnection;
-use App\Services\OciBridgeClient;
+use App\Services\OciClient;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Livewire\Component;
 
@@ -90,7 +90,7 @@ class OciConnectionForm extends Component
     }
 
     // Zeros secrets before every snapshot sent to the browser — covers validation errors,
-    // bridge failures, and any early return path. User must re-enter PEM on retry.
+    // OCI API failures, and any early return path. User must re-enter PEM on retry.
     public function dehydrate(): void
     {
         $this->private_key = null;
@@ -114,11 +114,11 @@ class OciConnectionForm extends Component
         $passphrase = $this->passphrase;
 
         try {
-            // Bridge config format matches toBridgeConfig() / _parse_config() key names.
-            $bridgeConfig = ['auth_mode' => $this->authentication_method, 'region' => $this->region];
+            // Same key names as OciConnection::toApiConfig().
+            $apiConfig = ['auth_mode' => $this->authentication_method, 'region' => $this->region];
 
             if ($this->authentication_method === 'api_key') {
-                $bridgeConfig = array_merge($bridgeConfig, [
+                $apiConfig = array_merge($apiConfig, [
                     'tenancy_id' => $this->tenancy_ocid,
                     'user_id' => $this->user_ocid,
                     'fingerprint' => $this->fingerprint,
@@ -127,8 +127,8 @@ class OciConnectionForm extends Component
                 ]);
             }
 
-            $client = app(OciBridgeClient::class);
-            $result = $client->validateConnection($bridgeConfig);
+            $client = app(OciClient::class);
+            $result = $client->validateConnection($apiConfig);
 
             if (isset($result['error']) && $result['error']) {
                 $this->dispatch('error', $result['message'] ?? 'Validation failed.');
