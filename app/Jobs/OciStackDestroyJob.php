@@ -79,7 +79,12 @@ class OciStackDestroyJob implements ShouldBeUnique, ShouldQueue
                     'oci_stack_name' => $stack->name,
                     'stack_ocid' => $stack->stack_ocid,
                 ]);
-                $stack->delete();
+                // Kept as history so users can tell "removed on OCI" from "removed only in the panel".
+                $stack->update([
+                    'status' => 'destroyed',
+                    'last_plan_summary' => 'Terraform destroy succeeded at '.now()->toDateTimeString().' UTC. OCI resources removed.',
+                ]);
+                OciStackStatusChanged::dispatch($stack->team_id);
 
                 return;
             }

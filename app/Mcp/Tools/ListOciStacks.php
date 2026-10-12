@@ -58,7 +58,7 @@ class ListOciStacks extends Tool
     public function schema(JsonSchema $schema): array
     {
         return [
-            'status' => $schema->string()->description('Optional filter: pending | planning | applying | provisioned | failed | destroying | destroy_failed.'),
+            'status' => $schema->string()->description('Optional filter: pending | planning | applying | provisioned | failed | destroying | destroy_failed | destroyed.'),
         ];
     }
 }

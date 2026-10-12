@@ -28,6 +28,11 @@
                                         · {{ $stack->server->ip }}
                                     @endif
                                 </span>
+                                @if (in_array($stack->status, ['destroyed', 'destroy_failed', 'failed']) && $stack->last_plan_summary)
+                                    <span class="max-w-xl truncate text-xs {{ $stack->status === 'destroyed' ? 'text-neutral-500 dark:text-fg-dim' : 'text-error' }}" title="{{ $stack->last_plan_summary }}">
+                                        {{ str($stack->last_plan_summary)->before("\n")->limit(160) }} · {{ $stack->updated_at?->diffForHumans() }}
+                                    </span>
+                                @endif
                             </div>
                             <div class="flex items-center gap-3">
                                 @php
@@ -37,6 +42,7 @@
                                         'applying'       => ['text' => 'Applying…',     'type' => 'warning'],
                                         'destroying'     => ['text' => 'Destroying…',   'type' => 'warning'],
                                         'destroy_failed' => ['text' => 'Destroy failed','type' => 'error'],
+                                        'destroyed'      => ['text' => 'Destroyed on OCI', 'type' => 'neutral'],
                                         'failed'         => ['text' => 'Failed',        'type' => 'error'],
                                         default          => ['text' => ucfirst($stack->status), 'type' => 'neutral'],
                                     };
@@ -53,8 +59,8 @@
                                     <x-forms.button wire:click="destroyStack" class="button-error">Confirm</x-forms.button>
                                     <x-forms.button wire:click="cancelDestroy" class="button-bordered">Cancel</x-forms.button>
                                 @else
-                                    <x-forms.button wire:click="deleteStack({{ $stack->id }})" class="button-error">
-                                        Delete
+                                    <x-forms.button wire:click="deleteStack({{ $stack->id }})" class="{{ $stack->status === 'destroyed' ? 'button-bordered' : 'button-error' }}">
+                                        {{ match ($stack->status) { 'destroyed' => 'Remove record', 'destroy_failed' => 'Retry destroy', default => 'Delete' } }}
                                     </x-forms.button>
                                 @endif
                             </div>

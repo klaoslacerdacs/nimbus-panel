@@ -175,3 +175,19 @@ it('marks the stack failed when the worker kills the job', function (): void {
     expect($stack->fresh()->status)->toBe('failed')
         ->and($stack->fresh()->last_plan_summary)->toContain('timed out');
 });
+
+it('keeps a destroyed stack as history instead of deleting it', function (): void {
+    $stack = OciStack::factory()->create(['status' => 'destroying', 'stack_ocid' => 'ocid1.stack.h']);
+
+    $mock = Mockery::mock(OciClient::class);
+    $mock->shouldReceive('runStackJob')->andReturn(['job_id' => 'job-d']);
+    $mock->shouldReceive('getStackJob')->andReturn(['status' => 'SUCCEEDED']);
+
+    new OciStackDestroyJob($stack)->handle($mock);
+
+    $stack->refresh();
+    expect($stack->exists)->toBeTrue()
+        ->and($stack->status)->toBe('destroyed')
+        ->and($stack->last_plan_summary)->toContain('OCI resources removed')
+        ->and($stack->isActive())->toBeFalse();
+});

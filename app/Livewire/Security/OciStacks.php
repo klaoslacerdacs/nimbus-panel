@@ -50,7 +50,8 @@ class OciStacks extends Component
             $stack = OciStack::ownedByCurrentTeam()->findOrFail($id);
             $this->authorize('delete', $stack);
 
-            if ($stack->stack_ocid) {
+            // A destroyed stack is only history: removing the record must not run Terraform again.
+            if ($stack->stack_ocid && $stack->status !== 'destroyed') {
                 $this->confirmDestroy($id);
 
                 return;
