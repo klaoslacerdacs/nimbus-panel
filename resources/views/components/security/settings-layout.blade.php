@@ -46,7 +46,7 @@
             'label' => 'Firewall Policies',
             'route' => 'security.oci-firewall-policies',
             'active' => request()->routeIs('security.oci-firewall-policies'),
-            'icon' => 'shield',
+            'icon' => 'fire',
         ],
         [
             'label' => 'Cloudflare',

@@ -13,7 +13,7 @@
             @if ($policies->isEmpty())
                 <x-empty title="No firewall policies yet"
                     description="Create a policy such as 'Public web: 80/443' and attach it to the VMs that need it."
-                    icon-name="shield" />
+                    icon-name="fire" />
             @else
                 <div class="flex flex-col">
                     @foreach ($policies as $policy)
