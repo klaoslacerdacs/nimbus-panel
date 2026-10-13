@@ -24,7 +24,7 @@
                 <div class="application-settings-section-body is-flush">
                     <div class="grid grid-cols-1 gap-3 p-3 sm:grid-cols-2 lg:grid-cols-4">
                         <a href="{{ route('server.create.type', ['type' => 'manual']) }}"
-                            class="group flex min-h-32 flex-col rounded-xl border border-neutral-200 bg-white p-3 shadow-sm transition-all hover:-translate-y-px hover:border-neutral-300 hover:no-underline hover:shadow-md dark:border-white/[0.08] dark:bg-white/[0.025] dark:hover:border-white/[0.14]"
+                            class="group flex min-h-32 flex-col rounded-xl border border-neutral-200 bg-white p-3 shadow-sm transition-all hover:-translate-y-px hover:border-neutral-300 hover:no-underline hover:shadow-md dark:border-white/[0.08] dark:bg-white/[0.05] dark:hover:border-white/[0.14]"
                             {{ wireNavigate() }}>
                             <div class="flex items-start">
                                 <span
@@ -52,7 +52,7 @@
                     <div class="application-settings-section-body is-flush">
                         <div class="grid grid-cols-1 gap-3 p-3 sm:grid-cols-2 lg:grid-cols-3">
                             <a href="{{ route('server.create.type', ['type' => 'hetzner']) }}"
-                                class="group flex min-h-32 flex-col rounded-xl border border-neutral-200 bg-white p-3 shadow-sm transition-all hover:-translate-y-px hover:border-neutral-300 hover:no-underline hover:shadow-md dark:border-white/[0.08] dark:bg-white/[0.025] dark:hover:border-white/[0.14]"
+                                class="group flex min-h-32 flex-col rounded-xl border border-neutral-200 bg-white p-3 shadow-sm transition-all hover:-translate-y-px hover:border-neutral-300 hover:no-underline hover:shadow-md dark:border-white/[0.08] dark:bg-white/[0.05] dark:hover:border-white/[0.14]"
                                 {{ wireNavigate() }}>
                                 <div class="flex items-start">
                                     <img src="{{ asset('svgs/hetzner.svg') }}" alt="Hetzner" class="size-8">
@@ -66,7 +66,7 @@
                             </a>
 
                             <a href="{{ route('server.create.type', ['type' => 'vultr']) }}"
-                                class="group flex min-h-32 flex-col rounded-xl border border-neutral-200 bg-white p-3 shadow-sm transition-all hover:-translate-y-px hover:border-neutral-300 hover:no-underline hover:shadow-md dark:border-white/[0.08] dark:bg-white/[0.025] dark:hover:border-white/[0.14]"
+                                class="group flex min-h-32 flex-col rounded-xl border border-neutral-200 bg-white p-3 shadow-sm transition-all hover:-translate-y-px hover:border-neutral-300 hover:no-underline hover:shadow-md dark:border-white/[0.08] dark:bg-white/[0.05] dark:hover:border-white/[0.14]"
                                 {{ wireNavigate() }}>
                                 <div class="flex items-start">
                                     <img src="https://www.vultr.com/media/logo_ondark.svg" alt="Vultr"
@@ -81,7 +81,7 @@
                             </a>
 
                             <a href="{{ route('server.create.type', ['type' => 'digital-ocean']) }}"
-                                class="group flex min-h-32 flex-col rounded-xl border border-neutral-200 bg-white p-3 shadow-sm transition-all hover:-translate-y-px hover:border-neutral-300 hover:no-underline hover:shadow-md dark:border-white/[0.08] dark:bg-white/[0.025] dark:hover:border-white/[0.14]"
+                                class="group flex min-h-32 flex-col rounded-xl border border-neutral-200 bg-white p-3 shadow-sm transition-all hover:-translate-y-px hover:border-neutral-300 hover:no-underline hover:shadow-md dark:border-white/[0.08] dark:bg-white/[0.05] dark:hover:border-white/[0.14]"
                                 {{ wireNavigate() }}>
                                 <div class="flex items-start">
                                     <x-digital-ocean-icon class="size-8" />
@@ -97,6 +97,34 @@
                         </div>
                     </div>
                 </section>
+            @endcan
+
+            @can('create', App\Models\Server::class)
+                @if ($has_oci_connections)
+                    <section class="application-settings-section">
+                        <div class="application-settings-section-header">
+                            <h2 class="application-settings-section-title">Oracle Cloud</h2>
+                            <p class="application-settings-section-description">Provision a VM using an existing OCI connection.</p>
+                        </div>
+                        <div class="application-settings-section-body is-flush">
+                            <div class="grid grid-cols-1 gap-3 p-3 sm:grid-cols-2 lg:grid-cols-3">
+                                <a href="{{ route('server.new.oracle-cloud') }}"
+                                    class="group flex min-h-32 flex-col rounded-xl border border-neutral-200 bg-white p-3 shadow-sm transition-all hover:-translate-y-px hover:border-neutral-300 hover:no-underline hover:shadow-md dark:border-white/[0.08] dark:bg-white/[0.025] dark:hover:border-white/[0.14]"
+                                    {{ wireNavigate() }}>
+                                    <div class="flex items-start">
+                                        <img src="{{ asset('svgs/oracle-cloud.svg') }}" alt="Oracle Cloud" class="h-8 w-20 object-contain object-left">
+                                    </div>
+                                    <div class="mt-auto pt-5">
+                                        <h3 class="text-[13px]! font-semibold! text-black dark:text-fg">Oracle Cloud</h3>
+                                        <p class="mt-1 text-[11px] leading-4 text-neutral-500 dark:text-fg-faint">
+                                            Provision a VM via Terraform stack.
+                                        </p>
+                                    </div>
+                                </a>
+                            </div>
+                        </div>
+                    </section>
+                @endif
             @endcan
         </div>
     @else

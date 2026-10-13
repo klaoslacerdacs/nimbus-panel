@@ -1,5 +1,6 @@
 <?php
 
+use App\Jobs\ApplicationDeploymentJob;
 use App\Mcp\Concerns\BuildsResponse;
 use App\Models\Application;
 use App\Models\ApplicationDeploymentQueue;
@@ -30,11 +31,19 @@ use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Process;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Str;
 
 uses(RefreshDatabase::class);
 
 beforeEach(function () {
+    config([
+        'cache.default' => 'array',
+        'session.driver' => 'array',
+        'queue.default' => 'sync',
+        'app.maintenance.driver' => 'file',
+    ]);
+
     InstanceSettings::query()->where('id', 0)->delete();
     InstanceSettings::query()->delete();
     $settings = new InstanceSettings(['is_mcp_server_enabled' => true]);
@@ -547,6 +556,7 @@ test('list_env_keys never returns values and is team scoped', function () {
         'resourceable_type' => Application::class,
         'resourceable_id' => $this->application->id,
         'is_preview' => false,
+        'is_shown_once' => true,
     ]);
 
     $response = mcpReadCall('list_env_keys', [
@@ -558,6 +568,7 @@ test('list_env_keys never returns values and is team scoped', function () {
     $raw = json_encode($body);
 
     expect(collect($body['data']['keys'])->pluck('key'))->toContain('DATABASE_URL');
+    expect(collect($body['data']['keys'])->firstWhere('key', 'DATABASE_URL')['is_shown_once'])->toBeTrue();
     expect($raw)->not->toContain('postgres://secret');
     expect($raw)->not->toContain('"value"');
     expect($raw)->not->toContain('real_value');
@@ -579,6 +590,51 @@ test('list_env_keys never returns values and is team scoped', function () {
         'uuid' => $otherApp->uuid,
     ]);
     expect($denied->json('result.isError'))->toBeTrue();
+});
+
+test('get_application omits free-form configuration that can contain secrets', function () {
+    $this->application->update([
+        'git_full_url' => 'https://oauth2:application-secret@example.com/repository.git',
+        'build_command' => 'API_TOKEN=application-secret npm run build',
+        'custom_docker_run_options' => '--env API_TOKEN=application-secret',
+        'custom_nginx_configuration' => base64_encode('proxy_set_header Authorization "Bearer application-secret";'),
+    ]);
+
+    $response = mcpReadCall('get_application', ['uuid' => $this->application->uuid]);
+    $response->assertOk();
+
+    $body = mcpReadJson($response);
+    $raw = json_encode($body);
+
+    expect($body['data']['uuid'])->toBe($this->application->uuid)
+        ->and($raw)->not->toContain('application-secret')
+        ->and($raw)->not->toContain('git_full_url')
+        ->and($raw)->not->toContain('build_command')
+        ->and($raw)->not->toContain('custom_docker_run_options')
+        ->and($raw)->not->toContain('custom_nginx_configuration');
+});
+
+test('get_database omits configuration blobs that can contain secrets', function () {
+    $database = StandalonePostgresql::create([
+        'name' => 'Secret-bearing config',
+        'postgres_password' => 'database-password',
+        'postgres_conf' => "primary_conninfo = 'password=database-config-secret'",
+        'custom_docker_run_options' => '--env API_TOKEN=database-config-secret',
+        'environment_id' => $this->environment->id,
+        'destination_id' => $this->destination->id,
+        'destination_type' => $this->destination->getMorphClass(),
+    ]);
+
+    $response = mcpReadCall('get_database', ['uuid' => $database->uuid]);
+    $response->assertOk();
+
+    $body = mcpReadJson($response);
+    $raw = json_encode($body);
+
+    expect($body['data']['uuid'])->toBe($database->uuid)
+        ->and($raw)->not->toContain('database-config-secret')
+        ->and($raw)->not->toContain('postgres_conf')
+        ->and($raw)->not->toContain('custom_docker_run_options');
 });
 
 test('list_destinations and get_destination are team scoped', function () {
@@ -613,6 +669,18 @@ test('get_server_domains and get_server_resources are team scoped', function () 
     $otherServer = Server::factory()->create(['team_id' => Team::factory()->create()->id]);
     expect(mcpReadCall('get_server_domains', ['uuid' => $otherServer->uuid])->json('result.isError'))->toBeTrue();
     expect(mcpReadCall('get_server_resources', ['uuid' => $otherServer->uuid])->json('result.isError'))->toBeTrue();
+});
+
+test('get_server_domains returns IPv6 hosts with brackets and without the port', function () {
+    Application::query()->whereKey($this->application->id)->update([
+        'fqdn' => 'http://[2a01:4f8::1]:8080,https://app.example.com:8443/api,http://192.0.2.10:3000',
+    ]);
+
+    $domains = mcpReadCall('get_server_domains', ['uuid' => $this->server->uuid]);
+    $domains->assertOk();
+
+    expect(mcpReadJson($domains)['data']['domains'][0]['domains'])
+        ->toBe(['[2a01:4f8::1]', 'app.example.com', '192.0.2.10']);
 });
 
 test('get_server_domains filters polymorphic destinations by type and id', function () {
@@ -1133,6 +1201,7 @@ test('list_shared_env_keys returns names without values and is team scoped', fun
         'type' => 'project',
         'team_id' => $this->team->id,
         'project_id' => $this->project->id,
+        'is_shown_once' => true,
     ]);
 
     $response = mcpReadCall('list_shared_env_keys', [
@@ -1143,6 +1212,7 @@ test('list_shared_env_keys returns names without values and is team scoped', fun
     $body = mcpReadJson($response);
     $raw = json_encode($body);
     expect(collect($body['data']['keys'])->pluck('key'))->toContain('SHARED_API_URL');
+    expect(collect($body['data']['keys'])->firstWhere('key', 'SHARED_API_URL')['is_shown_once'])->toBeTrue();
     expect($raw)->not->toContain('secret.example.com');
     expect($raw)->not->toContain('"value"');
 
@@ -1744,6 +1814,7 @@ test('cancel_deployment cancels team deployment and rejects other team', functio
     Process::fake([
         '*' => Process::result(output: ''),
     ]);
+    Queue::fake();
 
     $deployment = ApplicationDeploymentQueue::create([
         'application_id' => $this->application->id,
@@ -1754,6 +1825,17 @@ test('cancel_deployment cancels team deployment and rejects other team', functio
         'server_name' => $this->server->name,
         'commit' => 'abc',
         'current_process_id' => '12345',
+    ]);
+    $nextDeployment = ApplicationDeploymentQueue::create([
+        'application_id' => $this->application->id,
+        'deployment_uuid' => 'dep-next-'.fake()->uuid(),
+        'status' => 'queued',
+        'server_id' => $this->server->id,
+        'destination_id' => $this->destination->id,
+        'application_name' => $this->application->name,
+        'server_name' => $this->server->name,
+        'commit' => 'def',
+        'pull_request_id' => 0,
     ]);
 
     $token = $this->user->createToken('mcp-cancel', ['read', 'deploy'])->plainTextToken;
@@ -1777,6 +1859,8 @@ test('cancel_deployment cancels team deployment and rejects other team', functio
     expect($body['data']['ok'])->toBeTrue()
         ->and($body['data']['status'])->toBe('cancelled-by-user');
     expect($deployment->fresh()->status)->toBe('cancelled-by-user');
+    expect($nextDeployment->fresh()->status)->toBe('in_progress');
+    Queue::assertPushed(ApplicationDeploymentJob::class, fn (ApplicationDeploymentJob $job) => $job->application_deployment_queue_id === $nextDeployment->id);
 
     $otherTeam = Team::factory()->create();
     $otherServer = Server::factory()->create(['team_id' => $otherTeam->id]);

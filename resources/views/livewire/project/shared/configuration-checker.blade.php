@@ -38,13 +38,15 @@
             @open-configuration-diff.window="configurationDiffModalOpen = true">
             @teleport('#configuration-warning-hud-slot')
                 <div>
-                    <x-configuration-warning :diff="$configurationDiff" />
+                    <x-configuration-warning :diff="$configurationDiff" :auto-open="$announce"
+                        :restart-trigger="$resource instanceof \App\Models\Service ? 'service-restart-trigger' : null" />
                 </div>
             @endteleport
 
             @teleport('#configuration-warning-hud-slot-mobile')
                 <div>
-                    <x-configuration-warning :diff="$configurationDiff" />
+                    <x-configuration-warning :diff="$configurationDiff" :auto-open="$announce"
+                        :restart-trigger="$resource instanceof \App\Models\Service ? 'service-restart-trigger' : null" />
                 </div>
             @endteleport
 

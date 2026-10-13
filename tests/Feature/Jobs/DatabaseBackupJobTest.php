@@ -1,9 +1,12 @@
 <?php
 
 use App\Jobs\DatabaseBackupJob;
+use App\Models\InstanceSettings;
 use App\Models\S3Storage;
 use App\Models\ScheduledDatabaseBackup;
 use App\Models\ScheduledDatabaseBackupExecution;
+use App\Models\Server;
+use App\Models\ServerSetting;
 use App\Models\Team;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Schema;
@@ -39,6 +42,14 @@ test('scheduled database backup execution model casts storage deletion fields co
     expect($casts['local_storage_deleted'])->toBe('boolean');
     expect($casts)->toHaveKey('s3_storage_deleted');
     expect($casts['s3_storage_deleted'])->toBe('boolean');
+});
+
+test('scheduled database backup casts full dump selection to boolean', function () {
+    $model = new ScheduledDatabaseBackup;
+
+    expect($model->getCasts())->toMatchArray(['dump_all' => 'boolean'])
+        ->and((new ScheduledDatabaseBackup(['dump_all' => '0']))->dump_all)->toBeFalse()
+        ->and((new ScheduledDatabaseBackup(['dump_all' => '1']))->dump_all)->toBeTrue();
 });
 
 test('upload_to_s3 throws exception and disables s3 when storage is null', function () {
@@ -319,6 +330,61 @@ test('database backup job escapes the S3 copy destination argument', function ()
     $source = file_get_contents(app_path('Jobs/DatabaseBackupJob.php'));
 
     expect($source)->toContain('$escapedS3Destination = escapeshellarg("temporary/{$bucket}{$this->backup_dir}/");')
-        ->and($source)->toContain('mc cp {$escapedBackupLocation} {$escapedS3Destination}')
+        ->and($source)->toContain('mc cp{$resolveOptions} {$escapedBackupLocation} {$escapedS3Destination}')
         ->and($source)->not->toContain('mc cp $this->backup_location temporary/$bucket{$this->backup_dir}/');
 });
+
+test('database dump compression uses the helper image and shared CPU setting', function (int $compressionCpuPercentage) {
+    InstanceSettings::unguarded(fn () => InstanceSettings::create(['id' => 0]));
+    $backup = new ScheduledDatabaseBackup(['timeout' => 3600]);
+    $job = new DatabaseBackupJob($backup);
+    $server = new Server;
+    $server->setRelation('settings', new ServerSetting([
+        'backup_compression_cpu_percentage' => $compressionCpuPercentage,
+    ]));
+    $job->server = $server;
+
+    $command = (new ReflectionClass($job))
+        ->getMethod('buildCompressedDumpCommand')
+        ->invoke($job, 'docker exec database pg_dumpall', "'/backups/pg-dump-all.gz'");
+
+    expect($command)
+        ->toStartWith('status=$( { { docker exec database pg_dumpall; echo $? >&3; } | docker run --rm -i')
+        ->toContain("> '/backups/pg-dump-all.gz'; } 3>&1 ) && [ \"\$status\" -eq 0 ]")
+        ->toContain('coolify-helper')
+        ->toContain('command -v pigz')
+        ->toContain('pigz -3 -p')
+        ->toContain("\$(nproc) * {$compressionCpuPercentage} + 99")
+        ->toContain('gzip -3');
+})->with([
+    'low' => 25,
+    'high' => 75,
+]);
+
+test('full database dumps create one logical all-databases archive regardless of saved database names', function (string $databaseType) {
+    $backup = new ScheduledDatabaseBackup([
+        'dump_all' => true,
+        'databases_to_backup' => 'default,analytics',
+    ]);
+    $job = new DatabaseBackupJob($backup);
+
+    $databases = (new ReflectionClass($job))
+        ->getMethod('databasesToBackup')
+        ->invoke($job, $databaseType, $backup->databases_to_backup);
+
+    expect($databases)->toBe(['all']);
+})->with(['postgresql', 'mysql', 'mariadb']);
+
+test('specific database dumps keep every selected database', function (string $databaseType) {
+    $backup = new ScheduledDatabaseBackup([
+        'dump_all' => false,
+        'databases_to_backup' => 'default, analytics',
+    ]);
+    $job = new DatabaseBackupJob($backup);
+
+    $databases = (new ReflectionClass($job))
+        ->getMethod('databasesToBackup')
+        ->invoke($job, $databaseType, $backup->databases_to_backup);
+
+    expect($databases)->toBe(['default', 'analytics']);
+})->with(['postgresql', 'mysql', 'mariadb']);

@@ -1,16 +1,82 @@
 <?php
 
-use App\Support\V5\V5Feature;
+use App\Models\ScheduledVolumeBackup;
 use Illuminate\Support\Str;
 
-$v5Enabled = V5Feature::enabledForEnvironment((string) env('APP_ENV', 'production'));
-$v5ReconcileSupervisor = $v5Enabled ? [
-    'v5reconcile' => [
-        'autoScalingStrategy' => 'size',
-        'minProcesses' => env('HORIZON_V5_RECONCILE_MIN_PROCESSES', 1),
-        'maxProcesses' => env('HORIZON_V5_RECONCILE_MAX_PROCESSES', 1),
-    ],
-] : [];
+/*
+| Cloud mode is read from SELF_HOSTED directly instead of isCloud(): isCloud()
+| reads the config repository, which is still being built while this file loads.
+*/
+$isCloud = ! env('SELF_HOSTED', true);
+
+$workerOptions = [
+    'connection' => 'redis',
+    'maxTime' => env('HORIZON_MAX_TIME', 0),
+    'maxJobs' => 400,
+    'memory' => 128,
+    'tries' => 1,
+    'nice' => 0,
+    'sleep' => 3,
+    'timeout' => min(
+        max((int) env('HORIZON_TIMEOUT', 39600), ScheduledVolumeBackup::DEFAULT_TIMEOUT + 600),
+        85800,
+    ),
+];
+
+$selfHostedSupervisor = $workerOptions + [
+    'balance' => env('HORIZON_BALANCE', 'false'),
+    'queue' => env('HORIZON_QUEUES', 'high,default'),
+    'autoScalingStrategy' => 'size',
+    'minProcesses' => env('HORIZON_MIN_PROCESSES', 1),
+    'maxProcesses' => env('HORIZON_MAX_PROCESSES', 4),
+    'balanceMaxShift' => env('HORIZON_BALANCE_MAX_SHIFT', 1),
+    'balanceCooldown' => env('HORIZON_BALANCE_COOLDOWN', 1),
+];
+
+/*
+| Coolify Cloud: one fixed-size pool per queue, so a busy queue cannot starve
+| the others. Process counts apply to each node. Invalid values (not a
+| positive integer) fall back to the default.
+|
+| The `maintenance` pool (see maintenance_queue()) runs slow remote Docker
+| cleanups and server patch checks. It bounds how many of them run at once
+| per node, and it comes on top of the other pools, so they never take
+| deployment, cron or high workers.
+|
+| The `webhooks` pool (see webhooks_queue()) processes GitHub pull request
+| webhooks, Stripe events, and server limit checks, so other jobs cannot
+| delay them.
+*/
+$cloudSupervisors = [];
+
+foreach ([
+    'deployments' => ['HORIZON_DEPLOYMENTS_PROCESSES', 60],
+    'crons' => ['HORIZON_CRONS_PROCESSES', 60],
+    'high' => ['HORIZON_HIGH_PROCESSES', 60],
+    'default' => ['HORIZON_DEFAULT_PROCESSES', 40],
+    'maintenance' => ['HORIZON_MAINTENANCE_PROCESSES', 60],
+    'webhooks' => ['HORIZON_WEBHOOKS_PROCESSES', 10],
+] as $queue => [$processesEnv, $defaultProcesses]) {
+    $processes = filter_var(env($processesEnv), FILTER_VALIDATE_INT, [
+        'options' => ['min_range' => 1, 'default' => $defaultProcesses],
+    ]);
+
+    $cloudSupervisors[$queue] = $workerOptions + [
+        'queue' => $queue,
+        'balance' => false,
+        'minProcesses' => $processes,
+        'maxProcesses' => $processes,
+    ];
+}
+
+// Nimbus: OCI Resource Manager jobs poll for up to 30 min — isolated pool so they never starve deploys.
+$ociSupervisor = $workerOptions + [
+    'queue' => 'oci',
+    'balance' => false,
+    'maxProcesses' => 2,
+    'memory' => 256,
+    'nice' => 5,
+];
 
 return [
 
@@ -39,6 +105,18 @@ return [
     */
 
     'path' => env('HORIZON_PATH', 'horizon'),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Horizon Allowed Emails
+    |--------------------------------------------------------------------------
+    |
+    | A comma-separated list of email addresses that may access the Horizon
+    | dashboard in addition to the root user.
+    |
+    */
+
+    'allowed_emails' => env('HORIZON_ALLOWED_EMAILS', ''),
 
     /*
     |--------------------------------------------------------------------------
@@ -95,6 +173,7 @@ return [
 
     'waits' => [
         'redis:default' => 60,
+        'redis:oci' => 300,
     ],
 
     /*
@@ -109,12 +188,12 @@ return [
     */
 
     'trim' => [
-        'recent' => 60,
-        'pending' => 60,
-        'completed' => 60,
-        'recent_failed' => 10080,
-        'failed' => 10080,
-        'monitored' => 10080,
+        'recent' => 10,
+        'pending' => 30,
+        'completed' => 10,
+        'recent_failed' => 1440,
+        'failed' => 1440,
+        'monitored' => 1440,
     ],
 
     /*
@@ -187,60 +266,21 @@ return [
     | in all environments. These supervisors and settings handle all your
     | queued jobs and will be provisioned by Horizon during deployment.
     |
+    | "defaults" stays empty: Horizon merges every default supervisor into
+    | every environment, so each environment defines complete options.
+    |
     */
 
-    'defaults' => [
-        's6' => [
-            'connection' => 'redis',
-            'balance' => env('HORIZON_BALANCE', 'false'),
-            'queue' => env('HORIZON_QUEUES', 'high,default'),
-            'maxTime' => env('HORIZON_MAX_TIME', 0),
-            'maxJobs' => 400,
-            'memory' => 128,
-            'tries' => 1,
-            'nice' => 0,
-            'sleep' => 3,
-            'timeout' => env('HORIZON_TIMEOUT', 36000),
-        ],
+    'defaults' => [],
 
-        ...($v5Enabled ? [
-            'v5reconcile' => [
-                'connection' => 'redis',
-                'balance' => env('HORIZON_V5_RECONCILE_BALANCE', 'false'),
-                'queue' => 'v5-reconcile',
-                'maxTime' => env('HORIZON_V5_RECONCILE_MAX_TIME', 0),
-                'maxJobs' => 200,
-                'memory' => 128,
-                'tries' => 1,
-                'nice' => 10,
-                'sleep' => 3,
-                'timeout' => env('HORIZON_V5_RECONCILE_TIMEOUT', 300),
-            ],
-        ] : []),
-    ],
+    /*
+    | Worker timeout shared by every supervisor. Jobs that must finish before
+    | the worker kills them (for example database imports) read this value.
+    */
+    'worker_timeout' => $workerOptions['timeout'],
 
     'environments' => [
-        'production' => [
-            's6' => [
-                'autoScalingStrategy' => 'size',
-                'minProcesses' => env('HORIZON_MIN_PROCESSES', 1),
-                'maxProcesses' => env('HORIZON_MAX_PROCESSES', 4),
-                'balanceMaxShift' => env('HORIZON_BALANCE_MAX_SHIFT', 1),
-                'balanceCooldown' => env('HORIZON_BALANCE_COOLDOWN', 1),
-            ],
-        ],
-        'local' => [
-            's6' => [
-                'autoScalingStrategy' => 'size',
-                'minProcesses' => env('HORIZON_MIN_PROCESSES', 1),
-                'maxProcesses' => env('HORIZON_MAX_PROCESSES', 4),
-                'balanceMaxShift' => env('HORIZON_BALANCE_MAX_SHIFT', 1),
-                'balanceCooldown' => env('HORIZON_BALANCE_COOLDOWN', 1),
-            ],
-            ...$v5ReconcileSupervisor,
-        ],
-        'development' => $v5ReconcileSupervisor,
-        'dev' => $v5ReconcileSupervisor,
-        'testing' => $v5ReconcileSupervisor,
+        'production' => ($isCloud ? $cloudSupervisors : ['s6' => $selfHostedSupervisor]) + ['oci-provision' => $ociSupervisor],
+        'local' => ['s6' => $selfHostedSupervisor, 'oci-provision' => $ociSupervisor],
     ],
 ];

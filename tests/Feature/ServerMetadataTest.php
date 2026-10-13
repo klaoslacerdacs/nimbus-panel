@@ -1,23 +1,35 @@
 <?php
 
+use App\Livewire\Server\Show;
 use App\Livewire\Server\ValidateAndInstall;
+use App\Models\InstanceSettings;
+use App\Models\PrivateKey;
 use App\Models\Server;
 use App\Models\Team;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Process;
+use Illuminate\Support\Facades\Queue;
 use Livewire\Livewire;
 
 uses(RefreshDatabase::class);
 
 beforeEach(function () {
+    InstanceSettings::forceCreate(['id' => 0]);
+
     $user = User::factory()->create();
     $this->team = Team::factory()->create();
-    $user->teams()->attach($this->team);
+    $user->teams()->attach($this->team, ['role' => 'owner']);
     $this->actingAs($user);
     session(['currentTeam' => $this->team]);
 
+    $this->privateKey = PrivateKey::factory()->create([
+        'team_id' => $this->team->id,
+    ]);
+
     $this->server = Server::factory()->create([
         'team_id' => $this->team->id,
+        'private_key_id' => $this->privateKey->id,
     ]);
 });
 
@@ -84,6 +96,60 @@ it('returns null from gatherServerMetadata when server is not functional', funct
     expect($this->server->gatherServerMetadata())->toBeNull();
 });
 
+it('stores a parsed docker version when gathering server metadata', function () {
+    $this->server->settings->update([
+        'is_reachable' => true,
+        'is_usable' => true,
+    ]);
+
+    Process::fake([
+        '*' => Process::result(output: implode("\n", [
+            '---PRETTY_NAME---',
+            'Debian GNU/Linux 12 (bookworm)',
+            '---ARCH---',
+            'aarch64',
+            '---KERNEL---',
+            '6.1.0-17-arm64',
+            '---CPUS---',
+            '8',
+            '---MEMORY---',
+            '17179869184',
+            '---UPTIME_SINCE---',
+            '2024-03-01 08:00:00',
+            '---DOCKER---',
+            '29.4.3-ce',
+            '---COMPOSE---',
+            'v2.32.4',
+        ]), exitCode: 0),
+    ]);
+
+    expect($this->server->gatherServerMetadata()['os'])->toBe('Debian GNU/Linux 12 (bookworm)')
+        ->and($this->server->fresh()->dockerVersion())->toBe('29.4.3')
+        ->and($this->server->fresh()->composeVersion())->toBe('2.32.4');
+});
+
+it('shows the stored docker version in remote server details', function () {
+    $this->server->update([
+        'server_metadata' => [
+            'os' => 'Debian GNU/Linux 12 (bookworm)',
+            'arch' => 'aarch64',
+            'kernel' => '6.1.0-17-arm64',
+            'cpus' => 8,
+            'memory_bytes' => 17179869184,
+            'uptime_since' => '2024-03-01 08:00:00',
+            'collected_at' => now()->toIso8601String(),
+        ],
+    ]);
+    $this->server->rememberDockerVersion('27.5.1');
+    $this->server->rememberComposeVersion('2.29.7');
+
+    Livewire::test(Show::class, ['server_uuid' => $this->server->uuid])
+        ->assertSee('Docker version')
+        ->assertSee('27.5.1')
+        ->assertSee('Compose version')
+        ->assertSee('2.29.7');
+});
+
 it('can overwrite server_metadata with new values', function () {
     $this->server->update(['server_metadata' => ['os' => 'Ubuntu 20.04', 'cpus' => 2]]);
     $this->server->refresh();
@@ -98,14 +164,19 @@ it('can overwrite server_metadata with new values', function () {
 });
 
 it('calls gatherServerMetadata during ValidateAndInstall when docker version is valid', function () {
+    Queue::fake();
+
     $serverMock = Mockery::mock($this->server)->makePartial();
     $serverMock->shouldReceive('isSwarm')->andReturn(false);
     $serverMock->shouldReceive('validateDockerEngineVersion')->once()->andReturn('24.0.0');
     $serverMock->shouldReceive('gatherServerMetadata')->once();
     $serverMock->shouldReceive('isBuildServer')->andReturn(false);
 
+    // Call the action on the mounted instance: a Livewire request round trip
+    // would rehydrate the server from the database and drop the mock.
     Livewire::test(ValidateAndInstall::class, ['server' => $serverMock])
-        ->call('validateDockerVersion');
+        ->instance()
+        ->validateDockerVersion();
 });
 
 it('does not call gatherServerMetadata when docker version validation fails', function () {
@@ -114,6 +185,9 @@ it('does not call gatherServerMetadata when docker version validation fails', fu
     $serverMock->shouldReceive('validateDockerEngineVersion')->once()->andReturn(false);
     $serverMock->shouldNotReceive('gatherServerMetadata');
 
+    // Call the action on the mounted instance: a Livewire request round trip
+    // would rehydrate the server from the database and drop the mock.
     Livewire::test(ValidateAndInstall::class, ['server' => $serverMock])
-        ->call('validateDockerVersion');
+        ->instance()
+        ->validateDockerVersion();
 });

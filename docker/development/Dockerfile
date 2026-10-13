@@ -1,23 +1,21 @@
 # Versions
 # https://hub.docker.com/r/serversideup/php/tags?name=8.4-fpm-nginx-alpine
-ARG SERVERSIDEUP_PHP_VERSION=8.4-fpm-nginx-alpine
-# https://github.com/minio/mc/releases
-ARG MINIO_VERSION=RELEASE.2025-05-21T01-59-54Z
+# Pinned: v5 moved user bundles to /etc/s6-overlay/user-bundles.d and breaks startup (#12141)
+ARG SERVERSIDEUP_PHP_VERSION=8.4-fpm-nginx-alpine-v4.5.1
 # https://github.com/cloudflare/cloudflared/releases
 ARG CLOUDFLARED_VERSION=2025.7.0
-# https://github.com/coollabsio/coold/releases/tag/nightly
-ARG COOLIFY_FLUX_VERSION=nightly
-ARG COOLIFY_CLI_VERSION=nightly
 # https://www.postgresql.org/support/versioning/
 # Note: We are using version 18 of the postgres client (while still using postgres 15 for the postgres server) as version 15 has been removed from Alpine 3.23+ https://pkgs.alpinelinux.org/packages?name=postgresql*-client&branch=v3.23&repo=&arch=x86_64&origin=&flagged=&maintainer=
 ARG POSTGRES_VERSION=18
 # https://nginx.org/en/linux_packages.html
 ARG NGINX_VERSION=1.31.2-r1
+# https://pecl.php.net/package/uv
+ARG PHP_UV_VERSION=0.3.0
 
 # =================================================================
 # Get MinIO client
 # =================================================================
-FROM minio/mc:${MINIO_VERSION} AS minio-client
+FROM ghcr.io/coollabsio/mx:0.1.0 AS minio-client
 
 # =================================================================
 # Final Stage: Production image
@@ -30,11 +28,8 @@ ARG TARGETPLATFORM
 ARG TARGETARCH
 ARG POSTGRES_VERSION
 ARG CLOUDFLARED_VERSION
-ARG COOLIFY_FLUX_VERSION
-ARG COOLIFY_FLUX_CHECKSUM
-ARG COOLIFY_CLI_VERSION
-ARG COOLIFY_CLI_CHECKSUM
 ARG NGINX_VERSION
+ARG PHP_UV_VERSION
 
 WORKDIR /var/www/html
 
@@ -65,6 +60,11 @@ RUN apk upgrade --no-cache && \
 # Install system dependencies
 RUN apk add --no-cache \
     postgresql${POSTGRES_VERSION}-client \
+    nodejs \
+    npm \
+    make \
+    g++ \
+    python3 \
     openssh-client \
     openssl \
     git \
@@ -74,7 +74,8 @@ RUN apk add --no-cache \
     vim
 
 # Install PHP extensions
-RUN install-php-extensions sockets
+# uv: Reverb uses an ext-uv event loop instead of stream_select(), which fails at 1024 open files (FD_SETSIZE)
+RUN install-php-extensions sockets uv-${PHP_UV_VERSION}
 
 # Configure shell aliases
 RUN echo "alias ll='ls -al'" >> /etc/profile && \
@@ -90,54 +91,17 @@ RUN mkdir -p /usr/local/bin && \
     fi && \
     chmod +x /usr/local/bin/cloudflared
 
-# Install Flux from coold nightly release based on architecture
-RUN set -eux; \
-    echo "Flux checksum: ${COOLIFY_FLUX_CHECKSUM}"; \
-    mkdir -p /usr/local/bin /run/coolify /etc/coolify; \
-    chown -R www-data:www-data /run/coolify /etc/coolify; \
-    case "${TARGETARCH:-}" in \
-        amd64|arm64) FLUX_ARCH="${TARGETARCH}" ;; \
-        "") \
-            case "$(uname -m)" in \
-                x86_64) FLUX_ARCH="amd64" ;; \
-                aarch64) FLUX_ARCH="arm64" ;; \
-                *) echo "unsupported Flux arch: $(uname -m)" >&2; exit 1 ;; \
-            esac ;; \
-        *) echo "unsupported Flux TARGETARCH: ${TARGETARCH}" >&2; exit 1 ;; \
-    esac; \
-    curl -fsSL --retry 3 --max-time 120 \
-        -o /tmp/flux.tar.gz \
-        "https://github.com/coollabsio/coold/releases/download/${COOLIFY_FLUX_VERSION}/flux-linux-musl-${FLUX_ARCH}.tar.gz"; \
-    tar -xzf /tmp/flux.tar.gz -C /tmp; \
-    test -f /tmp/flux; \
-    install -m 0755 /tmp/flux /usr/local/bin/flux; \
-    rm -f /tmp/flux /tmp/flux.tar.gz
-
-# Install coolify from coold nightly release based on architecture
-RUN set -eux; \
-    echo "Coolify CLI checksum: ${COOLIFY_CLI_CHECKSUM}"; \
-    mkdir -p /usr/local/bin; \
-    case "${TARGETARCH:-}" in \
-        amd64|arm64) COOLIFY_CLI_ARCH="${TARGETARCH}" ;; \
-        "") \
-            case "$(uname -m)" in \
-                x86_64) COOLIFY_CLI_ARCH="amd64" ;; \
-                aarch64) COOLIFY_CLI_ARCH="arm64" ;; \
-                *) echo "unsupported coolify arch: $(uname -m)" >&2; exit 1 ;; \
-            esac ;; \
-        *) echo "unsupported coolify TARGETARCH: ${TARGETARCH}" >&2; exit 1 ;; \
-    esac; \
-    curl -fsSL --retry 3 --max-time 120 \
-        -o /tmp/coolify.tar.gz \
-        "https://github.com/coollabsio/coold/releases/download/${COOLIFY_CLI_VERSION}/coolify-linux-musl-${COOLIFY_CLI_ARCH}.tar.gz"; \
-    tar -xzf /tmp/coolify.tar.gz -C /tmp; \
-    test -f /tmp/coolify; \
-    install -m 0755 /tmp/coolify /usr/local/bin/coolify; \
-    rm -f /tmp/coolify /tmp/coolify.tar.gz
-
 # Configure PHP
 COPY docker/development/etc/php/conf.d/zzz-custom-php.ini /usr/local/etc/php/conf.d/zzz-custom-php.ini
 ENV PHP_OPCACHE_ENABLE=0
+
+# Install terminal WebSocket server dependencies
+COPY docker/coolify-terminal/package*.json /terminal/
+RUN npm ci --prefix /terminal && \
+    npm rebuild node-pty --prefix /terminal --update-binary
+COPY docker/coolify-terminal/terminal-server.js /terminal/terminal-server.js
+COPY docker/coolify-terminal/terminal-utils.js /terminal/terminal-utils.js
+RUN chown -R www-data:www-data /terminal
 
 # Configure Nginx and S6 overlay
 COPY docker/development/etc/nginx/conf.d/custom.conf /etc/nginx/conf.d/custom.conf

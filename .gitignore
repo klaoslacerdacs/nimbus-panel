@@ -34,11 +34,13 @@ _ide_helper_models.php
 scripts/load-test/*
 .ignition.json
 .env.dusk.local
-docker/coolify-realtime/node_modules
+docker/coolify-terminal/node_modules
 .DS_Store
 CHANGELOG.md
 /.workspaces
 /.superpowers/
+/docs/superpowers/plans/
+/.ai/todo.md
 tests/Browser/Screenshots
 tests/v4/Browser/Screenshots
 ref
@@ -52,3 +54,9 @@ ref
 
 # Multi-instance local Coolify env files (scripts/dev-instances)
 .dev-instances/
+.claude-flow/
+.claude/
+
+# Terraform
+terraform/**/.terraform/
+terraform/**/.terraform.lock.hcl

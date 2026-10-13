@@ -12,11 +12,15 @@ use App\Models\StandaloneMongodb;
 use App\Models\StandaloneMysql;
 use App\Models\StandalonePostgresql;
 use App\Models\StandaloneRedis;
+use App\Models\StandaloneSqlite;
+use App\Traits\ListensToTeamChannel;
 use Illuminate\Contracts\View\View;
 use Livewire\Component;
 
 class ConfigurationChecker extends Component
 {
+    use ListensToTeamChannel;
+
     public bool $isConfigurationChanged = false;
 
     public array $configurationDiff = [];
@@ -25,22 +29,25 @@ class ConfigurationChecker extends Component
 
     public array $missingRequiredEnvironmentVariableNames = [];
 
-    public Application|Service|StandaloneRedis|StandalonePostgresql|StandaloneMongodb|StandaloneMysql|StandaloneMariadb|StandaloneKeydb|StandaloneDragonfly|StandaloneClickhouse $resource;
+    /** Nimbus: open the "changes pending" notice right after a save, instead of only showing a small icon. */
+    public bool $announce = false;
+
+    public Application|Service|StandaloneRedis|StandalonePostgresql|StandaloneMongodb|StandaloneMysql|StandaloneMariadb|StandaloneKeydb|StandaloneDragonfly|StandaloneClickhouse|StandaloneSqlite $resource;
 
     public function getListeners(): array
     {
-        $teamId = auth()->user()->currentTeam()->id;
-
         return [
-            "echo-private:team.{$teamId},ApplicationConfigurationChanged" => 'configurationChanged',
             'configurationChanged' => 'configurationChanged',
             'envsUpdated' => 'configurationChanged',
+            ...$this->teamChannelListeners([
+                'ApplicationConfigurationChanged' => 'configurationChanged',
+            ]),
         ];
     }
 
     public function mount(): void
     {
-        $this->configurationChanged();
+        $this->loadConfigurationState();
     }
 
     public function render(): View
@@ -49,13 +56,13 @@ class ConfigurationChecker extends Component
     }
 
     /**
-     * Members must never see environment variable values, so redact every
-     * environment-section change before it is serialized to the browser.
+     * Members must never see environment variable values or Compose content, so redact
+     * those changes before they are serialized to the browser.
      *
      * @param  array<int, array<string, mixed>>  $changes
      * @return array<int, array<string, mixed>>
      */
-    private function redactEnvironmentChanges(array $changes, bool $redact): array
+    private function redactHiddenChanges(array $changes, bool $redact): array
     {
         if (! $redact) {
             return $changes;
@@ -63,7 +70,9 @@ class ConfigurationChecker extends Component
 
         return collect($changes)
             ->map(function (array $change): array {
-                if (data_get($change, 'section') !== 'environment') {
+                $isHidden = data_get($change, 'section') === 'environment'
+                    || str((string) data_get($change, 'key'))->afterLast('.')->value() === 'docker_compose_raw';
+                if (! $isHidden) {
                     return $change;
                 }
 
@@ -82,6 +91,7 @@ class ConfigurationChecker extends Component
     public function configurationChanged(): void
     {
         $this->loadConfigurationState();
+        $this->announce = $this->isConfigurationChanged;
     }
 
     private function loadConfigurationState(): void
@@ -101,8 +111,9 @@ class ConfigurationChecker extends Component
             $array = $diff->toArray();
 
             // Fail closed: only owners/admins may see unlocked env values.
-            $redactEnvironment = ! (bool) auth()->user()?->isAdmin();
-            $array['changes'] = $this->redactEnvironmentChanges($array['changes'] ?? [], $redactEnvironment);
+            $teamId = $this->resource->team()?->id;
+            $redactEnvironment = is_null($teamId) || ! (bool) auth()->user()?->isAdminOfTeam($teamId);
+            $array['changes'] = $this->redactHiddenChanges($array['changes'] ?? [], $redactEnvironment);
             $this->configurationDiff = $array;
 
             return;

@@ -2,9 +2,7 @@
 
 namespace App\Models;
 
-use App\Models\V5\Application as V5Application;
-use App\Models\V5\ResourceConnection as V5ResourceConnection;
-use App\Support\V5\V5Feature;
+use App\Traits\Auditable;
 use App\Traits\ClearsGlobalSearchCache;
 use App\Traits\HasSafeStringAttribute;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -24,8 +22,8 @@ use OpenApi\Attributes as OA;
 )]
 class Environment extends BaseModel
 {
+    use Auditable, HasFactory;
     use ClearsGlobalSearchCache;
-    use HasFactory;
     use HasSafeStringAttribute;
 
     protected $fillable = [
@@ -57,11 +55,7 @@ class Environment extends BaseModel
 
     public function isEmpty()
     {
-        return (! V5Feature::enabled() || (
-            ! V5Application::query()->where('environment_id', $this->id)->exists() &&
-            ! V5ResourceConnection::query()->where('environment_id', $this->id)->exists()
-        )) &&
-            $this->applications()->count() == 0 &&
+        return $this->applications()->count() == 0 &&
             $this->redis()->count() == 0 &&
             $this->postgresqls()->count() == 0 &&
             $this->mysqls()->count() == 0 &&
@@ -70,6 +64,7 @@ class Environment extends BaseModel
             $this->clickhouses()->count() == 0 &&
             $this->mariadbs()->count() == 0 &&
             $this->mongodbs()->count() == 0 &&
+            $this->sqlites()->count() == 0 &&
             $this->services()->count() == 0;
     }
 
@@ -81,11 +76,6 @@ class Environment extends BaseModel
     public function applications()
     {
         return $this->hasMany(Application::class);
-    }
-
-    public function v5Applications()
-    {
-        return $this->hasMany(V5Application::class);
     }
 
     public function postgresqls()
@@ -128,6 +118,11 @@ class Environment extends BaseModel
         return $this->hasMany(StandaloneClickhouse::class);
     }
 
+    public function sqlites()
+    {
+        return $this->hasMany(StandaloneSqlite::class);
+    }
+
     public function databases()
     {
         $postgresqls = $this->postgresqls;
@@ -138,8 +133,9 @@ class Environment extends BaseModel
         $keydbs = $this->keydbs;
         $dragonflies = $this->dragonflies;
         $clickhouses = $this->clickhouses;
+        $sqlites = $this->sqlites;
 
-        return $postgresqls->concat($redis)->concat($mongodbs)->concat($mysqls)->concat($mariadbs)->concat($keydbs)->concat($dragonflies)->concat($clickhouses);
+        return $postgresqls->concat($redis)->concat($mongodbs)->concat($mysqls)->concat($mariadbs)->concat($keydbs)->concat($dragonflies)->concat($clickhouses)->concat($sqlites);
     }
 
     public function project()

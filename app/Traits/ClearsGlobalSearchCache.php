@@ -91,6 +91,11 @@ trait ClearsGlobalSearchCache
     private function getTeamIdForCache()
     {
         try {
+            // Fast path: any model with a direct team_id column (Project, Server, OciConnection, OciStack, etc.)
+            if (isset($this->team_id)) {
+                return $this->team_id;
+            }
+
             // For Project models (has direct team_id)
             if ($this instanceof Project) {
                 return $this->team_id ?? null;

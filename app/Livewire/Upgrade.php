@@ -5,6 +5,7 @@ namespace App\Livewire;
 use App\Actions\Server\UpdateCoolify;
 use App\Models\InstanceSettings;
 use App\Models\Server;
+use App\Services\CoolifyUpgradeStatus;
 use Livewire\Component;
 
 class Upgrade extends Component
@@ -18,6 +19,8 @@ class Upgrade extends Component
     public string $currentVersion = '';
 
     public bool $devMode = false;
+
+    public bool $fullButton = false;
 
     protected $listeners = ['updateAvailable' => 'checkUpdate'];
 
@@ -40,6 +43,13 @@ class Upgrade extends Component
         $this->currentVersion = config('constants.coolify.version');
         $this->latestVersion = get_latest_version_of_coolify();
         $this->devMode = isDev();
+
+        // Nimbus: upgrading would install upstream Coolify over this panel.
+        if (! config('constants.nimbus.allow_upstream_update')) {
+            $this->isUpgradeAvailable = false;
+
+            return;
+        }
 
         if ($this->devMode) {
             $this->isUpgradeAvailable = true;
@@ -65,11 +75,29 @@ class Upgrade extends Component
             if (! isInstanceAdmin()) {
                 abort(403);
             }
+            if (! config('constants.nimbus.allow_upstream_update')) {
+                $this->dispatch('error', 'Upstream Coolify updates are disabled in Nimbus Panel.');
+
+                return;
+            }
             if ($this->updateInProgress) {
                 return;
             }
             $this->updateInProgress = true;
-            UpdateCoolify::run(manual_update: true);
+            dispatch(function () {
+                try {
+                    UpdateCoolify::run(manual_update: true);
+                } catch (\Throwable $e) {
+                    report($e);
+                }
+            })->afterResponse();
+
+            auditLog('ui.instance.upgrade_started', [
+                'team_id' => null,
+                'resource' => 'instance',
+                'from_version' => config('constants.coolify.version'),
+                'to_version' => get_latest_version_of_coolify(),
+            ]);
         } catch (\Throwable $e) {
             return handleError($e, $this);
         }
@@ -87,7 +115,7 @@ class Upgrade extends Component
             return ['status' => 'none'];
         }
 
-        $statusFile = '/data/coolify/source/.upgrade-status';
+        $statusFile = CoolifyUpgradeStatus::FILE;
 
         try {
             $content = instant_remote_process(
@@ -100,45 +128,10 @@ class Upgrade extends Component
             return ['status' => 'none'];
         }
 
-        if (empty($content)) {
-            return ['status' => 'none'];
-        }
-
-        $parts = explode('|', $content);
-        if (count($parts) < 3) {
-            return ['status' => 'none'];
-        }
-
-        [$step, $message, $timestamp] = $parts;
-
-        // Check if status is stale (older than 10 minutes)
-        try {
-            $statusTime = new \DateTime($timestamp);
-            $now = new \DateTime;
-            $diffMinutes = ($now->getTimestamp() - $statusTime->getTimestamp()) / 60;
-
-            if ($diffMinutes > 10) {
-                return ['status' => 'none'];
-            }
-        } catch (\Throwable $e) {
-            return ['status' => 'none'];
-        }
-
-        if ($step === 'error') {
-            return [
-                'status' => 'error',
-                'step' => 0,
-                'message' => $message,
-            ];
-        }
-
-        $stepInt = (int) $step;
-        $status = $stepInt >= 6 ? 'complete' : 'in_progress';
-
-        return [
-            'status' => $status,
-            'step' => $stepInt,
-            'message' => $message,
-        ];
+        return CoolifyUpgradeStatus::fromFile(
+            content: $content,
+            runningVersion: $this->currentVersion !== '' ? $this->currentVersion : (string) config('constants.coolify.version'),
+            targetVersion: $this->latestVersion !== '' ? $this->latestVersion : get_latest_version_of_coolify(),
+        );
     }
 }

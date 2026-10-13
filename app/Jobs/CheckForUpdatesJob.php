@@ -19,7 +19,7 @@ class CheckForUpdatesJob implements ShouldBeEncrypted, ShouldQueue
     public function handle(): void
     {
         try {
-            if (isDev() || isCloud()) {
+            if (isDev() || isCloud() || ! config('constants.nimbus.allow_upstream_update')) {
                 return;
             }
             $settings = instanceSettings();
@@ -72,6 +72,8 @@ class CheckForUpdatesJob implements ShouldBeEncrypted, ShouldQueue
 
                 // Invalidate cache to ensure fresh data is loaded
                 invalidate_versions_cache();
+
+                CheckTraefikVersionJob::dispatch();
 
                 // Only mark new version available if Coolify version actually increased
                 if (version_compare($latest_version, $current_version, '>')) {

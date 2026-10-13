@@ -4,6 +4,7 @@ namespace App\Listeners;
 
 use App\Events\CloudflareTunnelChanged;
 use App\Events\CloudflareTunnelConfigured;
+use App\Helpers\SshMultiplexingHelper;
 use App\Models\Server;
 use Illuminate\Support\Sleep;
 
@@ -26,11 +27,13 @@ class CloudflareTunnelChangedNotification
 
         for ($i = 1; $i <= $attempts; $i++) {
             \Log::debug("Cloudflare health check attempt {$i}/{$attempts}", ['server_id' => $server_id]);
-            $result = instant_remote_process_with_timeout(['docker inspect coolify-cloudflared | jq -e ".[0].State.Health.Status == \"healthy\""'], $this->server, false, 10);
+            // The 4th argument of instant_remote_process_with_timeout is $no_sudo: passing a timeout there skipped sudo
+            // and failed for non-root SSH users. --format also avoids depending on jq being installed.
+            $result = instant_remote_process_with_timeout(["docker inspect --format '{{.State.Health.Status}}' coolify-cloudflared"], $this->server, false);
 
             if (blank($result)) {
                 \Log::debug("Cloudflare Tunnels container not found on attempt {$i}", ['server_id' => $server_id]);
-            } elseif ($result === 'true') {
+            } elseif ($result === 'healthy') {
                 \Log::debug("Cloudflare Tunnels container healthy on attempt {$i}", ['server_id' => $server_id]);
                 $cloudflareHealthy = true;
                 break;
@@ -49,6 +52,7 @@ class CloudflareTunnelChangedNotification
 
             return;
         }
+        $previousIp = $this->server->ip;
         $this->server->settings->update([
             'is_cloudflare_tunnel' => true,
         ]);
@@ -60,6 +64,23 @@ class CloudflareTunnelChangedNotification
         } else {
             \Log::debug('Cloudflare Tunnels configuration updated - IP address unchanged.', ['current_ip' => $this->server->ip]);
         }
+        // Nimbus: prove SSH works through the tunnel before relying on it; otherwise go back to direct SSH.
+        SshMultiplexingHelper::removeMuxFile($this->server->fresh());
+        $check = $this->server->fresh()->validateConnection();
+        if (! $check['uptime']) {
+            $this->server->settings->update(['is_cloudflare_tunnel' => false]);
+            $this->server->update([
+                'ip' => $previousIp,
+                'ip_previous' => $this->server->fresh()->ip_previous,
+                'validation_logs' => (str_contains((string) $check['error'], 'no such host')
+                    ? "The tunnel container is running, but {$ssh_domain} does not resolve from this Coolify server yet (DNS resolvers cache a missing name for up to 30 minutes), so Coolify kept using the direct address. Try again in a few minutes."
+                    : "The tunnel container is running, but SSH through {$ssh_domain} failed, so Coolify kept using the direct address. Publish {$ssh_domain} in the tunnel as ssh://localhost:22 and run the setup again.").' Error: '.str((string) $check['error'])->limit(300),
+            ]);
+            SshMultiplexingHelper::removeMuxFile($this->server->fresh());
+            $this->server->fresh()->validateConnection();
+            \Log::warning('Cloudflare Tunnel SSH check failed; reverted to direct SSH.', ['server_id' => $server_id]);
+        }
+
         $teamId = $this->server->team_id;
         CloudflareTunnelConfigured::dispatch($teamId);
     }

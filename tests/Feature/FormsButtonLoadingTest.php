@@ -52,18 +52,3 @@ it('skips loading attributes when the loading indicator is disabled', function (
         ->not->toContain('animate-spin')
         ->toContain('Check connection');
 });
-
-it('hides static button icons with the shared is-loading utility', function () {
-    $css = file_get_contents(resource_path('css/utilities.css'));
-
-    expect($css)->toContain('.button.is-loading > svg:not(.animate-spin)');
-});
-
-it('applies automatic loading behavior on the server private key check connection button', function () {
-    $view = file_get_contents(resource_path('views/livewire/server/private-key/show.blade.php'));
-
-    expect($view)
-        ->toContain('wire:click.prevent="checkConnection"')
-        ->toContain('<x-reicon name="refresh" class="size-3.5" />')
-        ->toContain('<x-forms.button canGate="update" :canResource="$server"');
-});

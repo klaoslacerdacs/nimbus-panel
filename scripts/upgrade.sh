@@ -1,7 +1,7 @@
 #!/bin/bash
 ## Do not modify this file. You will lose the ability to autoupdate!
 
-CDN="https://cdn.coollabs.io/coolify"
+CDN="https://raw.githubusercontent.com/klaoslacerdacs/nimbus-panel/${NIMBUS_REF:-main}"
 LATEST_IMAGE=${1:-latest}
 LATEST_HELPER_VERSION=${2:-latest}
 ENV_FILE="/data/coolify/source/.env"
@@ -62,8 +62,8 @@ log "Downloading docker-compose.prod.yml from ${CDN}/docker-compose.prod.yml"
 curl -fsSL -L $CDN/docker-compose.prod.yml -o /data/coolify/source/docker-compose.prod.yml
 log "Downloading .env.production from ${CDN}/.env.production"
 curl -fsSL -L $CDN/.env.production -o /data/coolify/source/.env.production
-log "Downloading upgrade-postgres.sh from ${CDN}/upgrade-postgres.sh"
-curl -fsSL -L $CDN/upgrade-postgres.sh -o /data/coolify/source/upgrade-postgres.sh
+log "Downloading upgrade-postgres.sh from ${CDN}/scripts/upgrade-postgres.sh"
+curl -fsSL -L $CDN/scripts/upgrade-postgres.sh -o /data/coolify/source/upgrade-postgres.sh
 chmod +x /data/coolify/source/upgrade-postgres.sh
 log "Configuration files downloaded successfully"
 echo "     Done."
@@ -151,6 +151,11 @@ set_env_var "REGISTRY_URL" "$REGISTRY_URL"
 update_env_var "PUSHER_APP_ID" "$(openssl rand -hex 32)"
 update_env_var "PUSHER_APP_KEY" "$(openssl rand -hex 32)"
 update_env_var "PUSHER_APP_SECRET" "$(openssl rand -hex 32)"
+update_env_var "PUSHER_BACKEND_PORT" "6001"
+# The realtime container no longer exists; point older installs at the bundled Reverb server
+if grep -q '^PUSHER_BACKEND_HOST=coolify-realtime$' "$ENV_FILE"; then
+    set_env_var "PUSHER_BACKEND_HOST" "127.0.0.1"
+fi
 log "Environment variables check complete"
 echo "     Done."
 
@@ -169,6 +174,10 @@ if ! docker network inspect coolify >/dev/null 2>&1; then
 else
     log "Network 'coolify' already exists"
 fi
+
+mkdir -p /data/coolify/images/{avatars,project-icons}
+chown -R 9999:root /data/coolify/images
+chmod -R 700 /data/coolify/images
 
 # Fix SSH directory ownership if not owned by container user UID 9999 (fixes #6621)
 # Only changes owner — preserves existing group to respect custom setups
@@ -225,6 +234,9 @@ done
 log "All images pulled successfully"
 echo "     All images pulled successfully."
 
+set_env_var "LATEST_IMAGE" "$LATEST_IMAGE"
+set_env_var "COOLIFY_VERSION" "$LATEST_IMAGE"
+
 log_section "Step 4/6: Stopping and restarting containers"
 write_status "4" "Stopping containers"
 echo ""
@@ -254,6 +266,7 @@ nohup bash -c "
     }
 
     # Stop and remove containers
+    # coolify-realtime is kept for upgrades from versions that still ran the separate realtime container
     for container in coolify coolify-db coolify-redis coolify-realtime; do
         if docker ps -a --format '{{.Names}}' | grep -q \"^\${container}\$\"; then
             log \"Stopping container: \${container}\"

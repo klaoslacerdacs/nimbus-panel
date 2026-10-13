@@ -3,6 +3,7 @@
 namespace App\Livewire\Server;
 
 use App\Models\CloudProviderToken;
+use App\Models\OciConnection;
 use App\Models\PrivateKey;
 use App\Models\Team;
 use Livewire\Component;
@@ -19,6 +20,8 @@ class Create extends Component
 
     public bool $has_hetzner_tokens = false;
 
+    public bool $has_oci_connections = false;
+
     public function mount(?string $selectedType = null, ?string $selectedTokenUuid = null): void
     {
         $this->selectedType = in_array($selectedType, ['hetzner', 'vultr', 'digital-ocean', 'manual'], true)
@@ -27,6 +30,8 @@ class Create extends Component
         $this->selectedTokenUuid = $this->selectedType && $this->selectedType !== 'manual' ? $selectedTokenUuid : null;
 
         $this->private_keys = PrivateKey::ownedByCurrentTeamCached();
+        $this->has_oci_connections = OciConnection::where('team_id', currentTeam()->id)->exists();
+
         if (! isCloud()) {
             $this->limit_reached = false;
 

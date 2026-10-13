@@ -4,6 +4,7 @@ namespace App\Livewire\Server;
 
 use App\Actions\Server\DeleteServer;
 use App\Jobs\DeleteResourceJob;
+use App\Jobs\OciStackDestroyJob;
 use App\Models\Server;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Livewire\Component;
@@ -19,6 +20,8 @@ class Delete extends Component
     public bool $delete_from_vultr = false;
 
     public bool $delete_from_digitalocean = false;
+
+    public bool $delete_from_oci = false;
 
     public bool $force_delete_resources = false;
 
@@ -41,6 +44,7 @@ class Delete extends Component
             $this->delete_from_hetzner = in_array('delete_from_hetzner', $selectedActions);
             $this->delete_from_vultr = in_array('delete_from_vultr', $selectedActions);
             $this->delete_from_digitalocean = in_array('delete_from_digitalocean', $selectedActions);
+            $this->delete_from_oci = in_array('delete_from_oci', $selectedActions);
             $this->force_delete_resources = in_array('force_delete_resources', $selectedActions);
         }
         try {
@@ -60,6 +64,12 @@ class Delete extends Component
                 foreach ($this->server->definedResources() as $resource) {
                     DeleteResourceJob::dispatch($resource);
                 }
+            }
+
+            $ociStack = $this->delete_from_oci ? $this->server->ociStack()->first() : null;
+            if ($ociStack && ! in_array($ociStack->status, ['destroying', 'destroyed'], true)) {
+                $ociStack->update(['status' => 'destroying', 'last_plan_summary' => 'Destroy queued.']);
+                OciStackDestroyJob::dispatch($ociStack);
             }
 
             $this->server->delete();
@@ -115,6 +125,14 @@ class Delete extends Component
                 'id' => 'delete_from_digitalocean',
                 'label' => 'Also delete droplet from DigitalOcean',
                 'default_warning' => 'The actual droplet on DigitalOcean will NOT be deleted.',
+            ];
+        }
+
+        if ($this->server->ociStack()->whereNotIn('status', ['destroying', 'destroyed'])->exists()) {
+            $checkboxes[] = [
+                'id' => 'delete_from_oci',
+                'label' => 'Also destroy OCI stack (Terraform destroy — removes VM and all OCI resources)',
+                'default_warning' => 'The OCI instance and resources will NOT be destroyed on Oracle Cloud.',
             ];
         }
 

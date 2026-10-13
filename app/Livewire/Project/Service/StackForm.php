@@ -2,6 +2,7 @@
 
 namespace App\Livewire\Project\Service;
 
+use App\Livewire\Project\Shared\EnvironmentVariable\All;
 use App\Models\Service;
 use App\Support\ValidationPatterns;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
@@ -26,7 +27,7 @@ class StackForm extends Component
 
     public ?string $description = null;
 
-    public string $dockerComposeRaw;
+    public ?string $dockerComposeRaw = null;
 
     public ?string $dockerCompose = null;
 
@@ -83,8 +84,9 @@ class StackForm extends Component
             // Sync FROM model (on load/refresh)
             $this->name = $this->service->name;
             $this->description = $this->service->description;
-            $this->dockerComposeRaw = $this->service->docker_compose_raw;
-            $this->dockerCompose = $this->service->docker_compose;
+            $canViewCompose = auth()->user()?->can('update', $this->service) ?? false;
+            $this->dockerComposeRaw = $canViewCompose ? $this->service->docker_compose_raw : null;
+            $this->dockerCompose = $canViewCompose ? $this->service->docker_compose : null;
             $this->connectToDockerNetwork = $this->service->connect_to_docker_network;
         }
     }
@@ -101,6 +103,7 @@ class StackForm extends Component
                 $rules = data_get($field, 'rules', 'nullable');
                 $isPassword = data_get($field, 'isPassword', false);
                 $customHelper = data_get($field, 'customHelper', false);
+                $sortOrder = data_get($field, 'sortOrder');
                 $this->fields->put($key, [
                     'serviceName' => $serviceName,
                     'key' => $key,
@@ -109,6 +112,7 @@ class StackForm extends Component
                     'isPassword' => $isPassword,
                     'rules' => $rules,
                     'customHelper' => $customHelper,
+                    'sortOrder' => $sortOrder,
                 ]);
 
                 $this->validationAttributes["fields.$key.value"] = $fieldKey;
@@ -116,7 +120,7 @@ class StackForm extends Component
         }
         $this->fields = $this->fields->groupBy('serviceName')->map(function ($group) {
             return $group->sortBy(function ($field) {
-                return data_get($field, 'isPassword') ? 1 : 0;
+                return data_get($field, 'sortOrder') ?? (data_get($field, 'isPassword') ? 1 : 0);
             })->mapWithKeys(function ($field) {
                 return [$field['key'] => $field];
             });
@@ -147,8 +151,9 @@ class StackForm extends Component
     {
         try {
             $this->authorize('update', $this->service);
-            $this->syncData(true);
-            $this->service->save();
+            $this->service->refresh()->update([
+                'connect_to_docker_network' => $this->connectToDockerNetwork,
+            ]);
             $this->dispatch('success', 'Service settings saved.');
         } catch (\Throwable $e) {
             return handleError($e, $this);
@@ -175,7 +180,8 @@ class StackForm extends Component
             $this->service->refresh();
             $this->service->saveComposeConfigs();
 
-            $this->dispatch('refreshEnvs');
+            $this->dispatch('refreshEnvs')->to(EditCompose::class);
+            $this->dispatch('refreshEnvs')->to(All::class);
             $this->dispatch('refreshServices');
             $notify && $this->dispatch('success', 'Service saved.');
         } catch (\Throwable $e) {
