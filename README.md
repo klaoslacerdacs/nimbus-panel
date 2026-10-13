@@ -1,175 +1,104 @@
 <div align="center">
 
-<img src="./public/coolify-logo.svg" alt="Coolify logo" width="120" />
+<img src="./public/coolify-logo.svg" alt="Nimbus Panel" width="120" />
 
-# Coolify
+# Nimbus Panel
 
-**An open-source platform to deploy applications, databases, and services on your own servers.**
+**Coolify com Oracle Cloud (OCI) e Cloudflare integrados — deploy de apps, bancos e serviços nos seus servidores, com a infraestrutura criada por Terraform.**
 
-Open source & free forever, backed by our [philosophy](https://coolify.io/philosophy).
-
-![Latest Release Version](https://img.shields.io/badge/dynamic/json?labelColor=grey&color=6366f1&label=Latest%20released%20version&url=https%3A%2F%2Fcdn.coollabs.io%2Fcoolify%2Fversions.json&query=coolify.v4.version&style=for-the-badge
-)
-
-[Website](https://coolify.io) · [Documentation](https://coolify.io/docs) · [Cloud](https://app.coolify.io) · [Discord](https://coollabs.io/discord) · [Community](https://github.com/coollabsio/coolify/discussions)
+Fork do [Coolify](https://github.com/coollabsio/coolify) mantido pela [Nimbus Network](https://nimbusnetwork.com.br). Licença Apache 2.0.
 
 </div>
 
-## What is Coolify?
+## O que é
 
-Coolify is an open-source and self-hostable alternative to Heroku, Netlify, and Vercel. It helps you manage servers, applications, and databases on your own hardware. You only need an SSH connection.
+O Nimbus Panel é o Coolify v4 (self-hosted, alternativa a Heroku/Netlify/Vercel) com uma camada para quem roda em **Oracle Cloud Infrastructure**:
 
-You can use a VPS, a bare-metal server, a Raspberry Pi, or any other server that accepts SSH connections. Coolify gives you the convenience of a cloud platform while you keep control of your infrastructure.
+- cria a VM na OCI pelo próprio painel (Terraform via OCI Resource Manager), já com Docker e chave SSH;
+- gerencia firewall (NSG) como código, com versões e rollback;
+- usa o OCI Monitoring como fonte de métricas;
+- conecta a conta Cloudflare por OAuth para túnel SSH e publicação de domínios sem abrir portas.
 
-Your configurations stay on your servers. If you stop using Coolify, your running resources continue to work and remain manageable.
+Tudo que o Coolify faz continua igual: deploy por Git (Nixpacks, Railpack, Dockerfile, Compose, imagem), mais de 300 serviços one-click, bancos gerenciados, backups, previews de PR, API, CLI e MCP.
 
-## What can Coolify do?
+## Instalação
 
-- **Deploy any application:** Build from GitHub, GitLab, Bitbucket, or Gitea with Nixpacks, Railpack, Dockerfile, Docker Compose, or a prebuilt Docker image.
-- **Run databases and services:** Deploy managed databases and more than 300 one-click services with persistent storage and generated credentials.
-- **Automate deployments:** Deploy on every Git push, create pull-request previews, call deployment webhooks, and roll back to retained application images.
-- **Manage networking:** Configure custom domains, automatic HTTPS certificates, reverse proxies, health checks, and container networks.
-- **Operate your infrastructure:** Manage multiple servers, inspect deployment and runtime logs, open container terminals, and monitor resource status.
-- **Protect your workloads:** Configure database and storage backups, scheduled tasks, environment variables, secrets, and notifications.
-- **Integrate with your workflow:** Manage resources through the dashboard, API, CLI, MCP, and team-based access controls.
-
-## Quick start
-
-Install Coolify on a supported server with one command:
+Em um servidor Linux limpo (Ubuntu/Debian/RHEL e derivados), como root:
 
 ```bash
-curl -fsSL https://cdn.coollabs.io/coolify/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/klaoslacerdacs/nimbus-panel/main/scripts/install.sh | bash
 ```
 
-Read the [installation guide](https://coolify.io/docs/installation) for requirements and detailed instructions. You can also review the [installation script](./scripts/install.sh) before you run it.
+O instalador é o mesmo do Coolify (instala Docker, cria `/data/coolify`, gera chaves e sobe os containers), mas baixa os arquivos **deste repositório** e roda a imagem **`ghcr.io/klaoslacerdacs/nimbus-panel`**. Ao terminar, abra `http://<ip-do-servidor>:8000` e crie o usuário admin.
 
-## Self-hosted or Cloud
+Variáveis opcionais (as do Coolify também valem, como `ROOT_USERNAME`, `ROOT_USER_EMAIL`, `ROOT_USER_PASSWORD`, `AUTOUPDATE`):
 
-| Self-hosted | Coolify Cloud |
-| --- | --- |
-| Install Coolify on your own server. | Use a Coolify instance that we maintain. |
-| Control and maintain the complete platform. | Get high availability and less maintenance. |
-| Free and open source. | Paid service with email notifications and additional support. |
+| Variável | Padrão | Uso |
+| --- | --- | --- |
+| `NIMBUS_REF` | `main` | Branch ou tag do repositório usada para baixar os arquivos |
+| `NIMBUS_IMAGE` | `ghcr.io/klaoslacerdacs/nimbus-panel` | Imagem do painel (sem tag) |
+| `REGISTRY_URL` | `docker.io` | Registry da imagem auxiliar `coollabsio/coolify-helper` |
 
-The recommended self-hosted setup uses one server for Coolify and one or more servers for deployed resources. If you do not want to maintain the Coolify server, use [Coolify Cloud](https://app.coolify.io). See [coolify.io](https://coolify.io) for current pricing.
+Exemplo fixando uma versão:
 
-## Community and support
+```bash
+curl -fsSL https://raw.githubusercontent.com/klaoslacerdacs/nimbus-panel/main/scripts/install.sh | NIMBUS_REF=v4.4.6 bash -s 4.4.6
+```
 
-- Read the [documentation](https://coolify.io/docs).
-- Join the community on [Discord](https://coollabs.io/discord).
-- Ask questions in [GitHub Discussions](https://github.com/coollabsio/coolify/discussions).
-- Read the [contribution guide](./CONTRIBUTING.md) before you submit a change.
-- Review the [code of conduct](./CODE_OF_CONDUCT.md).
-- Contact the team through the [support page](https://coolify.io/docs/contact).
+Para atualizar uma instalação existente, rode o instalador de novo (ele detecta a instalação e só atualiza arquivos e imagem).
 
-## Donations
-To stay completely free and open-source, with no feature behind the paywall and evolve the project, we need your help. If you like Coolify, please consider donating to help us fund the project's future development.
+## Diferenças em relação ao Coolify
 
-[coolify.io/sponsorships](https://coolify.io/sponsorships)
+### Oracle Cloud (OCI)
 
-Thank you so much!
+| Recurso | Onde | Como funciona |
+| --- | --- | --- |
+| **Conexões OCI** | Security → OCI Connections | Chave de API (PEM criptografado no banco) ou **Instance Principal** quando o painel roda numa VM OCI (só para instance admin no team root). Cliente REST nativo em PHP com assinatura HTTP, retry e paginação — sem SDK Python. |
+| **Criar servidor na OCI** | Servers → Add → Oracle Cloud | Wizard escolhe região, compartment, shape (inclusive Ampere A1), imagem, rede nova ou existente e volume. Cria um stack no **OCI Resource Manager** e roda *plan → apply*. Quando a VM sobe, o painel espera o SSH e valida o servidor sozinho. |
+| **Terraform Jobs** | Security → Terraform Jobs | Histórico de cada plan/apply/destroy com status, duração, log do Terraform e link para o console OCI. |
+| **Destroy com histórico** | Apagar servidor → "Also destroy OCI stack" | `terraform destroy` pelo Resource Manager; o stack fica como `destroyed` no histórico em vez de sumir. |
+| **Firewall como código** | Servidor → aba OCI → Firewall | Regras do NSG são recursos Terraform. Toda mudança é *plan → apply* versionado; dá para restaurar qualquer versão. Um plan que destruiria/recriaria recursos aborta o apply. |
+| **Firewall Policies** | Security → Firewall Policies | Conjuntos de regras compartilhados entre várias VMs (ex.: "web 80/443"). Também anexa NSGs criados direto no console OCI. Limite de 120 regras por NSG respeitado. |
+| **VMs importadas** | Servidor → aba OCI | Para VMs que não foram criadas pelo wizard: edição direta do NSG, criar/anexar/desanexar vários NSGs. |
+| **Métricas OCI Monitoring** | Servidor → Metrics | Com "OCI Monitoring" selecionado, CPU/memória/disco/rede vêm do OCI Monitoring e o Sentinel é desligado (sem alertas falsos). |
+| **OCIR** | Server → Docker Registries | Provider "Oracle Cloud (OCIR)" preenche host e usuário `<namespace>/<user>` a partir da conexão. |
+| **MCP** | Servidor MCP do painel | Tools `list_oci_connections`, `list_oci_stacks`, `get_oci_server`, `oci_instance_action` (start/stop/reboot com confirmação). |
 
-### Huge Sponsors
+Recursos OCI criados pelo painel recebem tags; nada é criado ou destruído na OCI sem *plan* antes.
 
-* [CubePath](https://cubepath.com/coolify) - Premium dedicated servers and cloud VPS hosting
-* [Context.dev](https://www.context.dev/) - Web scraping API for AI agents
-* [Ginernet](https://ginernet.com/) - Hosting powerful servers in Spain
-* [SerpAPI](https://serpapi.com) - Google Search API — Scrape Google and other search engines from our fast, easy, and complete API.
-* [MVPS](https://www.mvps.net) - Cheap VPS servers at the highest possible quality
-* [ScreenshotOne](https://screenshotone.com) - Screenshot API for devs
-* [PrivateAlps](https://privatealps.net) - Cloud Services Provider, VPS, servers infrastructure for people who care about privacy and control
-* [Seibert Group](https://seibert.link/coolifysoftware) - Boost productivity company-wide with AI agents like Claude Code
-* [Contabo](https://contabo.com/en/coolify-vps/) - Cloud VPS & dedicated servers at unbeatable prices
+### Cloudflare
 
-### Big Sponsors
+| Recurso | Onde | Como funciona |
+| --- | --- | --- |
+| **Login com Cloudflare (OAuth)** | Settings → Cloudflare (admin da instância) e Security → Cloudflare (por time) | Authorization Code + PKCE com o OAuth client da sua conta. Tokens criptografados por time, renovados automaticamente quando o Cloudflare emite refresh token. Sem colar API tokens. |
+| **SSH pelo túnel** | Servidor → Cloudflare Tunnel → "Fix SSH through the tunnel automatically" | Publica `ssh-<servidor>.<seu domínio>` → `ssh://localhost:22` no túnel, cria o CNAME, espera o DNS público e **só troca o acesso depois que o SSH pelo túnel funciona** (senão mantém o IP direto). |
+| **Publicar domínios pelo túnel** | App/Service → Domains → "Publish through Cloudflare Tunnel" | Escolhe nome + domínio da conta; o domínio entra no app e é roteado no túnel para o Traefik (`https://localhost:443` com `noTLSVerify` + SNI, ou `http://localhost:80`). Inclui a porta interna exigida pelo template (ex.: Chaskiq `:3000`). Não precisa abrir 80/443. |
 
-* [Vanaways](https://www.vanaways.co.uk) - New vans for sale and lease across the UK
-* [Cloudways](https://www.cloudways.com/en/?id=2125302) - Managed cloud hosting platform by DigitalOcean
-* [ByteBase](https://www.bytebase.com) - Database CI/CD and Security at Scale
-* [Ramnode](https://ramnode.com/) - High Performance Cloud VPS Hosting
-* [23M](https://23m.com) - Your experts for high-availability hosting solutions!
-* [Macarne](https://macarne.com) - Best IP Transit & Carrier Ethernet Solutions for Simplified Network Connectivity
-* [Hetzner](http://htznr.li/CoolifyXHetzner) - Server, cloud, hosting, and data center solutions
-* [Logto](https://logto.io) - The better identity infrastructure for developers
-* [Supadata](https://supadata.ai/) - Scrape YouTube, web, and files. Get AI-ready, clean data for your next project. 
-* [Tolgee](https://tolgee.io) - The open source localization platform
-* [Best Consultant](https://bc.direct) - Your trusted technology consulting partner
-* [ArcJet](https://arcjet.com) - Advanced web security and performance solutions
-* [SupaGuide](https://supa.guide) - Your comprehensive guide to Supabase
-* [CodeRabbit](https://coderabbit.ai) - Cut Code Review Time & Bugs in Half
-* [Convex](https://convex.link/coolify.io) - Convex is the open-source reactive database for web app developers.
-* [GoldenVM](https://billing.goldenvm.com) - Premium virtual machine hosting solutions
-* [Comit International](https://comit.international) - New York Times award–winning contractor!
-* [Compai](https://www.trycomp.ai) - The open source compliance automation platform that does everything you need to get compliant, fast. Open source alternative to Drata & Vanta.
-* [Tigris](https://www.tigrisdata.com) - Modern S3 Alternative
-* [Blacksmith](https://blacksmith.sh) - Infrastructure automation platform
-* [JobsCollider](https://jobscollider.com/remote-jobs) - 30,000+ remote jobs for developers
-* [Darweb](https://darweb.nl/?ref=coolify.io&utm_source=coolify.io) - Design. Develop. Deliver. Specialized in 3D CPQ Solutions for eCommerce.
-* [Hostinger](https://www.hostinger.com/vps/coolify-hosting) - Web hosting and VPS solutions
-* [Mobb](https://vibe.mobb.ai/) - Secure Your AI-Generated Code to Unlock Dev Productivity
-* [Ubicloud](https://www.ubicloud.com) - Open source cloud infrastructure platform
-* [PFGLabs](https://pfglabs.com) - Build Real Projects with Golang
-* [JuxtDigital](https://juxtdigital.com) - Digital PR & AI Authority Building Agency
-* [SaasyKit](https://saasykit.com) - Complete SaaS starter kit for developers
-* [American Cloud](https://americancloud.com) - US-based cloud infrastructure services
-* [Greptile](https://www.greptile.com) - The AI Code Reviewer
-* [VPSDime](https://vpsdime.com/) - Cheap VPS Hosting - 4GB for $5/month
-* [dataforest Cloud](https://cloud.dataforest.net/en) - Deploy cloud servers as seeds independently in seconds. Enterprise hardware, premium network, 100% made in Germany.
-* [ISHosting](https://ishosting.com/) - Hosting and VPS solutions
-* [QuickSrv](https://quicksrv.io/) - Fast and reliable server hosting
-* [NodePlus.ai](https://nodeplus.ai/) - AI that reads every system your business runs on
+Scopes padrão do OAuth client: `account-settings.read zone.read dns.read dns.write argotunnel.write` (editáveis em Settings → Cloudflare).
 
-### Small Sponsors
+### Atualizações
 
-<a href="https://serverside.com/?utm_source=coolify.io"><img width="60px" alt="Serverside" src="https://cdn.coollabs.io/sponsors/serverside.svg"/></a>
-<a href="https://darkvps.pro"><img width="60px" alt="DarkVPS" src="https://cdn.coollabs.io/sponsors/darkvps.png"/></a>
-<a href="https://www.opensourcealternatives.to"><img width="60px" alt="Open Source Alternatives" src="https://cdn.coollabs.io/sponsors/opensourcealternatives.png"/></a>
-<a href="https://onserva.com/"><img width="60px" alt="Onserva" src="https://onserva.com/icon.svg"/></a>
-<a href="https://www.movavi.com/mac.html?utm_source=coolify.io"><img width="60px" alt="Movavi" src="https://cdn.coollabs.io/sponsors/movavi.png"/></a>
-<a href="https://usefoil.com/"><img width="60px" alt="ABXY" src="https://usefoil.com/favicon.svg"/></a>
-<a href="https://www.launchfa.st/?utm_source=coolify.io"><img width="60px" alt="LaunchFast Boilerplates" src="https://github.com/LaunchFast-Boilerplates.png"/></a>
-<a href="https://www.netrouting.com/?utm_source=coolify.io"><img width="60px" alt="Netrouting" src="https://github.com/netroutingcom.png"/></a>
-<a href="https://github.com/mindedtech"><img width="60px" alt="MindEd Tech" src="https://github.com/mindedtech.png"/></a>
-<a href="https://youstable.com/?utm_source=coolify.io"><img width="60px" alt="YouStable" src="https://github.com/youstable.png"/></a>
-<a href="https://transcript.lol/?utm_source=coolify.io"><img width="60px" alt="Transcript LOL" src="https://transcript.lol/logo.png"/></a>
-<a href="https://www.autom.dev/?utm_source=coolify.io"><img width="60px" alt="Autom" src="https://cdn.coollabs.io/sponsors/autom.png"/></a>
-<a href="https://www.huntapi.com/?utm_source=coolify.io"><img width="60px" alt="HuntAPI" src="https://cdn.coollabs.io/sponsors/huntapi.png"/></a>
-<a href="https://ultraservers.com/?utm_source=coolify.io"><img width="60px" alt="ULTRASERVERS" src="https://github.com/ULTRASERVERS.png"/></a>
-<a href="https://vibetone.com/?utm_source=coolify.io"><img width="60px" alt="VibeTone" src="https://github.com/vibetonefm.png"/></a>
-<a href="https://www.piloterr.com/?utm_source=coolify.io"><img width="60px" alt="Piloterr" src="https://cdn.coollabs.io/sponsors/piloterr.svg"/></a>
-<a href="https://yoxel.com/?utm_source=coolify.io"><img width="60px" alt="Alexey Panteleev" src="https://github.com/aspantel.png"/></a>
-<a href="https://summyt.app?utm_source=coolify.io"><img width="60px" alt="SummYT - YouTube Summarizer" src="https://summyt.app/logo.svg"/></a>
-<a href="https://open-elements.com/?utm_source=coolify.io"><img width="60px" alt="OpenElements" src="https://github.com/OpenElements.png"/></a>
-<a href="https://xaman.app/?utm_source=coolify.io"><img width="60px" alt="Xaman" src="https://github.com/XamanApp.png"/></a>
-<a href="https://monadical.com/?utm_source=coolify.io"><img width="60px" alt="Monadical" src="https://github.com/Monadical-SAS.png"/></a>
-<a href="https://maas.engineering/?utm_source=coolify.io"><img width="60px" alt="Magic as a Service" src="https://github.com/magicasaservice.png"/></a>
-<a href="https://fivemanage.com?utm_source=coolify.io"><img width="60px" alt="FiveManage" src="https://cdn.coollabs.io/sponsors/fivemanage.jpg"/></a>
-<a href="https://cryptojobslist.com/?utm_source=coolify.io"><img width="60px" alt="Crypto Jobs List" src="https://github.com/cryptojobslist.png"/></a>
-<a href="https://serpapi.com/?utm_source=coolify.io"><img width="60px" alt="SerpAPI" src="https://github.com/serpapi.png"/></a>
-<a href="https://typebot.io/?utm_source=coolify.io"><img width="60px" alt="typebot" src="https://cdn.bsky.app/img/avatar/plain/did:plc:gwxcta3pccyim4z5vuultdqx/bafkreig23hci7e2qpdxicsshnuzujbcbcgmydxhbybkewszdezhdodv42m@jpeg"/></a>
-<a href="https://360creators.com/?utm_source=coolify.io"><img width="60px" alt="360Creators" src="https://opencollective-production.s3.us-west-1.amazonaws.com/account-avatar/503e0953-bff7-4296-b4cc-5e36d40eecc0/icon-360creators.png"/></a>
-<a href="https://capgo.app/?utm_source=coolify.io"><img width="60px" alt="Cap-go" src="https://github.com/cap-go.png"/></a>
-<a href="https://cirun.io/?utm_source=coolify.io"><img width="60px" alt="Cirun" src="https://cdn.coollabs.io/sponsors/cirun-logo.png"/></a>
-<a href="https://github.com/puls-digital-group"><img width="60px" alt="Puls Digital Group" src="https://github.com/puls-digital-group.png"/></a>
-<a href="https://github.com/jonathanprl"><img width="60px" alt="Jonathan Pereira" src="https://github.com/jonathanprl.png"/></a>
-<a href="https://outboundgateway.com/"><img width="60px" alt="OutboundGateway" src="https://github.com/OutboundGateway.png"/></a>
-<a href="https://github.com/t4dt"><img width="60px" alt="T4DT GmbH" src="https://github.com/t4dt.png"/></a>
-<a href="https://internetgarden.co/?utm_source=coolify.io"><img width="60px" alt="Internet Garden" src="https://cdn.coollabs.io/sponsors/internetgarden.ico"/></a>
-<a href="https://evercam.io/?utm_source=coolify.io"><img width="60px" alt="Evercam" src="https://github.com/evercam.png"/></a>
-<a href="https://web3.career/?utm_source=coolify.io"><img width="60px" alt="Web3 Jobs" src="https://cdn.coollabs.io/sponsors/web3jobs.png"/></a>
-<a href="https://linkdr.com?utm_source=coolify.io"><img width="60px" alt="LinkDr" src="https://cdn.coollabs.io/sponsors/linkdr.svg"/></a>
-<a href="https://arvensis.systems/?utm_source=coolify.io"><img width="60px" alt="Arvensis Systems" src="https://cdn.coollabs.io/sponsors/arvensis.png"/></a>
-<a href="https://www.reshot.ai/?utm_source=coolify.io"><img width="60px" alt="Reshot" src="https://cdn.coollabs.io/sponsors/reshotai.png"/></a>
-<a href="https://www.runpod.io/?utm_source=coolify.io"><img width="60px" alt="RunPod" src="https://cdn.coollabs.io/sponsors/runpod.svg"/></a>
-<a href="http://gravitywiz.com/?utm_source=coolify.io"><img width="60px" alt="Gravity Wiz" src="https://github.com/gravitywiz.png"/></a>
-<a href="https://www.uxwizz.com/?utm_source=coolify.io"><img width="60px" alt="UXWizz" src="https://github.com/UXWizz.png"/></a>
-<a href="https://codext.link/coolify-io?utm_source=coolify.io"><img width="60px" alt="Codext" src="https://cdn.coollabs.io/sponsors/codext.jpg"/></a>
-<a href="https://interviewpal.com"><img width="60px" alt="InterviewPal" src="https://cdn.coollabs.io/sponsors/interviewpal.svg"/></a>
-<a href="https://decidable.no?utm_source=coolify.io"><img width="60px" alt="Decidable" src="https://github.com/Decidable-AS.png"/></a>
-<a href="https://hosthavoc.com"><img width="60px" alt="Host Havoc" src="https://cdn.coollabs.io/sponsors/hosthavoc.png"/></a>
+- O **auto-update do Coolify está desligado**: o painel não baixa versões do CDN da Coollabs nem mostra o botão *Upgrade*, para nunca trocar o Nimbus pela imagem oficial. (Reative só com `NIMBUS_ALLOW_UPSTREAM_UPDATE=true`, não recomendado.)
+- Novidades do Coolify entram por **merge revisado** neste repositório (base atual: Coolify **v4.4.6**). A imagem é publicada pelo workflow [`nimbus-image.yml`](.github/workflows/nimbus-image.yml) em `ghcr.io/klaoslacerdacs/nimbus-panel`.
 
-...and many more at [GitHub Sponsors](https://github.com/sponsors/coollabsio)
+### Outras mudanças
 
-## Star History
+- Aviso de "mudanças pendentes" com botão **Restart now** depois de salvar configurações de serviços (ex.: domínio).
+- Cloudflare Tunnel: setup não trava mais para usuários SSH não-root e nunca deixa o painel sem acesso ao servidor ao ativar o túnel.
 
-[![Star History Chart](https://api.star-history.com/svg?repos=coollabsio/coolify&type=Date)](https://star-history.com/#coollabsio/coolify&Date)
+## Desenvolvimento
+
+Mesma stack do Coolify: Laravel 12 (estrutura Laravel 10), Livewire 3, Tailwind v4, Pest 4, PHP 8.4+.
+
+```bash
+./scripts/dev start                 # sobe a instância de dev (http://localhost:8000)
+./scripts/dev exec php artisan migrate
+php artisan test --compact          # testes
+vendor/bin/pint --dirty             # formatação
+```
+
+Guia completo em [`DEVELOPMENT.md`](DEVELOPMENT.md) e convenções para agentes em [`AGENTS.md`](AGENTS.md). O template Terraform das VMs fica em [`terraform/templates/environment`](terraform/templates/environment) (o `.zip` ao lado é o que vai para o Resource Manager e precisa ser regenerado quando os `.tf` mudam).
+
+## Créditos e licença
+
+Baseado no [Coolify](https://github.com/coollabsio/coolify) de [coollabs](https://coollabs.io) — todo o crédito da plataforma base é deles; considere [apoiar o projeto original](https://coolify.io/sponsorships). Distribuído sob a [Apache License 2.0](LICENSE). O Nimbus Panel não é afiliado nem endossado pela coollabs.

@@ -9,13 +9,16 @@
 ## DOCKER_ADDRESS_POOL_SIZE - Custom Docker address pool size (default: 24)
 ## DOCKER_POOL_FORCE_OVERRIDE - Force override Docker address pool configuration (default: false)
 ## AUTOUPDATE - Set to "false" to disable auto-updates
-## REGISTRY_URL - Custom registry URL for Docker images (default: docker.io)
+## REGISTRY_URL - Custom registry URL for the Coolify helper image (default: docker.io)
+## NIMBUS_REF - Git branch or tag of klaoslacerdacs/nimbus-panel to install from (default: main)
+## NIMBUS_IMAGE - Nimbus Panel image without tag (default: ghcr.io/klaoslacerdacs/nimbus-panel)
 
 set -e # Exit immediately if a command exits with a non-zero status
 ## $1 could be empty, so we need to disable this check
 #set -u # Treat unset variables as an error and exit
 set -o pipefail # Cause a pipeline to return the status of the last command that exited with a non-zero status
-CDN="https://cdn.coollabs.io/coolify"
+# Nimbus: files come from the fork on GitHub, not the Coolify CDN, so an install never gets upstream Coolify.
+CDN="https://raw.githubusercontent.com/klaoslacerdacs/nimbus-panel/${NIMBUS_REF:-main}"
 DATE=$(date +"%Y%m%d-%H%M%S")
 
 OS_TYPE=$(grep -w "ID" /etc/os-release | cut -d "=" -f 2 | tr -d '"')
@@ -251,9 +254,9 @@ printf '  %sLog file: %s%s\n\n' "$C_DIM" "$INSTALLATION_LOG_WITH_DATE" "$C_RESET
 UI_INSTALL_STARTED=$(ui_now)
 
 echo "=========================================="
-echo "   Coolify Installation - ${DATE}"
+echo "   Nimbus Panel Installation - ${DATE}"
 echo "=========================================="
-echo "Source code: https://github.com/coollabsio/coolify/blob/v4.x/scripts/install.sh"
+echo "Source code: https://github.com/klaoslacerdacs/nimbus-panel/blob/main/scripts/install.sh"
 
 # Predefined root user
 ROOT_USERNAME=${ROOT_USERNAME:-}
@@ -957,7 +960,7 @@ fi
 
 step_done
 
-step_start "Downloading required files from CDN"
+step_start "Downloading required files from GitHub"
 log "Downloading configuration files in parallel..."
 
 # Download files in parallel for faster installation
@@ -967,9 +970,9 @@ curl -fsSL -L $CDN/docker-compose.prod.yml -o /data/coolify/source/docker-compos
 PID2=$!
 curl -fsSL -L $CDN/.env.production -o /data/coolify/source/.env.production &
 PID3=$!
-curl -fsSL -L $CDN/upgrade.sh -o /data/coolify/source/upgrade.sh &
+curl -fsSL -L $CDN/scripts/upgrade.sh -o /data/coolify/source/upgrade.sh &
 PID4=$!
-curl -fsSL -L $CDN/upgrade-postgres.sh -o /data/coolify/source/upgrade-postgres.sh &
+curl -fsSL -L $CDN/scripts/upgrade-postgres.sh -o /data/coolify/source/upgrade-postgres.sh &
 PID5=$!
 
 # Wait for all downloads to complete and check for errors

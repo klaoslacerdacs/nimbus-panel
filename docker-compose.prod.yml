@@ -7,7 +7,7 @@ services:
     profiles:
       - legacy-soketi
   coolify:
-    image: "${REGISTRY_URL:-docker.io}/coollabsio/coolify:${LATEST_IMAGE:-latest}"
+    image: "${NIMBUS_IMAGE:-ghcr.io/klaoslacerdacs/nimbus-panel}:${LATEST_IMAGE:-latest}"
     volumes:
       - type: bind
         source: /data/coolify/source/.env

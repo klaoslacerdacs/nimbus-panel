@@ -1,0 +1,99 @@
+name: Nimbus Panel Image
+
+# Builds the image the installer runs (docker-compose.prod.yml → ghcr.io/<owner>/nimbus-panel).
+# Tags: latest + config version (what versions.json advertises) from main, and the git tag for v* tags.
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+    paths-ignore: ['**.md', 'docs/**', 'tests/**', '.github/ISSUE_TEMPLATE/**']
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: nimbus-image-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  IMAGE: ghcr.io/${{ github.repository_owner }}/nimbus-panel
+
+jobs:
+  build:
+    if: github.repository != 'coollabsio/coolify'
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      matrix:
+        include:
+          - arch: amd64
+            platform: linux/amd64
+            runner: ubuntu-24.04
+          - arch: aarch64
+            platform: linux/arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      - name: Read version
+        id: version
+        run: echo "version=$(docker run --rm -v "$(pwd):/app" -w /app php:8.4-cli-alpine php bootstrap/getVersion.php)" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push (${{ matrix.arch }})
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/production/Dockerfile
+          platforms: ${{ matrix.platform }}
+          push: true
+          build-args: |
+            COOLIFY_VERSION=${{ steps.version.outputs.version }}
+          tags: ${{ env.IMAGE }}:build-${{ github.sha }}-${{ matrix.arch }}
+          cache-from: type=gha,scope=${{ matrix.arch }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.arch }}
+
+  publish:
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      packages: write
+    steps:
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish multi-arch tags
+        env:
+          VERSION: ${{ needs.build.outputs.version }}
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          if [ "$REF_TYPE" = "tag" ]; then
+            TAGS=("${REF_NAME#v}")
+          else
+            TAGS=("latest" "$VERSION" "sha-${GITHUB_SHA::12}")
+          fi
+          for TAG in "${TAGS[@]}"; do
+            docker buildx imagetools create -t "$IMAGE:$TAG" \
+              "$IMAGE:build-$GITHUB_SHA-amd64" \
+              "$IMAGE:build-$GITHUB_SHA-aarch64"
+          done

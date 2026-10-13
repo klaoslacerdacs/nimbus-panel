@@ -34,7 +34,7 @@ it('downloads postgres upgrade script during install and upgrade without auto-ru
 
     expect($script)
         ->toContain('upgrade-postgres.sh')
-        ->toContain('curl -fsSL -L $CDN/upgrade-postgres.sh -o /data/coolify/source/upgrade-postgres.sh')
+        ->toMatch('#curl -fsSL -L \$CDN/(scripts/)?upgrade-postgres\.sh -o /data/coolify/source/upgrade-postgres\.sh#') // Nimbus stable scripts download from the repo's scripts/ folder
         ->toContain('chmod +x')
         ->not->toContain('bash /data/coolify/source/upgrade-postgres.sh');
 })->with([
