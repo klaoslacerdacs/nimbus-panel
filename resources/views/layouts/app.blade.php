@@ -52,7 +52,7 @@
                 this.applyCollapsed(true);
             }
         }" @open-global-search.window="open = false" @page-width-changed.window="pageWidth = $event.detail" x-on:livewire:navigated.window="applyCollapsed(true)"
-            :style="{ '--sidebar-w': collapsed ? '4rem' : '14rem' }" x-cloak
+            :style="{ '--sidebar-w': collapsed ? '4rem' : '16rem' }" x-cloak
             class="dark:text-inherit text-black">
             {{-- ============ DESKTOP TOP BAR ============ --}}
             <header
@@ -62,16 +62,17 @@
                 class="hidden lg:flex fixed top-0 inset-x-0 z-50 h-12 items-center bg-white/95 dark:bg-panel/95 backdrop-blur">
                 {{-- Brand (width tracks sidebar) --}}
                 <div class="flex items-center gap-2 h-full shrink-0 border-r border-neutral-200 dark:border-white/[0.06] transition-[width] duration-200"
-                    :class="collapsed ? 'w-16 justify-center px-0' : 'w-56 px-4'">
-                    <div class="flex shrink-0 items-baseline gap-1.5 min-w-0">
-                        <a href="/" {{ wireNavigate() }} title="Coolify"
+                    :class="collapsed ? 'w-16 justify-center px-0' : 'w-64 px-4'">
+                    <div class="flex shrink-0 items-center gap-1.5 min-w-0">
+                        <a href="/" {{ wireNavigate() }} title="Coolify by Nimbus · Oracle Partner"
                             class="flex items-center hover:opacity-80 transition-opacity">
                             <img x-show="collapsed" x-cloak src="/coolify-logo.svg" alt="Coolify"
                                 class="size-5" />
-                            <span x-show="!collapsed" class="text-[15px] font-semibold tracking-tight text-black dark:text-white">Coolify</span>
+                            <x-nimbus-brand x-show="!collapsed">
+                                {{-- not <x-version>: it renders an <a>, invalid inside this link --}}
+                                <span class="text-[10px] font-medium text-neutral-400 dark:text-fg-faint">v{{ config('constants.coolify.version') }}</span>
+                            </x-nimbus-brand>
                         </a>
-                        <x-version x-show="!collapsed"
-                            class="!text-[10.5px] font-medium text-neutral-400 dark:text-fg-faint !opacity-100 hover:!opacity-100 dark:hover:text-fg hover:text-black" />
                     </div>
                     @if (isInstanceAdmin() && !isCloud())
                         <div x-show="!collapsed" class="ml-auto shrink-0">
@@ -141,7 +142,7 @@
 
             {{-- ============ DESKTOP SIDEBAR (below top bar) ============ --}}
             <div class="hidden lg:fixed lg:top-12 lg:bottom-0 lg:left-0 lg:z-40 lg:flex lg:flex-col min-w-0"
-                :class="[collapsed ? 'lg:w-16' : 'lg:w-56', sidebarReady ? 'transition-[width] duration-200' : '']">
+                :class="[collapsed ? 'lg:w-16' : 'lg:w-64', sidebarReady ? 'transition-[width] duration-200' : '']">
                 <div class="flex grow min-w-0 flex-col overflow-visible">
                     <x-navbar deployments-indicator />
                 </div>
@@ -152,8 +153,8 @@
                 class="sticky top-0 z-40 flex items-center justify-between px-4 py-3 gap-x-4 sm:px-6 lg:hidden bg-white/95 dark:bg-panel/95 backdrop-blur-sm border-b border-neutral-200/60 dark:border-white/[0.06]">
                 <div class="flex min-w-0 flex-1 items-center gap-2.5">
                     <a href="/"
-                        class="flex size-8 shrink-0 items-center justify-center rounded-lg bg-neutral-100 transition-opacity hover:opacity-80 dark:bg-white/[0.06]">
-                        <img src="/coolify-logo.svg" alt="Coolify" class="w-[18px] h-[18px]" />
+                        class="flex h-8 px-2 shrink-0 items-center justify-center rounded-lg bg-neutral-100 transition-opacity hover:opacity-80 dark:bg-white/[0.06]">
+                        <img src="/nimbus-logo.png" alt="Nimbus Network" class="h-4 w-auto invert dark:invert-0" />
                     </a>
                     <div class="min-w-0" x-data="{ collapsed: false }">
                         <livewire:switch-team />
@@ -183,7 +184,7 @@
             {{-- ============ MAIN ============ --}}
             <main
                 class="min-h-screen bg-neutral-50 dark:bg-app px-5 py-6 sm:px-8 lg:px-10 lg:pt-[calc(3rem+1.75rem)] lg:pb-10"
-                :class="[collapsed ? 'lg:ml-16' : 'lg:ml-56', sidebarReady ? 'transition-[margin] duration-200' : '']">
+                :class="[collapsed ? 'lg:ml-16' : 'lg:ml-64', sidebarReady ? 'transition-[margin] duration-200' : '']">
                 <div class="w-full" :class="pageWidth === 'centered' ? 'mx-auto max-w-[1400px]' : 'max-w-none'">
                     {{ $slot }}
                 </div>

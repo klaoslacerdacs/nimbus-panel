@@ -7,6 +7,7 @@
     <div class="auth-shell-content">
         <div class="auth-card">
             <div class="auth-card-heading">
+                <x-nimbus-brand size="lg" class="mb-4" />
                 <h1>{{ $title }}</h1>
                 @if ($description)
                     <p>{{ $description }}</p>
