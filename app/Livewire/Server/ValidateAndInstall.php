@@ -49,6 +49,7 @@ class ValidateAndInstall extends Component
         'validatePrerequisites',
         'validateDockerEngine',
         'validateDockerVersion',
+        'activityFailed' => 'installationFailed',
         'refresh' => '$refresh',
     ];
 
@@ -83,6 +84,16 @@ class ValidateAndInstall extends Component
         if (! $this->ask) {
             $this->dispatch('validateConnection');
         }
+    }
+
+    public function installationFailed(): void
+    {
+        $this->authorize('update', $this->server);
+
+        $this->error = "{$this->installationStep} installation failed. Check the logs above, fix the server and retry.";
+        $this->server->update([
+            'validation_logs' => $this->error,
+        ]);
     }
 
     public function startValidatingAfterAsking()
