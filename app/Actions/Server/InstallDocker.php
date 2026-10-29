@@ -74,17 +74,8 @@ class InstallDocker
                 $command = $command->merge([$this->getGenericDockerInstallCommand()]);
             }
 
-            $command = $command->merge([
-                "echo 'Configuring Docker Engine (merging existing configuration with the required)...'",
-                'test -s /etc/docker/daemon.json && cp /etc/docker/daemon.json "/etc/docker/daemon.json.original-$(date +"%Y%m%d-%H%M%S")"',
-                "test ! -s /etc/docker/daemon.json && echo '{$config}' | base64 -d | tee /etc/docker/daemon.json > /dev/null",
-                "echo '{$config}' | base64 -d | tee /etc/docker/daemon.json.coolify > /dev/null",
-                'jq . /etc/docker/daemon.json.coolify | tee /etc/docker/daemon.json.coolify.pretty > /dev/null',
-                'mv /etc/docker/daemon.json.coolify.pretty /etc/docker/daemon.json.coolify',
-                "jq -s '.[0] * .[1]' /etc/docker/daemon.json.coolify /etc/docker/daemon.json | tee /etc/docker/daemon.json.appended > /dev/null",
-                'mv /etc/docker/daemon.json.appended /etc/docker/daemon.json',
-                "echo 'Restarting Docker Engine...'",
-            ]);
+            $command = $command->merge(self::daemonConfigCommands($config));
+            $command = $command->merge(["echo 'Restarting Docker Engine...'"]);
             $command = $command->merge($this->getDockerServiceCommands($supported_os_type->contains('alpine')));
             if ($server->isSwarm()) {
                 $command = $command->merge([
@@ -101,6 +92,27 @@ class InstallDocker
 
             return remote_process($command, $server);
         }
+    }
+
+    /**
+     * Merge the required daemon.json settings into the server's existing file.
+     *
+     * @return list<string>
+     */
+    public static function daemonConfigCommands(string $base64Config): array
+    {
+        return [
+            "echo 'Configuring Docker Engine (merging existing configuration with the required)...'",
+            'test -s /etc/docker/daemon.json && cp /etc/docker/daemon.json "/etc/docker/daemon.json.original-$(date +"%Y%m%d-%H%M%S")"',
+            // "test ! -s X && write" exits 1 when the file exists; the non-root parser wraps it in
+            // "sudo bash -c" and that status aborts the "bash -se" session. "||" keeps it at 0.
+            "test -s /etc/docker/daemon.json || echo '{$base64Config}' | base64 -d | tee /etc/docker/daemon.json > /dev/null",
+            "echo '{$base64Config}' | base64 -d | tee /etc/docker/daemon.json.coolify > /dev/null",
+            'jq . /etc/docker/daemon.json.coolify | tee /etc/docker/daemon.json.coolify.pretty > /dev/null',
+            'mv /etc/docker/daemon.json.coolify.pretty /etc/docker/daemon.json.coolify',
+            "jq -s '.[0] * .[1]' /etc/docker/daemon.json.coolify /etc/docker/daemon.json | tee /etc/docker/daemon.json.appended > /dev/null",
+            'mv /etc/docker/daemon.json.appended /etc/docker/daemon.json',
+        ];
     }
 
     private function getDebianDockerInstallCommand(): string
