@@ -122,6 +122,14 @@ class ActivityMonitor extends Component
         $exit_code = data_get($this->activity, 'properties.exitCode');
         if ($exit_code !== null) {
             $this->isPollingActive = false;
+            if ($exit_code !== 0) {
+                if (! self::$eventDispatched) {
+                    $this->dispatch('activityFailed', $this->eventData);
+                    self::$eventDispatched = true;
+                }
+
+                return;
+            }
             if ($exit_code === 0) {
                 if ($this->eventToDispatch !== null) {
                     if (str($this->eventToDispatch)->startsWith('App\\Events\\')) {

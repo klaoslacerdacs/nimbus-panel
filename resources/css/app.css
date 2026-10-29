@@ -1862,7 +1862,7 @@ html[data-theme="custom"] textarea:disabled {
     .application-settings-navigation {
         position: fixed;
         top: 3rem;
-        left: var(--sidebar-w, 14rem);
+        left: var(--sidebar-w, 16rem);
         width: calc(210px + 2.5rem);
         height: calc(100dvh - 3rem);
         overflow-x: hidden;
