@@ -118,6 +118,33 @@ it('refreshes an expiring token before calling the API', function (): void {
         ->and($connection->fresh()->refresh_token)->toBe('cf-refresh-token');
 });
 
+it('completes the login even when another request saved the session while the browser was at Cloudflare', function (): void {
+    $query = startCloudflareFlow();
+    session()->flush();
+    Http::fake([
+        CloudflareOAuth::TOKEN_URL => Http::response(['access_token' => 'at', 'refresh_token' => 'rt', 'expires_in' => 3600]),
+        'api.cloudflare.com/client/v4/accounts*' => Http::response(['result' => [['id' => 'acc123', 'name' => 'Nimbus']]]),
+    ]);
+
+    $this->get(route('cloudflare.callback', ['code' => 'the-code', 'state' => $query['state']]))
+        ->assertRedirect(route('security.cloudflare'))
+        ->assertSessionHas('success');
+
+    expect(CloudflareConnection::query()->where('team_id', $this->team->id)->exists())->toBeTrue();
+});
+
+it('rejects a callback for a state another user started', function (): void {
+    $query = startCloudflareFlow();
+    $other = User::factory()->create();
+    $this->team->members()->attach($other, ['role' => 'admin']);
+    $this->actingAs($other);
+
+    $this->get(route('cloudflare.callback', ['code' => 'the-code', 'state' => $query['state']]))
+        ->assertRedirect(route('security.cloudflare'))
+        ->assertSessionHas('error', fn (string $m): bool => str_contains($m, 'did not start here'));
+    expect(CloudflareConnection::query()->count())->toBe(0);
+});
+
 it('returns to the page that started the login, but only for local paths', function (string $return, string $expected): void {
     Http::fake([
         'dash.cloudflare.com/oauth2/token' => Http::response(['access_token' => 'at-1', 'expires_in' => 3600]),
@@ -217,6 +244,15 @@ it('explains the missing client scope when Cloudflare lands on the oauth error p
     $this->get('/oauth/error?error=invalid_scope&error_description=unknown+scope')
         ->assertRedirect(route('security.cloudflare'))
         ->assertSessionHas('error', fn (string $message): bool => str_contains($message, 'invalid_scope') && str_contains($message, 'account_api_tokens:create'));
+});
+
+it('returns to the page that started the login when Cloudflare lands on the oauth error page', function (): void {
+    InstanceSettings::get()->update(['cloudflare_oauth_client_id' => 'cf-client', 'cloudflare_oauth_client_secret' => 'cf-secret']);
+    $this->get(route('cloudflare.connect', ['return' => '/settings/cloudflare']))->assertRedirect();
+
+    $this->get('/oauth/error?error=invalid_scope')
+        ->assertRedirect('/settings/cloudflare')
+        ->assertSessionHas('error');
 });
 
 it('shows the expired login on the security page and offers to reconnect', function (): void {

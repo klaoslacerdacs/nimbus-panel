@@ -1,11 +1,13 @@
 <?php
 
 use App\Livewire\SettingsCloudflare;
+use App\Models\CloudflareConnection;
 use App\Models\InstanceSettings;
 use App\Models\Team;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Http;
 use Livewire\Livewire;
 
 uses(RefreshDatabase::class);
@@ -96,4 +98,62 @@ it('refuses the client secret pasted as the client ID', function (): void {
         ->set('clientId', 'cfoc_j5zCUSLFatADaqAyN3B55KbWN9oRKpqW')
         ->update(calls: [['method' => 'save', 'params' => [], 'path' => '']], updates: ['clientSecret' => 'ad1b5abc'])
         ->assertHasErrors(['clientId' => 'not_regex']);
+});
+
+it('says the Cloudflare login is OK when the connected account still answers', function (): void {
+    InstanceSettings::get()->update(['cloudflare_oauth_client_id' => 'cf-client', 'cloudflare_oauth_client_secret' => 'cf-secret']);
+    CloudflareConnection::factory()->create(['team_id' => 0]);
+    Http::fake(['api.cloudflare.com/client/v4/accounts/acc123' => Http::response(['result' => ['id' => 'acc123']])]);
+
+    Livewire::test(SettingsCloudflare::class)
+        ->assertSee('Reconnect')
+        ->assertSee('connected to')
+        ->call('reconnect')
+        ->assertNoRedirect()
+        ->assertDispatched('success', 'Cloudflare login OK: Nimbus Network.');
+});
+
+it('sends to the Cloudflare login when the connection expired, was revoked or does not exist', function (): void {
+    InstanceSettings::get()->update(['cloudflare_oauth_client_id' => 'cf-client', 'cloudflare_oauth_client_secret' => 'cf-secret']);
+    $login = route('cloudflare.connect', ['return' => '/settings/cloudflare']);
+
+    Livewire::test(SettingsCloudflare::class)->assertSee('not connected')->call('reconnect')->assertRedirect($login);
+
+    $connection = CloudflareConnection::factory()->create(['team_id' => 0, 'expires_at' => now()->subDay(), 'refresh_token' => null]);
+    Livewire::test(SettingsCloudflare::class)->assertSee('login expired')->call('reconnect')->assertRedirect($login);
+
+    $connection->update(['expires_at' => now()->addHour()]);
+    Http::fake(['api.cloudflare.com/client/v4/accounts/acc123' => Http::response(['errors' => [['message' => 'revoked']]], 401)]);
+    Livewire::test(SettingsCloudflare::class)->call('reconnect')->assertRedirect($login);
+});
+
+it('reports a Cloudflare outage instead of forcing a new login', function (): void {
+    InstanceSettings::get()->update(['cloudflare_oauth_client_id' => 'cf-client', 'cloudflare_oauth_client_secret' => 'cf-secret']);
+    CloudflareConnection::factory()->create(['team_id' => 0]);
+    Http::fake(['api.cloudflare.com/client/v4/accounts/acc123' => Http::response('', 503)]);
+
+    Livewire::test(SettingsCloudflare::class)
+        ->call('reconnect')
+        ->assertNoRedirect()
+        ->assertDispatched('error', fn (string $name, array $params) => str_contains(implode(' ', $params), '503'));
+});
+
+it('does not let an instance admin reconnect a team they only belong to', function (): void {
+    InstanceSettings::get()->update(['cloudflare_oauth_client_id' => 'cf-client', 'cloudflare_oauth_client_secret' => 'cf-secret']);
+    $other = Team::factory()->create();
+    $other->members()->attach($this->admin, ['role' => 'member']);
+    session(['currentTeam' => $other]);
+
+    Livewire::test(SettingsCloudflare::class)
+        ->assertDontSee('Reconnect')
+        ->call('reconnect')
+        ->assertForbidden();
+});
+
+it('hides Reconnect until the OAuth client is saved', function (): void {
+    Livewire::test(SettingsCloudflare::class)
+        ->assertDontSee('Reconnect')
+        ->call('reconnect')
+        ->assertNoRedirect()
+        ->assertDispatched('error');
 });

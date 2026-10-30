@@ -2,10 +2,12 @@
 
 namespace App\Livewire;
 
+use App\Models\CloudflareConnection;
 use App\Models\InstanceSettings;
 use App\Services\CloudflareOAuth;
 use Illuminate\Contracts\View\Factory;
 use Illuminate\Contracts\View\View;
+use Illuminate\Http\Client\RequestException;
 use Livewire\Component;
 
 /**
@@ -23,11 +25,18 @@ class SettingsCloudflare extends Component
     /** Write-only: never loaded from the database and cleared before every response. */
     public ?string $clientSecret = null;
 
+    public ?string $flashError = null;
+
+    public ?string $flashSuccess = null;
+
     public function mount()
     {
         if (! isInstanceAdmin()) {
             return redirect()->route('dashboard');
         }
+
+        $this->flashError = session('error');
+        $this->flashSuccess = session('success');
 
         $this->settings = instanceSettings();
         $this->clientId = $this->settings->cloudflare_oauth_client_id;
@@ -75,9 +84,54 @@ class SettingsCloudflare extends Component
         $this->dispatch('success', 'Cloudflare OAuth client removed.');
     }
 
+    /**
+     * Checks the Cloudflare login of the session team; when it is gone or cannot be refreshed, starts the
+     * OAuth login again and returns here.
+     */
+    public function reconnect(): mixed
+    {
+        abort_unless(isInstanceAdmin() && auth()->user()->isAdminOfTeam(currentTeam()->id), 403);
+        if (! app(CloudflareOAuth::class)->isConfigured()) {
+            $this->dispatch('error', 'Save the OAuth client first.');
+
+            return null;
+        }
+
+        $connection = $this->connection();
+        if ($connection && ! $connection->needsReconnect()) {
+            try {
+                $connection->api()->get("/accounts/{$connection->account_id}")->throw();
+                $this->dispatch('success', "Cloudflare login OK: {$connection->account_name}.");
+
+                return null;
+            } catch (RequestException $e) {
+                if (! in_array($e->response->status(), [401, 403], true)) {
+                    $this->dispatch('error', 'Cloudflare did not answer: HTTP '.$e->response->status().'. Try again later.');
+
+                    return null;
+                }
+                // The grant was revoked: log in again.
+            } catch (\Throwable $e) {
+                $this->dispatch('error', 'Cloudflare did not answer: '.$e->getMessage());
+
+                return null;
+            }
+        }
+
+        return redirect()->route('cloudflare.connect', ['return' => route('settings.cloudflare', absolute: false)]);
+    }
+
+    private function connection(): ?CloudflareConnection
+    {
+        return CloudflareConnection::query()->where('team_id', currentTeam()->id)->first();
+    }
+
     public function render(): Factory|View
     {
         return view('livewire.settings-cloudflare', [
+            'connection' => $this->connection(),
+            'teamName' => currentTeam()->name,
+            'canReconnect' => auth()->user()->isAdminOfTeam(currentTeam()->id),
             'callbackUrl' => url('/auth/cloudflare/callback'),
             'isConfigured' => app(CloudflareOAuth::class)->isConfigured(),
             'defaultScopes' => CloudflareOAuth::DEFAULT_SCOPES,

@@ -10,7 +10,32 @@
                     description="Lets teams connect their Cloudflare account once and create tunnels and DNS records without pasting tokens.">
                     <x-slot:actions>
                         <x-status-badge :label="$isConfigured ? 'Configured' : 'Not configured'" :type="$isConfigured ? 'success' : 'neutral'" />
+                        @if ($isConfigured && $canReconnect)
+                            <x-modal-confirmation title="Reconnect Cloudflare?" buttonTitle="Reconnect" submitAction="reconnect"
+                                :isHighlightedButton="$connection === null || $connection->needsReconnect()"
+                                :warningMessage="'Nothing is deleted. '.($connection
+                                    ? 'The login of '.e($connection->account_name).' for the team '.e($teamName).' is checked first: if it still works you only see a confirmation.'
+                                    : 'The team '.e($teamName).' has no Cloudflare login yet.')"
+                                :actions="[$connection ? 'Check the Cloudflare login of '.$connection->account_name : 'Open the Cloudflare login for the team '.$teamName, 'Log in to Cloudflare again only if the login is gone, then come back here']"
+                                :confirmWithText="false" :confirmWithPassword="false" step2ButtonText="Reconnect" />
+                        @endif
                     </x-slot:actions>
+
+                    @if ($flashError)
+                        <p class="mb-3 text-sm text-error">{{ $flashError }}</p>
+                    @elseif ($flashSuccess)
+                        <p class="mb-3 text-sm text-success">{{ $flashSuccess }}</p>
+                    @endif
+                    @if ($connection)
+                        <p class="mb-3 text-sm text-neutral-600 dark:text-neutral-300">
+                            Team {{ $teamName }}: connected to <strong>{{ $connection->account_name }}</strong>
+                            @if ($connection->needsReconnect())
+                                <span class="text-warning">(login expired, reconnect)</span>
+                            @endif
+                        </p>
+                    @elseif ($isConfigured)
+                        <p class="mb-3 text-sm text-neutral-600 dark:text-neutral-300">Team {{ $teamName }}: not connected.</p>
+                    @endif
 
                     <div class="grid gap-4 lg:grid-cols-2">
                         <x-forms.input id="clientId" label="Client ID" required placeholder="From Manage Account → OAuth clients" />
