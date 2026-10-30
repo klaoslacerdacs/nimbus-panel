@@ -136,16 +136,16 @@ class CloudflareTunnelService
     }
 
     /**
-     * The hostname an existing tunnel already routes to SSH, so the form can offer it.
+     * The ingress rules of an existing tunnel, so the form can offer its SSH hostname or zone.
+     *
+     * @return list<array<string, mixed>>
      */
-    public function sshHostname(IntegrationToken $token, string $accountId, string $tunnelId): ?string
+    public function ingress(IntegrationToken $token, string $accountId, string $tunnelId): array
     {
         // Only prefills a field: a slow Cloudflare must not hold the tunnel picker.
         $ingress = $this->client($token)->timeout(5)->get(self::API_URL."/accounts/{$accountId}/cfd_tunnel/{$tunnelId}/configurations")->throw()->json('result.config.ingress');
-        $rule = collect(is_array($ingress) ? $ingress : [])->first(fn ($rule): bool => is_array($rule)
-            && filled($rule['hostname'] ?? null) && str_starts_with((string) ($rule['service'] ?? ''), 'ssh://'));
 
-        return $rule['hostname'] ?? null;
+        return array_values(array_filter(is_array($ingress) ? $ingress : [], 'is_array'));
     }
 
     /**

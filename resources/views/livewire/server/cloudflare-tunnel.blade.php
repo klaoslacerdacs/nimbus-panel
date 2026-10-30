@@ -133,7 +133,7 @@
                                         :options="$tunnelTokens->map(fn ($token) => ['value' => $token->id, 'label' => $token->name])->all()" />
                                     <x-forms.input id="api_ssh_domain" label="SSH hostname" required
                                         placeholder="ssh.example.com"
-                                        helper="A hostname in a zone of the selected token. Cloudflare routes it to SSH port {{ $server->port }} of this server. When you pick a tunnel that already routes a hostname to SSH, it is filled in here." />
+                                        helper="A hostname in a zone of the selected token. Cloudflare routes it to SSH port {{ $server->port }} of this server. Filled in from the SSH route of the chosen tunnel, or as ssh-{server}.{zone} using the zone of the tunnel's routes or of this panel's address; change it as you like." />
                                     <div class="lg:col-span-2" wire:loading.remove wire:target="cloudflare_integration_token_id">
                                         @if ($cloudflare_integration_token_id)
                                             <x-forms.listbox id="existing_tunnel_id" label="Tunnel" :live="true" :options="[

@@ -14,6 +14,7 @@ use App\Traits\ListensToTeamChannel;
 use Illuminate\Contracts\Cache\LockTimeoutException;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Livewire\Attributes\Locked;
 use Livewire\Attributes\On;
@@ -92,7 +93,8 @@ class CloudflareTunnel extends Component
     }
 
     /**
-     * Nimbus: fills the SSH hostname with the ssh:// route the chosen tunnel already has, unless the user typed one.
+     * Nimbus: fills the SSH hostname unless the user typed one: the ssh:// route the chosen tunnel already has,
+     * else ssh-<server>.<zone> with the zone of the tunnel's other routes or of this panel's own address.
      */
     private function suggestSshDomain(): void
     {
@@ -101,9 +103,26 @@ class CloudflareTunnel extends Component
         }
         $token = auth()->user()?->can('update', $this->server) ? $this->tunnelTokens()->firstWhere('id', $this->cloudflare_integration_token_id) : null;
         $tunnel = collect($this->existingTunnels)->firstWhere('id', $this->existing_tunnel_id);
-        $suggestion = $token && $tunnel ? rescue(fn () => app(CloudflareTunnelService::class)->sshHostname($token, $tunnel['account_id'], $tunnel['id']), report: false) : null;
+        $ingress = collect($token && $tunnel ? rescue(fn () => app(CloudflareTunnelService::class)->ingress($token, $tunnel['account_id'], $tunnel['id']), [], false) : []);
+        $sshRoute = $ingress->first(fn (array $rule): bool => str_starts_with((string) ($rule['service'] ?? ''), 'ssh://') && filled($rule['hostname'] ?? null));
 
+        $suggestion = $sshRoute['hostname'] ?? ($token ? $this->defaultSshDomain($token, $ingress->pluck('hostname')->filter()->all()) : null);
         $this->api_ssh_domain = $this->suggested_ssh_domain = (string) $suggestion;
+    }
+
+    /**
+     * @param  list<string>  $tunnelHostnames
+     */
+    private function defaultSshDomain(IntegrationToken $token, array $tunnelHostnames): ?string
+    {
+        // A DNS label is at most 63 chars: "ssh-" plus 59 of the slug.
+        $label = Str::of($this->server->name)->slug()->limit(59, '')->rtrim('-');
+        $zones = $token->dnsZones()->pluck('name')->sortByDesc(fn (string $zone): int => strlen($zone));
+        $zone = collect([...$tunnelHostnames, parse_url(instanceSettings()->fqdn ?: config('app.url'), PHP_URL_HOST)])->filter()
+            ->map(fn (string $host): ?string => $zones->first(fn (string $zone): bool => $host === $zone || str_ends_with($host, ".{$zone}")))
+            ->filter()->first();
+
+        return $label->isNotEmpty() && $zone ? "ssh-{$label}.{$zone}" : null;
     }
 
     /**

@@ -589,7 +589,7 @@ test('a tunnel that the token cannot see is refused', function () {
     Http::assertNotSent(fn (Request $request) => $request->method() === 'PUT');
 });
 
-test('the ssh hostname is filled in from the chosen tunnel, never over what the user typed', function () {
+test('the ssh hostname is filled in from the chosen tunnel or as ssh-server.zone, never over what the user typed', function () {
     fakeCloudflareTunnelApi([
         'GET '.CF_TUNNEL_API => Http::response(['success' => true, 'result' => [['id' => 'tun-9', 'name' => 'dashboard-tunnel'], ['id' => 'tun-2', 'name' => 'web-only'], ['id' => 'tun-5', 'name' => 'broken']]]),
         'GET '.CF_TUNNEL_API.'/tun-9/configurations' => Http::response(['success' => true, 'result' => ['config' => ['ingress' => [
@@ -597,23 +597,40 @@ test('the ssh hostname is filled in from the chosen tunnel, never over what the 
             ['hostname' => 'ssh.example.com', 'service' => 'ssh://localhost:22'],
             ['service' => 'http_status:404'],
         ]]]]),
-        'GET '.CF_TUNNEL_API.'/tun-2/configurations' => Http::response(['success' => true, 'result' => ['config' => ['ingress' => [['service' => 'http_status:404']]]]]),
+        'GET '.CF_TUNNEL_API.'/tun-2/configurations' => Http::response(['success' => true, 'result' => ['config' => ['ingress' => [['hostname' => 'www.other.test', 'service' => 'http://localhost:80'], ['service' => 'http_status:404']]]]]),
         'GET '.CF_TUNNEL_API.'/tun-5/configurations' => Http::response(['success' => false, 'errors' => [['message' => 'Authentication error']]], 403),
     ]);
+    DnsProviderZone::factory()->for($this->token)->create(['provider_zone_id' => 'zone-2', 'name' => 'other.test', 'account_id' => 'acc-1']);
+    // Nested zone: the deepest zone that contains the hostname wins over example.com.
+    DnsProviderZone::factory()->for($this->token)->create(['provider_zone_id' => 'zone-3', 'name' => 'dev.example.com', 'account_id' => 'acc-1']);
+    $this->server->update(['name' => 'Proxmox Node 01']);
 
+    // No panel address in a zone of the token: a new tunnel gets no default.
     Livewire::test(CloudflareTunnel::class, ['server_uuid' => $this->server->uuid])
         ->set('cloudflare_integration_token_id', $this->token->id)
         ->assertSet('api_ssh_domain', '')
+        ->set('existing_tunnel_id', 'tun-2')
+        ->assertSet('api_ssh_domain', 'ssh-proxmox-node-01.other.test');
+
+    InstanceSettings::query()->update(['fqdn' => 'https://panel.dev.example.com']);
+    Once::flush();
+    Livewire::test(CloudflareTunnel::class, ['server_uuid' => $this->server->uuid])
+        ->set('cloudflare_integration_token_id', $this->token->id)
+        ->assertSet('api_ssh_domain', 'ssh-proxmox-node-01.dev.example.com')
         ->set('existing_tunnel_id', 'tun-9')
         ->assertSet('api_ssh_domain', 'ssh.example.com')
-        ->set('existing_tunnel_id', 'tun-2')
-        ->assertSet('api_ssh_domain', '')
         ->set('existing_tunnel_id', 'tun-5')
-        ->assertSet('api_ssh_domain', '')
+        ->assertSet('api_ssh_domain', 'ssh-proxmox-node-01.dev.example.com')
         ->assertHasNoErrors()
         ->set('api_ssh_domain', 'mine.example.com')
         ->set('existing_tunnel_id', 'tun-9')
         ->assertSet('api_ssh_domain', 'mine.example.com');
+
+    // A name without a usable label gives no default rather than an invalid hostname.
+    $this->server->update(['name' => '服务器']);
+    Livewire::test(CloudflareTunnel::class, ['server_uuid' => $this->server->uuid])
+        ->set('cloudflare_integration_token_id', $this->token->id)
+        ->assertSet('api_ssh_domain', '');
 });
 
 test('a member picking a tunnel never reads its configuration', function () {
