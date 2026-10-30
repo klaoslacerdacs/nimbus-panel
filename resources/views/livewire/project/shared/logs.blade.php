@@ -82,6 +82,48 @@
                     @endif
                 @endforeach
 
+                @if ($networkSummary !== [])
+                    @foreach ($servers as $serverModel)
+                        @if ($serverModel->isFunctional() && $serverModel->isProxyShouldRun() && $serverModel->proxy->get('status') !== 'running' && collect($networkSummary)->pluck('routes')->flatten(1)->isNotEmpty())
+                            <x-callout type="warning" title="Proxy not running">
+                                The domains below are served by the proxy of {{ $serverModel->name }}, which is {{ $serverModel->proxyType() ? ($serverModel->proxy->get('status') ?: 'stopped') : 'not configured' }}. Nothing answers on ports 80/443 (or the Cloudflare Tunnel origin) until it runs.
+                                <a href="{{ route('server.proxy', ['server_uuid' => $serverModel->uuid]) }}" class="underline">Open the proxy page</a>.
+                            </x-callout>
+                        @endif
+                    @endforeach
+                    <div class="overflow-x-auto rounded border border-neutral-200 dark:border-coolgray-200">
+                        <table class="w-full text-xs">
+                            <thead class="text-left text-neutral-500 dark:text-fg-dim">
+                                <tr>
+                                    <th class="px-3 py-2 font-medium">Container</th>
+                                    <th class="px-3 py-2 font-medium">Exposed ports</th>
+                                    <th class="px-3 py-2 font-medium">Published on host</th>
+                                    <th class="px-3 py-2 font-medium">Domains → container port</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach ($networkSummary as $entry)
+                                    <tr class="border-t border-neutral-200 dark:border-coolgray-200 align-top">
+                                        <td class="px-3 py-2 font-mono">{{ $entry['container'] }}</td>
+                                        <td class="px-3 py-2 font-mono">{{ $entry['exposed'] !== [] ? implode(', ', $entry['exposed']) : '—' }}</td>
+                                        <td class="px-3 py-2 font-mono">{{ $entry['published'] !== [] ? implode(', ', $entry['published']) : 'none (proxy only)' }}</td>
+                                        <td class="px-3 py-2">
+                                            @forelse ($entry['routes'] as $route)
+                                                <div class="font-mono">{{ $route['url'] }} → {{ $route['port'] ?? 'port not set' }}</div>
+                                            @empty
+                                                <span class="text-neutral-500 dark:text-fg-dim">no domain</span>
+                                            @endforelse
+                                            @foreach ($entry['warnings'] as $warning)
+                                                <div class="text-warning">{{ $warning }}</div>
+                                            @endforeach
+                                        </td>
+                                    </tr>
+                                @endforeach
+                            </tbody>
+                        </table>
+                    </div>
+                @endif
+
                 @if ($selectedLogServer && $logSources !== [])
                     @if (count($logTargets['deployments']) > 1 || count($logTargets['services']) > 1)
                         <div class="flex shrink-0 flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end">

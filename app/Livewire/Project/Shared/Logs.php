@@ -14,6 +14,7 @@ use App\Models\StandalonePostgresql;
 use App\Models\StandaloneRedis;
 use App\Models\StandaloneSqlite;
 use App\Support\RuntimeLogTargets;
+use App\Support\RuntimeNetworkSummary;
 use App\Traits\ListensToTeamChannel;
 use Illuminate\Support\Collection;
 use Livewire\Attributes\Url;
@@ -255,6 +256,7 @@ class Logs extends Component
     {
         return view('livewire.project.shared.logs', [
             'targets' => $this->containersLoaded ? $this->selectionTargets() : null,
+            'networkSummary' => $this->containersLoaded ? RuntimeNetworkSummary::build($this->resource, collect($this->serverContainers)->flatten(1)->all()) : [],
         ]);
     }
 }
