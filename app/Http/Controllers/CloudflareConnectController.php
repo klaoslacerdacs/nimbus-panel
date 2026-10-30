@@ -90,6 +90,17 @@ class CloudflareConnectController extends Controller
     }
 
     /**
+     * Cloudflare redirects here, instead of the callback, when the authorization request itself is invalid,
+     * most often because the OAuth client was created without a scope the panel now asks for.
+     */
+    public function error(Request $request): RedirectResponse
+    {
+        $detail = collect([$request->query('error'), $request->query('error_description')])->filter(fn ($v) => is_string($v) && $v !== '')->implode(': ');
+
+        return $this->back('Cloudflare rejected the authorization'.($detail !== '' ? " ({$detail})" : '').'. The OAuth client must offer every requested scope: add '.CloudflareAccountTokens::SCOPE.' to it in the Cloudflare dashboard, or set the client scopes in Settings → Cloudflare.');
+    }
+
+    /**
      * Only a local path, so the callback can never become an open redirect.
      */
     private function safeReturnPath(mixed $path): ?string
