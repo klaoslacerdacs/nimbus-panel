@@ -60,3 +60,6 @@ ref
 # Terraform
 terraform/**/.terraform/
 terraform/**/.terraform.lock.hcl
+
+# Service parser template snapshots: generated locally by scripts/parser-snapshot-diff, not committed
+/tests/Fixtures/parser/expected/templates/

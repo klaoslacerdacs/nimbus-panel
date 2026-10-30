@@ -6,12 +6,20 @@ use App\Actions\Server\ConfigureCloudflared;
 use App\Actions\Server\PublishCloudflareTunnelHostname;
 use App\Actions\Server\UpdateCloudflared;
 use App\Events\CloudflareTunnelChanged;
+use App\Exceptions\DnsRecordConflictException;
 use App\Models\CloudflareConnection;
+use App\Models\IntegrationToken;
 use App\Models\Server;
+use App\Rules\ValidHostname;
 use App\Services\CloudflareOAuth;
+use App\Services\CloudflareTunnelService;
 use App\Traits\ListensToTeamChannel;
+use Illuminate\Contracts\Cache\LockTimeoutException;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Illuminate\Validation\Rule;
+use Livewire\Attributes\Locked;
+use Livewire\Attributes\On;
 use Livewire\Attributes\Validate;
 use Livewire\Component;
 
@@ -47,11 +55,35 @@ class CloudflareTunnel extends Component
         $this->cloudflareApiToken = null;
     }
 
+    public ?int $cloudflare_integration_token_id = null;
+
+    public string $api_ssh_domain = '';
+
+    /**
+     * An existing DNS record on the hostname that blocks the tunnel CNAME, waiting for the user to confirm its replacement.
+     *
+     * @var array{record_id: string, current: string, hostname: string, token_id: int}|null
+     */
+    #[Locked]
+    public ?array $dnsConflict = null;
+
     public function getListeners()
     {
         return $this->teamChannelListeners([
             'CloudflareTunnelConfigured' => 'refresh',
         ]);
+    }
+
+    /**
+     * Selects the token that the user just added from this page, when it is the only one that can manage tunnels.
+     */
+    #[On('integrationTokenAdded')]
+    public function selectAddedToken(): void
+    {
+        $tunnelTokens = $this->tunnelTokens();
+        if ($this->cloudflare_integration_token_id === null && $tunnelTokens->count() === 1) {
+            $this->cloudflare_integration_token_id = $tunnelTokens->first()->id;
+        }
     }
 
     public function refresh()
@@ -96,11 +128,18 @@ class CloudflareTunnel extends Component
         return once(fn (): array => $this->cloudflareConnection() ? rescue(fn () => $this->cloudflareConnection()->zoneNames(), [], report: false) : []);
     }
 
-    public function toggleCloudflareTunnels()
+    public function toggleCloudflareTunnels(CloudflareTunnelService $tunnels)
     {
         try {
             $this->authorize('update', $this->server);
-            remote_process(['docker rm -f coolify-cloudflared'], $this->server, false, 10);
+            $this->server->assertNotTransferredAway();
+            if (filled($this->server->settings->cloudflare_tunnel_id)) {
+                foreach ($tunnels->tearDown($this->server) as $warning) {
+                    $this->dispatch('warning', $warning);
+                }
+            } else {
+                remote_process(['docker rm -f coolify-cloudflared'], $this->server, false, 10);
+            }
             $this->isCloudflareTunnelsEnabled = false;
             $this->server->settings->is_cloudflare_tunnel = false;
             $this->server->settings->save();
@@ -120,6 +159,7 @@ class CloudflareTunnel extends Component
     {
         try {
             $this->authorize('update', $this->server);
+            $this->server->assertNotTransferredAway();
             if (filter_var($this->server->ip, FILTER_VALIDATE_IP)) {
                 $this->dispatch('error', 'Set the server address to the SSH hostname of the tunnel first.', 'Coolify connects through cloudflared access using that hostname; with an IP address every SSH connection would fail.');
 
@@ -147,6 +187,8 @@ class CloudflareTunnel extends Component
         );
         try {
             $this->authorize('update', $this->server);
+            $this->server->assertNotTransferredAway();
+            $this->ssh_domain = $this->normalizeSshDomain($this->ssh_domain);
             $activity = ConfigureCloudflared::run($this->server, $this->cloudflare_token, $this->ssh_domain);
             auditLog('ui.server.cloudflare_tunnel.configuration_started', $this->auditContext([
                 'ssh_domain' => (string) $this->ssh_domain,
@@ -184,10 +226,11 @@ class CloudflareTunnel extends Component
 
         try {
             $this->authorize('update', $this->server);
+            $this->server->assertNotTransferredAway();
             PublishCloudflareTunnelHostname::run($this->server, $this->fixSshHostname, $credential);
             auditLog('ui.server.cloudflare_tunnel.ssh_hostname_published', $this->auditContext(['ssh_domain' => $this->fixSshHostname]));
 
-            CloudflareTunnelChanged::dispatch(['server_id' => $this->server->id, 'ssh_domain' => $this->fixSshHostname]);
+            CloudflareTunnelChanged::dispatch(['server_id' => $this->server->id, 'team_id' => $this->server->team_id, 'ssh_domain' => $this->fixSshHostname]);
             $this->server->refresh();
             $this->isCloudflareTunnelsEnabled = (bool) $this->server->settings->is_cloudflare_tunnel;
 
@@ -218,13 +261,104 @@ class CloudflareTunnel extends Component
         return once(fn () => CloudflareConnection::query()->where('team_id', $this->server->team_id)->first());
     }
 
+    public function apiCloudflareConfig(CloudflareTunnelService $tunnels): void
+    {
+        $this->authorize('update', $this->server);
+        $this->api_ssh_domain = $this->normalizeSshDomain($this->api_ssh_domain);
+        $this->validate([
+            'cloudflare_integration_token_id' => ['required', 'integer'],
+            'api_ssh_domain' => ['required', 'string', new ValidHostname],
+        ], [], ['cloudflare_integration_token_id' => 'Cloudflare token', 'api_ssh_domain' => 'SSH hostname']);
+
+        $token = $this->tunnelTokens()->firstWhere('id', $this->cloudflare_integration_token_id);
+        if ($token === null) {
+            $this->addError('cloudflare_integration_token_id', 'Select a Cloudflare token of this server team with the Cloudflare Tunnel capability.');
+
+            return;
+        }
+
+        $this->dnsConflict = null;
+        $this->startApiSetup($tunnels, $token, $this->api_ssh_domain);
+    }
+
+    public function replaceDnsAndConfigure(CloudflareTunnelService $tunnels): void
+    {
+        $this->authorize('update', $this->server);
+        $conflict = $this->dnsConflict;
+        $token = $conflict === null ? null : $this->tunnelTokens()->firstWhere('id', $conflict['token_id']);
+        if ($conflict === null || $token === null) {
+            $this->dnsConflict = null;
+            $this->dispatch('error', 'The DNS conflict is no longer available. Set up the tunnel again.');
+
+            return;
+        }
+
+        $this->dnsConflict = null;
+        $this->startApiSetup($tunnels, $token, $conflict['hostname'], $conflict);
+    }
+
     public function render()
     {
+        $cloudflareTokens = IntegrationToken::query()
+            ->where('team_id', $this->server->team_id)
+            ->where('provider', 'cloudflare')
+            ->count();
+
         return view('livewire.server.cloudflare-tunnel', [
+            'tunnelTokens' => $this->tunnelTokens(),
+            'hasCloudflareTokens' => $cloudflareTokens > 0,
             'cloudflareConnection' => $this->cloudflareConnection(),
             'cloudflareOAuthConfigured' => app(CloudflareOAuth::class)->isConfigured(),
             'cloudflareZones' => $this->cloudflareZones(),
         ]);
+    }
+
+    /**
+     * Cloudflare tokens of the server's team (not the session team) that can manage tunnels.
+     *
+     * @return Collection<int, IntegrationToken>
+     */
+    private function tunnelTokens(): Collection
+    {
+        return IntegrationToken::query()
+            ->where('team_id', $this->server->team_id)
+            ->where('provider', 'cloudflare')
+            ->orderBy('name')
+            ->get()
+            ->filter(fn (IntegrationToken $token): bool => $token->hasCapability('tunnel'))
+            ->values();
+    }
+
+    /**
+     * @param  array{record_id: string, current: string}|null  $confirmedConflict
+     */
+    private function startApiSetup(CloudflareTunnelService $tunnels, IntegrationToken $token, string $hostname, ?array $confirmedConflict = null): void
+    {
+        try {
+            $activity = $tunnels->setUp($this->server, $token, $hostname, $confirmedConflict);
+            auditLog('ui.server.cloudflare_tunnel.api_configuration_started', $this->auditContext([
+                'ssh_domain' => $hostname,
+                'integration_token_uuid' => $token->uuid,
+            ]));
+            $this->dispatch('automated');
+            $this->dispatch('activityMonitor', $activity->id);
+        } catch (DnsRecordConflictException $e) {
+            $this->dnsConflict = [
+                'record_id' => $e->providerRecordId,
+                'current' => $e->currentValue,
+                'hostname' => $hostname,
+                'token_id' => $token->id,
+            ];
+        } catch (LockTimeoutException) {
+            $this->dispatch('error', "Another DNS change for {$hostname} is in progress. Try again in a few seconds.");
+        } catch (\Throwable $e) {
+            handleError($e, $this);
+        }
+    }
+
+    private function normalizeSshDomain(string $domain): string
+    {
+        return str($domain)->replace(['https://', 'http://'], '')->replace('/', '')->trim()->lower()->value();
     }
 
     /**

@@ -506,7 +506,7 @@ class ByOracleCloud extends Component
                 Team::ensureServerCapacity(currentTeam()->id);
                 $server = Server::create([
                     'name' => strtolower(trim($this->server_name)),
-                    'ip' => '', // ponytail: filled after Terraform apply
+                    'ip' => '',
                     'port' => 22,
                     'user' => $this->ssh_username,
                     'team_id' => currentTeam()->id,

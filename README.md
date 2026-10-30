@@ -79,7 +79,7 @@ Scopes padrão do OAuth client: `account-settings.read zone.read dns.read dns.wr
 ### Atualizações
 
 - O **auto-update do Coolify está desligado**: o painel não baixa versões do CDN da Coollabs nem mostra o botão *Upgrade*, para nunca trocar o Nimbus pela imagem oficial. (Reative só com `NIMBUS_ALLOW_UPSTREAM_UPDATE=true`, não recomendado.)
-- Novidades do Coolify entram por **merge revisado** neste repositório (base atual: Coolify **v4.4.6**). A imagem é publicada pelo workflow [`nimbus-image.yml`](.github/workflows/nimbus-image.yml) em `ghcr.io/klaoslacerdacs/nimbus-panel`.
+- Novidades do Coolify entram por **merge revisado** neste repositório (base atual: Coolify **v4.5.3**). A imagem é publicada pelo workflow [`nimbus-image.yml`](.github/workflows/nimbus-image.yml) em `ghcr.io/klaoslacerdacs/nimbus-panel`.
 
 ### Outras mudanças
 

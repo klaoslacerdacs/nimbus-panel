@@ -33,7 +33,6 @@ trait RunsOciStackJobs
         $record = $this->recordStackJob($stack, $operation, ['job_ocid' => $result['job_id'], 'status' => 'accepted', 'firewall_rules' => $firewallRules]);
         $status = $this->waitForStackJob($oci, $config, $record);
 
-        // ponytail: last 2000 log lines per job, kept until the stack record is removed; add pruning (e.g. >90 days) if the table grows
         $lines = $oci->getJobLogs($config, $record->job_ocid, 2000)['lines'] ?? [];
         $log = $lines === [] ? null : implode("\n", $lines);
         $record->update(['status' => $status, 'log' => $log, 'finished_at' => now()]);

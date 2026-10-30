@@ -134,7 +134,6 @@ class OciApiClient
             if (($status === 429 || $status >= 500) && $attempt < $maxRetries) {
                 $attempt++;
                 usleep(100000 * (2 ** $attempt)); // exponential backoff, ~0.2s→3.2s
-                // ponytail: sync backoff blocks FPM/Horizon — upgrade to Guzzle retry middleware when 429 storms appear
 
                 continue;
             }

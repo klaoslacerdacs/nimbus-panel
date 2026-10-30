@@ -18,7 +18,6 @@ class OciStackDestroyJob implements ShouldBeUnique, ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, RunsOciStackJobs, SerializesModels;
 
-    // ponytail: blocks a queue worker for up to 30min — move to a self-rescheduling job if throughput matters
     public int $timeout = 1900;
 
     public int $tries = 1;

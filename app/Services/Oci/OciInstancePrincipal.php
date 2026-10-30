@@ -18,8 +18,6 @@ class OciInstancePrincipal
     private const int REFRESH_MARGIN = 300;
 
     /**
-     * ponytail: per-process cache — every FPM/Horizon worker federates once per token lifetime (~20 min); move to a shared lock if auth throttles.
-     *
      * @var array{token: string, key: OpenSSLAsymmetricKey, expires: int, tenancy: string}|null
      */
     private static ?array $session = null;

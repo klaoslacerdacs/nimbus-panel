@@ -37,7 +37,7 @@ it('marks the tunnel configured on servers with a non-root SSH user', function (
         return Process::result(output: 'healthy');
     });
 
-    (new CloudflareTunnelChangedNotification)->handle(new CloudflareTunnelChanged(['server_id' => $this->server->id, 'ssh_domain' => 'ssh.example.com']));
+    (new CloudflareTunnelChangedNotification)->handle(new CloudflareTunnelChanged(['server_id' => $this->server->id, 'team_id' => $this->server->team_id, 'ssh_domain' => 'ssh.example.com']));
 
     expect(collect($commands)->first(fn ($c) => str_contains($c, 'coolify-cloudflared')))->toContain('sudo docker inspect')
         ->and((bool) $this->server->fresh()->settings->is_cloudflare_tunnel)->toBeTrue()
@@ -47,7 +47,7 @@ it('marks the tunnel configured on servers with a non-root SSH user', function (
 it('does not mark the tunnel when the container is not healthy', function (): void {
     Process::fake(fn () => Process::result(output: 'starting'));
 
-    (new CloudflareTunnelChangedNotification)->handle(new CloudflareTunnelChanged(['server_id' => $this->server->id, 'ssh_domain' => 'ssh.example.com']));
+    (new CloudflareTunnelChangedNotification)->handle(new CloudflareTunnelChanged(['server_id' => $this->server->id, 'team_id' => $this->server->team_id, 'ssh_domain' => 'ssh.example.com']));
 
     expect((bool) $this->server->fresh()->settings->is_cloudflare_tunnel)->toBeFalse()
         ->and($this->server->fresh()->ip)->toBe('203.0.113.20');
@@ -61,7 +61,7 @@ it('falls back to direct SSH when the server cannot be reached through the tunne
             : Process::result(output: '', errorOutput: 'websocket: bad handshake', exitCode: 255);
     });
 
-    (new CloudflareTunnelChangedNotification)->handle(new CloudflareTunnelChanged(['server_id' => $this->server->id, 'ssh_domain' => 'ssh.example.com']));
+    (new CloudflareTunnelChangedNotification)->handle(new CloudflareTunnelChanged(['server_id' => $this->server->id, 'team_id' => $this->server->team_id, 'ssh_domain' => 'ssh.example.com']));
 
     $server = $this->server->fresh();
     expect((bool) $server->settings->is_cloudflare_tunnel)->toBeFalse()
