@@ -29,7 +29,6 @@ class OciStackPolicy
      */
     public function create(User $user): bool
     {
-        // ponytail: isAdmin() requires currentTeam session; isAdminOfTeam covers both
         return $user->isAdminOfTeam((int) data_get(session('currentTeam'), 'id'));
     }
 

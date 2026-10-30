@@ -305,7 +305,7 @@ class Change extends Component
             $this->authorize('view', $this->github_app);
             $this->privateKeys = PrivateKey::ownedByCurrentTeamCached();
 
-            $this->applications = $this->github_app->applications;
+            $this->applications = $this->github_app->applications()->whereRelation('environment.project.team', 'id', currentTeam()->id)->get();
             $settings = instanceSettings();
 
             // Sync data from model to properties
@@ -372,14 +372,7 @@ class Change extends Component
 
     public function getGithubAppNameUpdatePath()
     {
-        $name = encodeGithubPathSegment($this->github_app->name);
-        $organization = normalizeGithubOrganization($this->github_app->organization);
-
-        if (filled($organization)) {
-            return rtrim($this->github_app->html_url, '/').'/organizations/'.encodeGithubPathSegment($organization)."/settings/apps/{$name}";
-        }
-
-        return rtrim($this->github_app->html_url, '/')."/settings/apps/{$name}";
+        return $this->github_app->settingsUrl();
     }
 
     public function updateGithubAppName()
@@ -416,10 +409,18 @@ class Change extends Component
         }
     }
 
+    private function authorizeSystemWideChange(): void
+    {
+        if ($this->isSystemWide && ! $this->github_app->is_system_wide) {
+            $this->authorize('makeSystemWide', GithubApp::class);
+        }
+    }
+
     public function submit()
     {
         try {
             $this->authorize('update', $this->github_app);
+            $this->authorizeSystemWideChange();
 
             $this->organization = normalizeGithubOrganization($this->organization);
             $this->apiUrl = filled($this->apiUrl)
@@ -430,6 +431,7 @@ class Change extends Component
             $this->syncData(true);
             $this->github_app->save();
             $this->isConnected = $this->github_app->isConnected();
+            $this->dispatch('name-changed', uuid: $this->github_app->uuid, name: $this->github_app->name);
             $this->dispatch('success', 'Github App updated.');
         } catch (ValidationException $e) {
             throw $e;
@@ -455,6 +457,7 @@ class Change extends Component
     {
         try {
             $this->authorize('update', $this->github_app);
+            $this->authorizeSystemWideChange();
 
             $this->validateOnly('privateKeyId');
 

@@ -14,25 +14,20 @@
                     because they would replace this panel with the original Coolify image.
                 </div>
             @else
-            <x-application.settings-section title="Update Coolify"
+            <x-application.settings-section title="Updates"
                 helper="Install the latest Coolify version manually when an update is available.">
-                <livewire:upgrade :full-button="true" key="settings-upgrade" />
-            </x-application.settings-section>
-
-            <x-application.settings-section title="Update checks">
                 <x-slot:actions>
+                    <livewire:upgrade :full-button="true" key="settings-upgrade" />
                     <x-forms.button type="button" wire:click="checkManually">
                         <x-reicon name="refresh" class="size-3.5" />
                         Check now
                     </x-forms.button>
                 </x-slot:actions>
-                <x-forms.input required id="update_check_frequency" label="Check frequency"
-                    placeholder="0 * * * *"
-                    helper="A cron expression or preset such as hourly, daily, weekly, monthly, or yearly." />
-            </x-application.settings-section>
-
-            <x-application.settings-section title="Automatic updates">
                 <div class="grid gap-4 lg:grid-cols-2">
+                    <x-forms.input required id="update_check_frequency" label="Check frequency"
+                        placeholder="0 * * * *"
+                        helper="A cron expression or preset such as hourly, daily, weekly, monthly, or yearly." />
+
                     @if (!is_null(config('constants.coolify.autoupdate', null)))
                         <x-forms.listbox disabled id="is_auto_update_enabled" label="Automatic updates"
                             helper="Controlled by the AUTOUPDATE environment variable." :options="[

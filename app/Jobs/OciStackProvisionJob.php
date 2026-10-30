@@ -21,7 +21,6 @@ class OciStackProvisionJob implements ShouldBeUnique, ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, RunsOciStackJobs, SerializesModels;
 
-    // ponytail: blocks queue worker for up to 30min — move to polling job if throughput matters
     // Plan (≤30m) + apply (≤30m) + SSH wait (≤5m).
     public int $timeout = 3900;
 

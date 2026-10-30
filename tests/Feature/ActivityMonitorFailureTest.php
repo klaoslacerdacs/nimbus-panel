@@ -20,10 +20,11 @@ beforeEach(function () {
 });
 
 test('a process that exits with an error dispatches activityFailed instead of the success event', function () {
+    $server = Server::factory()->create(['team_id' => $this->team->id]);
     $activity = Activity::create([
         'log_name' => 'default',
         'description' => 'install docker',
-        'properties' => ['team_id' => $this->team->id, 'exitCode' => 1, 'status' => 'error'],
+        'properties' => ['team_id' => $this->team->id, 'server_uuid' => $server->uuid, 'exitCode' => 1, 'status' => 'error'],
     ]);
 
     Livewire::test(ActivityMonitor::class)

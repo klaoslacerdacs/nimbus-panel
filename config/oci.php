@@ -8,9 +8,6 @@ return [
     'ssh_wait_seconds' => (int) env('OCI_SSH_WAIT_SECONDS', 300),
     'terraform_version' => env('OCI_TERRAFORM_VERSION', '1.5.x'),
 
-    // ponytail: per-service regional host templates are the calibration knob.
-    // If a service returns 404/NotAuthenticated, verify its host against the OCI
-    // SDK region template and fix it here (one line) — no code change needed.
     'endpoints' => [
         'iaas' => 'https://iaas.{region}.oraclecloud.com',
         'identity' => 'https://identity.{region}.oci.oraclecloud.com',

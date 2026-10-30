@@ -23,7 +23,6 @@ class OciMonitoringService
         $start = gmdate('Y-m-d\TH:i:s.000\Z', time() - 600);
         $dim = "resourceId = \"{$instanceId}\"";
 
-        // ponytail: 4 sequential POSTs — parallelize with Guzzle concurrent promises when latency matters
         // Ampere/ARM shapes don't report CpuUtilization in oci_compute (hypervisor); try agent first
         $cpu = $this->query($config, $compartmentId, $region, 'oci_computeagent', "CpuUtilization[5m]{{$dim}}.mean()", $start, $end)
             ?? $this->query($config, $compartmentId, $region, 'oci_compute', "CpuUtilization[5m]{{$dim}}.mean()", $start, $end);

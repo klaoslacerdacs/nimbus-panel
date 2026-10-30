@@ -61,7 +61,6 @@ class CloudflareConnectController extends Controller
             return $this->back('Could not connect to Cloudflare: '.$e->getMessage(), $pending['return_to'] ?? null);
         }
 
-        // ponytail: first account the token can see; add a picker when someone authorizes several accounts.
         $account = $accounts[0] ?? null;
         if (! $account) {
             return $this->back('The authorization did not grant access to any Cloudflare account. Check the client scopes.', $pending['return_to'] ?? null);
