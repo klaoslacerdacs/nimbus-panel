@@ -27,7 +27,14 @@
                     </div>
                     <x-forms.button type="submit" class="button-highlighted" wire:loading.attr="disabled">Publish</x-forms.button>
                 </div>
-                <p class="text-xs text-neutral-500 dark:text-fg-dim">https: Cloudflare → tunnel → Traefik on 443 (certificate not verified). http: tunnel → Traefik on 80; turn off "Redirect HTTP to HTTPS".</p>
+                <p class="text-xs text-neutral-500 dark:text-fg-dim">
+                    @if ($port = $this->cloudflareTunnelContainerPort())
+                        Reaches container port {{ $port }} through Traefik.
+                    @else
+                        No container port detected: set Ports Exposes or a per-domain port so Traefik knows where to route.
+                    @endif
+                    https: Cloudflare → tunnel → Traefik on 443 (certificate not verified). http: tunnel → Traefik on 80; turn off "Redirect HTTP to HTTPS". The DNS record is a CNAME to the tunnel; no A record is created.
+                </p>
             @elseif ($this->cloudflareTunnelConnection())
                 <p class="text-sm text-warning">The connected Cloudflare account has no active domains, or Cloudflare could not be reached.</p>
             @else

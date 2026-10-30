@@ -1,11 +1,14 @@
 <?php
 
+use App\Jobs\ConfigureDnsRecordJob;
 use App\Livewire\Project\Application\Domains;
 use App\Livewire\Project\Service\Domains as ServiceDomains;
 use App\Models\Application;
 use App\Models\CloudflareConnection;
+use App\Models\DnsProviderZone;
 use App\Models\Environment;
 use App\Models\InstanceSettings;
+use App\Models\IntegrationToken;
 use App\Models\PrivateKey;
 use App\Models\Project;
 use App\Models\Server;
@@ -154,8 +157,11 @@ test('members cannot publish a domain through the tunnel', function () {
         ->assertDontSee('Publish through Cloudflare Tunnel')
         ->set('cloudflareTunnelLabel', 'my-app')
         ->set('cloudflareTunnelZone', 'example.com')
-        ->call('publishThroughCloudflareTunnel');
+        ->call('publishThroughCloudflareTunnel')
+        ->assertForbidden();
 
+    // Not even the tunnel lookup on the server runs for a member.
+    Process::assertNothingRan();
     expect($application->fresh()->fqdn)->toBeNull()
         ->and(publishedIngress())->toBe([]);
 });
@@ -222,4 +228,35 @@ test('adds the container port a service template requires', function () {
     expect($web->fresh()->fqdn)->toContain('https://chat.example.com')
         ->and($web->fresh()->domain_port_overrides)->toMatchArray(['https://chat.example.com' => 3000])
         ->and(collect(publishedIngress())->firstWhere('hostname', 'chat.example.com'))->toMatchArray(['service' => 'https://localhost:443']);
+});
+
+test('publishes without the token A record, marks the DNS as handled by the tunnel, and shows the container port', function () {
+    $token = IntegrationToken::factory()->for($this->team)->create(['provider' => 'cloudflare', 'capabilities' => ['dns'], 'token' => 'cf-api-secret']);
+    DnsProviderZone::factory()->for($token)->create(['provider_zone_id' => 'zone1', 'name' => 'example.com', 'account_id' => 'acc123']);
+    $application = tunnelDomainsApplication();
+
+    Livewire::test(Domains::class, ['application' => $application])
+        ->assertSee('Reaches container port 3000')
+        ->set('cloudflareTunnelLabel', 'my-app')
+        ->set('cloudflareTunnelZone', 'example.com')
+        ->call('publishThroughCloudflareTunnel')
+        ->assertHasNoErrors()
+        ->assertDispatched('success')
+        ->assertSet('domainRows', fn (array $rows): bool => collect($rows)->firstWhere('url', 'https://my-app.example.com')['dns_message'] === 'DNS record created through the Cloudflare Tunnel.');
+
+    Queue::assertNotPushed(ConfigureDnsRecordJob::class);
+});
+
+test('refuses to publish before the server has the automated tunnel, saving nothing', function () {
+    Process::fake(['*TUNNEL_TOKEN*' => Process::result(output: '')]);
+    $application = tunnelDomainsApplication();
+
+    Livewire::test(Domains::class, ['application' => $application])
+        ->set('cloudflareTunnelLabel', 'my-app')
+        ->set('cloudflareTunnelZone', 'example.com')
+        ->call('publishThroughCloudflareTunnel')
+        ->assertDispatched('error', fn (string $event, array $params): bool => str_contains($params[0], 'Set up the Cloudflare Tunnel on'));
+
+    expect($application->fresh()->fqdn)->toBeNull()->and(publishedIngress())->toBe([]);
+    Queue::assertNotPushed(ConfigureDnsRecordJob::class);
 });

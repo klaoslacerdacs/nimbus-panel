@@ -191,6 +191,11 @@ class Domains extends Component
         return $this->application->destination?->server;
     }
 
+    public function cloudflareTunnelContainerPort(): ?int
+    {
+        return $this->isCompose && blank($this->newDomainService) ? null : $this->inheritedDomainInternalPort($this->newDomainService ?: null);
+    }
+
     protected function addCloudflareTunnelDomain(string $url): array
     {
         $service = $this->newDomainService;
