@@ -211,7 +211,9 @@ test('oci supervisor isolates the oci queue in every environment', function () {
     foreach (['true', 'false'] as $selfHosted) {
         foreach (horizonSupervisorsFor(loadHorizonConfigWithEnv(['SELF_HOSTED' => $selfHosted])) as $supervisors) {
             expect($supervisors['oci-provision']->queue)->toBe('oci')
-                ->and($supervisors['oci-provision']->maxProcesses)->toBe(2);
+                ->and($supervisors['oci-provision']->maxProcesses)->toBe(2)
+                ->and($supervisors['oci-provision']->memory)->toBe(256)
+                ->and($supervisors['oci-provision']->nice)->toBe(5);
         }
     }
 });

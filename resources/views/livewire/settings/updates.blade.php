@@ -59,7 +59,7 @@
                         ['value' => 'docker.io', 'label' => 'Docker Hub'],
                         ['value' => 'ghcr.io', 'label' => 'GitHub Container Registry'],
                     ]"
-                        helper="Switch registries if the current source is rate limited." />
+                        helper="Registry of the Coolify helper image used by upgrades and deployments. Switch if the current one is rate limited." />
                 </div>
             </x-application.settings-section>
         </form>

@@ -178,17 +178,16 @@ class CloudflareTunnel extends Component
 
     public function automatedCloudflareConfig()
     {
+        $this->authorize('update', $this->server);
+        $this->server->assertNotTransferredAway();
         // Coolify connects with `cloudflared access ssh --hostname <ssh_domain>`: it must be the public hostname
         // routed to ssh://localhost:22 in the tunnel, never an IP or a bare name.
-        $this->ssh_domain = trim(str_replace(['https://', 'http://', '/'], '', (string) $this->ssh_domain));
+        $this->ssh_domain = $this->normalizeSshDomain($this->ssh_domain);
         $this->validate(
             ['ssh_domain' => ['required', 'string', 'max:253', 'regex:/^(?=.{4,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/i']],
             ['ssh_domain.regex' => 'Enter the full SSH hostname published in the tunnel (e.g. ssh-server.example.com), routed to ssh://localhost:22.'],
         );
         try {
-            $this->authorize('update', $this->server);
-            $this->server->assertNotTransferredAway();
-            $this->ssh_domain = $this->normalizeSshDomain($this->ssh_domain);
             $activity = ConfigureCloudflared::run($this->server, $this->cloudflare_token, $this->ssh_domain);
             auditLog('ui.server.cloudflare_tunnel.configuration_started', $this->auditContext([
                 'ssh_domain' => (string) $this->ssh_domain,
@@ -205,6 +204,8 @@ class CloudflareTunnel extends Component
      */
     public function fixSshThroughTunnel()
     {
+        $this->authorize('update', $this->server);
+        $this->server->assertNotTransferredAway();
         if ($this->cloudflareZones() !== []) {
             $this->validate([
                 'fixSshLabel' => ['required', 'string', 'max:63', 'regex:/^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$/'],
@@ -214,7 +215,7 @@ class CloudflareTunnel extends Component
             ]);
             $this->fixSshHostname = "{$this->fixSshLabel}.{$this->fixSshZone}";
         }
-        $this->fixSshHostname = trim(str_replace(['https://', 'http://', '/'], '', strtolower($this->fixSshHostname)));
+        $this->fixSshHostname = $this->normalizeSshDomain($this->fixSshHostname);
         $this->validate([
             'fixSshHostname' => ['required', 'string', 'max:253', 'regex:/^(?=.{4,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/'],
             'cloudflareApiToken' => [$this->cloudflareConnection() ? 'nullable' : 'required', 'string', 'max:255'],
@@ -225,8 +226,6 @@ class CloudflareTunnel extends Component
         $credential = filled($this->cloudflareApiToken) ? $this->cloudflareApiToken : $this->cloudflareConnection();
 
         try {
-            $this->authorize('update', $this->server);
-            $this->server->assertNotTransferredAway();
             PublishCloudflareTunnelHostname::run($this->server, $this->fixSshHostname, $credential);
             auditLog('ui.server.cloudflare_tunnel.ssh_hostname_published', $this->auditContext(['ssh_domain' => $this->fixSshHostname]));
 
@@ -234,9 +233,11 @@ class CloudflareTunnel extends Component
             $this->server->refresh();
             $this->isCloudflareTunnelsEnabled = (bool) $this->server->settings->is_cloudflare_tunnel;
 
-            $this->isCloudflareTunnelsEnabled
-                ? $this->dispatch('success', "SSH now goes through the tunnel at {$this->fixSshHostname}.")
-                : $this->dispatch('error', 'The hostname was published, but SSH through it does not work yet. Coolify kept the direct address.', e((string) $this->server->validation_logs));
+            if ($this->isCloudflareTunnelsEnabled) {
+                $this->dispatch('success', "SSH now goes through the tunnel at {$this->fixSshHostname}.");
+            } else {
+                $this->dispatch('error', 'The hostname was published, but SSH through it does not work yet. Coolify kept the direct address.', e((string) $this->server->validation_logs));
+            }
         } catch (\Throwable $e) {
             return handleError($e, $this);
         }

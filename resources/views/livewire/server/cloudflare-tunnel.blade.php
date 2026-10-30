@@ -200,7 +200,7 @@
                                         helper="Your team's connected Cloudflare account is used. Paste a token only if this tunnel is in another account." />
                                 @elseif ($cloudflareOAuthConfigured)
                                     <div class="flex flex-col justify-end gap-1">
-                                        <a href="{{ route('cloudflare.connect', ['return' => '/server/'.$server->uuid.'/cloudflare-tunnel']) }}"
+                                        <a href="{{ route('cloudflare.connect', ['return' => route('server.cloudflare-tunnel', ['server_uuid' => $server->uuid], absolute: false)]) }}"
                                             class="button button-highlighted text-sm">Login with Cloudflare</a>
                                         <span class="text-xs text-neutral-500 dark:text-fg-dim">Authorize once for your team; no API token needed.</span>
                                     </div>

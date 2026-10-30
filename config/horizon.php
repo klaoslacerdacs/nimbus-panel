@@ -72,13 +72,13 @@ foreach ($cloudQueues as $queue => [$processesEnv, $defaultProcesses]) {
 }
 
 // Nimbus: OCI Resource Manager jobs poll for up to 30 min — isolated pool so they never starve deploys.
-$ociSupervisor = $workerOptions + [
+$ociSupervisor = array_merge($workerOptions, [
     'queue' => 'oci',
     'balance' => false,
     'maxProcesses' => 2,
     'memory' => 256,
     'nice' => 5,
-];
+]);
 
 return [
 
