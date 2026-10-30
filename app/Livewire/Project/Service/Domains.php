@@ -166,6 +166,11 @@ class Domains extends Component
         return $this->service->destination?->server;
     }
 
+    public function cloudflareTunnelContainerPort(): ?int
+    {
+        return $this->findServiceApp($this->newServiceApplicationId)?->getRequiredPort();
+    }
+
     protected function addCloudflareTunnelDomain(string $url): array
     {
         $applicationId = $this->newServiceApplicationId;

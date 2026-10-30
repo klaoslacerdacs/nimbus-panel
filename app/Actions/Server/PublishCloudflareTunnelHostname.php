@@ -28,11 +28,7 @@ class PublishCloudflareTunnelHostname
      */
     public function handle(Server $server, string $hostname, #[SensitiveParameter] CloudflareConnection|string $credential, string $service = 'ssh://localhost:22', array $originRequest = []): void
     {
-        ['a' => $accountId, 't' => $tunnelId] = $this->tunnelIdentity($server);
-
-        if ($credential instanceof CloudflareConnection && $credential->account_id !== $accountId) {
-            throw new RuntimeException("This server's tunnel belongs to another Cloudflare account than the one connected ({$credential->account_name}). Paste an API token of the tunnel's account instead.");
-        }
+        ['a' => $accountId, 't' => $tunnelId] = $this->tunnelIdentityFor($server, $credential);
         $api = $credential instanceof CloudflareConnection
             ? $credential->api()
             : Http::withToken($credential)->acceptJson()->timeout(20)->baseUrl(self::API);
@@ -83,6 +79,21 @@ class PublishCloudflareTunnelHostname
             }
             Sleep::for(3)->seconds();
         } while (now()->isBefore($deadline));
+    }
+
+    /**
+     * The server's tunnel, checked against the credential's account: a connection to another account cannot manage it.
+     *
+     * @return array{a: string, t: string}
+     */
+    public function tunnelIdentityFor(Server $server, #[SensitiveParameter] CloudflareConnection|string $credential): array
+    {
+        $identity = $this->tunnelIdentity($server);
+        if ($credential instanceof CloudflareConnection && $credential->account_id !== $identity['a']) {
+            throw new RuntimeException("This server's tunnel belongs to another Cloudflare account than the one connected ({$credential->account_name}). Paste an API token of the tunnel's account instead.");
+        }
+
+        return $identity;
     }
 
     /**

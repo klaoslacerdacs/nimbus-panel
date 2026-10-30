@@ -27,6 +27,9 @@ trait InteractsWithDnsProviders
 
     public bool $deleteManagedDns = true;
 
+    /** Nimbus: set while a domain is published through the Cloudflare Tunnel, whose CNAME replaces the token's A record. */
+    protected bool $dnsHandledByCloudflareTunnel = false;
+
     public function openDnsProviderModal(): void
     {
         $this->authorizeDnsProviderChange();
@@ -98,6 +101,9 @@ trait InteractsWithDnsProviders
     /** @param array<int, string> $urls */
     protected function configureDnsAfterDomainAdd(array $urls): bool
     {
+        if ($this->dnsHandledByCloudflareTunnel) {
+            return true;
+        }
         $hostnames = collect($urls)->map(fn (string $url) => parse_url($url, PHP_URL_HOST))
             ->filter(fn ($hostname) => is_string($hostname))->map(fn (string $hostname) => strtolower($hostname))
             ->unique()->values()->all();
