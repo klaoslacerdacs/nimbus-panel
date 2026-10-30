@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\CloudflareConnection;
 use App\Services\CloudflareAccountTokens;
 use App\Services\CloudflareOAuth;
+use Carbon\CarbonInterface;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
@@ -24,7 +25,8 @@ class CloudflareConnectController extends Controller
 
     public function redirect(Request $request, CloudflareOAuth $oauth): RedirectResponse
     {
-        $teamId = currentTeam()->id;
+        // Pages of a resource pass its team: the session team may have changed in another tab.
+        $teamId = is_numeric($request->query('team')) ? (int) $request->query('team') : currentTeam()->id;
         abort_unless($request->user()->isAdminOfTeam($teamId), 403);
 
         if (! $oauth->isConfigured()) {
@@ -93,6 +95,9 @@ class CloudflareConnectController extends Controller
         auditLog('ui.team.cloudflare.connected', ['team_id' => $pending['team_id'], 'account_id' => $account['id']]);
 
         $message = 'Cloudflare account '.($account['name'] ?? $account['id']).' connected.';
+        if (blank($tokens['refresh_token'])) {
+            $message .= ' Cloudflare issued no refresh token, so this login expires in '.($tokens['expires_at']?->diffForHumans(['syntax' => CarbonInterface::DIFF_ABSOLUTE]) ?? 'less than an hour').': add the refresh_token grant type to the OAuth client and reconnect.';
+        }
 
         return ($pending['return_to'] ?? null)
             ? redirect($pending['return_to'])->with('success', $message)

@@ -260,3 +260,11 @@ test('refuses to publish before the server has the automated tunnel, saving noth
     expect($application->fresh()->fqdn)->toBeNull()->and(publishedIngress())->toBe([]);
     Queue::assertNotPushed(ConfigureDnsRecordJob::class);
 });
+
+test('offers Reconnect when the Cloudflare login expired instead of blaming the account', function () {
+    CloudflareConnection::query()->update(['refresh_token' => null, 'expires_at' => now()->subHour()]);
+
+    Livewire::test(Domains::class, ['application' => tunnelDomainsApplication()])
+        ->assertSee('Reconnect Cloudflare')
+        ->assertDontSee('has no active domains');
+});
