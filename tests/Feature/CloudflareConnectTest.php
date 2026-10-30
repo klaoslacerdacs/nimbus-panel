@@ -218,3 +218,12 @@ it('explains the missing client scope when Cloudflare lands on the oauth error p
         ->assertRedirect(route('security.cloudflare'))
         ->assertSessionHas('error', fn (string $message): bool => str_contains($message, 'invalid_scope') && str_contains($message, 'account_api_tokens:create'));
 });
+
+it('shows the expired login on the security page and offers to reconnect', function (): void {
+    CloudflareConnection::factory()->create(['team_id' => $this->team->id, 'account_name' => 'Nimbus', 'expires_at' => now()->subDay(), 'refresh_token' => null]);
+
+    Livewire::test(Cloudflare::class)
+        ->assertSee('Login expired')
+        ->assertSee('cannot be refreshed')
+        ->assertSee('Reconnect');
+});
