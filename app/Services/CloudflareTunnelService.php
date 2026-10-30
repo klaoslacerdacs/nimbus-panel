@@ -12,6 +12,7 @@ use App\Models\Server;
 use App\Services\Dns\CloudflareDnsProvider;
 use App\Services\Dns\ManagedDnsRecordCleanup;
 use Illuminate\Contracts\Cache\LockTimeoutException;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Http;
@@ -65,7 +66,8 @@ class CloudflareTunnelService
         $sshRule = ['hostname' => $hostname, 'service' => "ssh://localhost:{$server->port}"];
         if ($existingTunnelId !== null) {
             // Nimbus: a tunnel the user already has keeps its other routes; only the SSH hostname is added.
-            [$tunnelId, $created] = [$existingTunnelId, false];
+            $tunnelId = $existingTunnelId;
+            $created = false;
             $tunnelToken = $this->tunnelToken($token, $accountId, $tunnelId);
             $current = $this->request($token, 'get', "/accounts/{$accountId}/cfd_tunnel/{$tunnelId}/configurations")->json('result.config.ingress');
             $ingress = self::ingressWith(is_array($current) ? $current : [], $sshRule);
@@ -106,11 +108,13 @@ class CloudflareTunnelService
     }
 
     /**
-     * Tunnels of the accounts the token can see, for the "use an existing tunnel" choice.
+     * Tunnels of the accounts the token can see, for the "use an existing tunnel" choice. A tunnel whose connectors
+     * run on another machine is flagged: Cloudflare balances every route over all connectors, so joining it from
+     * this server would send the other hostnames here too.
      *
-     * @return list<array{id: string, name: string, account_id: string, account_name: string|null}>
+     * @return list<array{id: string, name: string, account_id: string, account_name: string|null, active_elsewhere: bool}>
      */
-    public function listTunnels(IntegrationToken $token): array
+    public function listTunnels(IntegrationToken $token, ?string $serverIp = null): array
     {
         $accounts = fn () => $token->dnsZones()->whereNotNull('account_id')->get()->unique('account_id');
         $zones = $accounts();
@@ -119,13 +123,15 @@ class CloudflareTunnelService
             $zones = $accounts();
         }
 
-        return $zones->flatMap(fn (DnsProviderZone $zone) => collect($this->request($token, 'get', "/accounts/{$zone->account_id}/cfd_tunnel", ['is_deleted' => 'false'])->json('result', []))
+        return $zones->flatMap(fn (DnsProviderZone $zone) => collect($this->request($token, 'get', "/accounts/{$zone->account_id}/cfd_tunnel", ['is_deleted' => 'false', 'per_page' => 1000])->json('result', []))
             ->filter(fn ($tunnel): bool => is_array($tunnel) && is_string($tunnel['id'] ?? null))
             ->map(fn (array $tunnel): array => [
                 'id' => $tunnel['id'],
                 'name' => (string) ($tunnel['name'] ?? $tunnel['id']),
                 'account_id' => (string) $zone->account_id,
                 'account_name' => $zone->account_name,
+                'active_elsewhere' => in_array($tunnel['status'] ?? null, ['healthy', 'degraded'], true)
+                    && ! collect($tunnel['connections'] ?? [])->contains(fn ($connection): bool => is_array($connection) && ($connection['origin_ip'] ?? null) === $serverIp),
             ]))->sortBy('name')->values()->all();
     }
 
@@ -139,11 +145,24 @@ class CloudflareTunnelService
      */
     public static function ingressWith(array $current, array $sshRule): array
     {
-        $rules = collect($current)->filter(fn ($rule): bool => is_array($rule));
-        $catchAll = $rules->last(fn (array $rule): bool => blank($rule['hostname'] ?? null)) ?? ['service' => 'http_status:404'];
-        $others = $rules->filter(fn (array $rule): bool => filled($rule['hostname'] ?? null) && $rule['hostname'] !== $sshRule['hostname']);
+        $rules = array_values(array_filter($current, 'is_array'));
+        // Only the last hostname-less rule is the catch-all; path-only rules in the middle are kept.
+        $catchAll = $rules !== [] && blank(end($rules)['hostname'] ?? null) ? array_pop($rules) : ['service' => 'http_status:404'];
+        $others = array_filter($rules, fn (array $rule): bool => ($rule['hostname'] ?? null) !== $sshRule['hostname']);
 
-        return [$sshRule, ...$others->values()->all(), $catchAll];
+        return [$sshRule, ...array_values($others), $catchAll];
+    }
+
+    /**
+     * The ingress without the given hostnames (the catch-all stays), for leaving a tunnel the user owns.
+     *
+     * @param  list<array<string, mixed>>  $current
+     * @param  list<string>  $hostnames
+     * @return list<array<string, mixed>>
+     */
+    public static function ingressWithout(array $current, array $hostnames): array
+    {
+        return array_values(array_filter($current, fn ($rule): bool => is_array($rule) && ! in_array($rule['hostname'] ?? null, $hostnames, true)));
     }
 
     /**
@@ -177,11 +196,12 @@ class CloudflareTunnelService
         ], $server, false);
 
         // The DNS record does not depend on the connector, so it goes first while cloudflared stops.
+        $hostnames = $this->serverDnsRecords($server)->pluck('name')->all();
         array_push($warnings, ...$this->releaseDnsRecords($server));
 
         if ($token === null) {
             $warnings[] = "The Cloudflare token of the tunnel no longer exists. Delete the tunnel {$name} in Cloudflare.";
-        } elseif (($warning = $this->deleteStoppedTunnel($token, $settings->cloudflare_tunnel_account_id, $settings->cloudflare_tunnel_id, $name)) !== null) {
+        } elseif (($warning = $this->releaseTunnel($token, $settings->cloudflare_tunnel_account_id, $settings->cloudflare_tunnel_id, $name, $hostnames)) !== null) {
             $warnings[] = $warning;
         }
 
@@ -192,6 +212,39 @@ class CloudflareTunnelService
         ]);
 
         return $warnings;
+    }
+
+    /**
+     * A tunnel Coolify created is deleted; a tunnel the user chose only loses the SSH routes Coolify added.
+     *
+     * @param  list<string>  $hostnames
+     */
+    private function releaseTunnel(IntegrationToken $token, string $accountId, string $tunnelId, string $name, array $hostnames): ?string
+    {
+        $path = self::API_URL."/accounts/{$accountId}/cfd_tunnel/{$tunnelId}";
+
+        try {
+            $tunnel = $this->client($token)->get($path);
+            if ($tunnel->status() === 404 || $tunnel->json('result.name') === $name) {
+                return $this->deleteStoppedTunnel($token, $accountId, $tunnelId, $name);
+            }
+            if (! $tunnel->successful()) {
+                // Unknown owner: never delete blindly.
+                return "Cloudflare did not answer about the tunnel {$name}. Check it in Cloudflare.";
+            }
+            $ownName = (string) ($tunnel->json('result.name') ?? $tunnelId);
+            $current = $this->client($token)->get("{$path}/configurations")->json('result.config.ingress');
+            $response = $this->client($token)->put("{$path}/configurations", [
+                'config' => ['ingress' => self::ingressWithout(is_array($current) ? $current : [], $hostnames)],
+            ]);
+            if ($response->successful() && $response->json('success') !== false) {
+                return null;
+            }
+        } catch (Throwable) {
+            // Reported below.
+        }
+
+        return 'Remove '.implode(', ', $hostnames ?: ['the SSH hostname'])." from the tunnel {$ownName} in Cloudflare.";
     }
 
     /**
@@ -248,24 +301,20 @@ class CloudflareTunnelService
         ])->json('result', []))->first(fn ($tunnel): bool => is_array($tunnel) && ($tunnel['name'] ?? null) === $name);
 
         if (is_string($existing['id'] ?? null)) {
-            $tunnelId = $existing['id'];
-            $tunnelToken = $this->tunnelToken($token, $accountId, $tunnelId);
-            $created = false;
-        } else {
-            $response = $this->request($token, 'post', "/accounts/{$accountId}/cfd_tunnel", [
-                'name' => $name,
-                'config_src' => 'cloudflare',
-            ]);
-            $tunnelId = $response->json('result.id');
-            $tunnelToken = $response->json('result.token');
-            $created = true;
+            return [$existing['id'], $this->tunnelToken($token, $accountId, $existing['id']), false];
         }
 
+        $response = $this->request($token, 'post', "/accounts/{$accountId}/cfd_tunnel", [
+            'name' => $name,
+            'config_src' => 'cloudflare',
+        ]);
+        $tunnelId = $response->json('result.id');
+        $tunnelToken = $response->json('result.token');
         if (! is_string($tunnelId) || ! is_string($tunnelToken) || $tunnelToken === '') {
             throw new RuntimeException('Cloudflare returned no tunnel token.');
         }
 
-        return [$tunnelId, $tunnelToken, $created];
+        return [$tunnelId, $tunnelToken, true];
     }
 
     private function tunnelToken(IntegrationToken $token, string $accountId, string $tunnelId): string
@@ -299,13 +348,8 @@ class CloudflareTunnelService
     private function releaseDnsRecords(Server $server, ?string $except = null): array
     {
         $key = [$server->getMorphClass(), $server->getKey()];
-        $records = ManagedDnsRecord::query()
-            ->where('team_id', $server->team_id)
-            ->when($except !== null, fn ($query) => $query->where('name', '!=', $except))
-            ->whereHas('references', fn ($query) => $query->where('resource_type', $key[0])->where('resource_id', $key[1]))
-            ->get();
 
-        return $records->map(function (ManagedDnsRecord $record) use ($key): ?string {
+        return $this->serverDnsRecords($server, $except)->map(function (ManagedDnsRecord $record) use ($key): ?string {
             try {
                 $result = $this->cleanup->release($record, [$key], true);
             } catch (Throwable) {
@@ -318,6 +362,20 @@ class CloudflareTunnelService
                 default => null,
             };
         })->filter()->values()->all();
+    }
+
+    /**
+     * The managed DNS records that point at this server (except the given hostname).
+     *
+     * @return Collection<int, ManagedDnsRecord>
+     */
+    private function serverDnsRecords(Server $server, ?string $except = null): Collection
+    {
+        return ManagedDnsRecord::query()
+            ->where('team_id', $server->team_id)
+            ->when($except !== null, fn ($query) => $query->where('name', '!=', $except))
+            ->whereHas('references', fn ($query) => $query->where('resource_type', $server->getMorphClass())->where('resource_id', $server->getKey()))
+            ->get();
     }
 
     /**

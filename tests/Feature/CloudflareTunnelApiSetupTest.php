@@ -258,6 +258,7 @@ describe('disable', function () {
 
     test('deletes the tunnel and the owned dns record', function () {
         fakeCloudflareTunnelApi([
+            'GET '.CF_TUNNEL_API.'/tun-1' => Http::response(['success' => true, 'result' => ['id' => 'tun-1', 'name' => $this->tunnelName]]),
             'DELETE '.CF_TUNNEL_API.'/tun-1/connections' => Http::response(['success' => true, 'result' => null]),
             'DELETE '.CF_TUNNEL_API.'/tun-1' => Http::response(['success' => true, 'result' => ['id' => 'tun-1']]),
             'GET '.CF_TUNNEL_DNS.'/rec-1' => Http::response(['success' => true, 'result' => [
@@ -287,6 +288,7 @@ describe('disable', function () {
 
     test('still disables locally and warns when cloudflare fails', function () {
         fakeCloudflareTunnelApi([
+            'GET '.CF_TUNNEL_API.'/tun-1' => Http::response(['success' => true, 'result' => ['id' => 'tun-1', 'name' => $this->tunnelName]]),
             'DELETE '.CF_TUNNEL_API.'/tun-1/connections' => Http::response([], 500),
             'DELETE '.CF_TUNNEL_API.'/tun-1' => Http::response([], 500),
             'GET '.CF_TUNNEL_DNS.'/rec-1' => Http::response([], 500),
@@ -303,12 +305,59 @@ describe('disable', function () {
         Sleep::assertSleptTimes(4);
     });
 
+    test('never deletes a tunnel whose owner cannot be read', function () {
+        fakeCloudflareTunnelApi([
+            'GET '.CF_TUNNEL_API.'/tun-1' => Http::response([], 500),
+            'GET '.CF_TUNNEL_DNS.'/rec-1' => Http::response([], 500),
+        ]);
+
+        Livewire::test(CloudflareTunnel::class, ['server_uuid' => $this->server->uuid])
+            ->call('toggleCloudflareTunnels')
+            ->assertDispatched('warning', "Cloudflare did not answer about the tunnel {$this->tunnelName}. Check it in Cloudflare.");
+
+        Http::assertNotSent(fn (Request $request) => $request->method() === 'DELETE' && str_contains($request->url(), 'cfd_tunnel'));
+        expect($this->server->settings->fresh()->cloudflare_tunnel_id)->toBeNull();
+    });
+
+    test('leaves a tunnel the user chose and only removes the ssh route', function () {
+        fakeCloudflareTunnelApi([
+            'GET '.CF_TUNNEL_API.'/tun-1' => Http::response(['success' => true, 'result' => ['id' => 'tun-1', 'name' => 'dashboard-tunnel']]),
+            'GET '.CF_TUNNEL_API.'/tun-1/configurations' => Http::response(['success' => true, 'result' => ['config' => ['ingress' => [
+                ['hostname' => 'ssh.example.com', 'service' => 'ssh://localhost:2222'],
+                ['hostname' => 'app.example.com', 'service' => 'http://localhost:3000'],
+                ['service' => 'http_status:404'],
+            ]]]]),
+            'PUT '.CF_TUNNEL_API.'/tun-1/configurations' => Http::response(['success' => true, 'result' => []]),
+            'GET '.CF_TUNNEL_DNS.'/rec-1' => Http::response(['success' => true, 'result' => [
+                'id' => 'rec-1', 'type' => 'CNAME', 'name' => 'ssh.example.com', 'content' => 'tun-1.cfargotunnel.com',
+                'comment' => $this->record->ownershipComment(),
+            ]]),
+            'DELETE '.CF_TUNNEL_DNS.'/rec-1' => Http::response(['success' => true, 'result' => ['id' => 'rec-1']]),
+        ]);
+
+        Livewire::test(CloudflareTunnel::class, ['server_uuid' => $this->server->uuid])
+            ->call('toggleCloudflareTunnels')
+            ->assertNotDispatched('warning');
+
+        Http::assertNotSent(fn (Request $request) => $request->method() === 'DELETE' && str_contains($request->url(), 'cfd_tunnel'));
+        Http::assertSent(fn (Request $request) => $request->method() === 'PUT' && $request['config']['ingress'] === [
+            ['hostname' => 'app.example.com', 'service' => 'http://localhost:3000'],
+            ['service' => 'http_status:404'],
+        ]);
+        Http::assertSent(fn (Request $request) => $request->method() === 'DELETE' && str_ends_with($request->url(), CF_TUNNEL_DNS.'/rec-1'));
+
+        $settings = $this->server->settings->fresh();
+        expect($settings->cloudflare_tunnel_id)->toBeNull()
+            ->and(ManagedDnsRecord::query()->count())->toBe(0);
+    });
+
     test('waits until the stopping connector disconnects before the tunnel is deleted', function () {
         $deletes = 0;
         Http::fake(function (Request $request) use (&$deletes) {
             $path = parse_url($request->url(), PHP_URL_PATH);
 
             return match (true) {
+                $request->method() === 'GET' && $path === CF_TUNNEL_API.'/tun-1' => Http::response(['success' => true, 'result' => ['id' => 'tun-1', 'name' => $this->tunnelName]]),
                 $request->method() === 'DELETE' && $path === CF_TUNNEL_API.'/tun-1' => ++$deletes === 1
                     ? Http::response(['success' => false, 'errors' => [['code' => 1022, 'message' => 'Cannot delete tunnel because it has active connections']]], 400)
                     : Http::response(['success' => true, 'result' => ['id' => 'tun-1']]),
@@ -471,15 +520,25 @@ describe('cloudflare token template url', function () {
 
 test('selecting a token lists the tunnels of its account to choose from', function () {
     fakeCloudflareTunnelApi(['GET '.CF_TUNNEL_API => Http::response(['success' => true, 'result' => [
-        ['id' => 'tun-9', 'name' => 'dashboard-tunnel'], ['id' => 'tun-2', 'name' => 'another'],
+        ['id' => 'tun-9', 'name' => 'dashboard-tunnel', 'status' => 'healthy', 'connections' => [['origin_ip' => '198.51.100.7']]],
+        ['id' => 'tun-2', 'name' => 'another', 'status' => 'inactive', 'connections' => []],
+        ['id' => 'tun-3', 'name' => 'mine', 'status' => 'healthy', 'connections' => [['origin_ip' => $this->server->ip]]],
     ]])]);
 
-    Livewire::test(CloudflareTunnel::class, ['server_uuid' => $this->server->uuid])
+    $component = Livewire::test(CloudflareTunnel::class, ['server_uuid' => $this->server->uuid])
         ->set('cloudflare_integration_token_id', $this->token->id)
-        ->assertSet('existingTunnels', fn (array $tunnels): bool => array_column($tunnels, 'name') === ['another', 'dashboard-tunnel']
-            && array_column($tunnels, 'account_id') === ['acc-1', 'acc-1'])
+        ->assertSet('existingTunnels', fn (array $tunnels): bool => array_column($tunnels, 'name') === ['another', 'dashboard-tunnel', 'mine']
+            && array_column($tunnels, 'active_elsewhere') === [false, true, false])
         ->assertSee('dashboard-tunnel')
+        ->assertSee('Running on another machine')
         ->assertSee('Create a new tunnel');
+
+    // A tunnel running on another machine cannot be joined, even when the option is forced.
+    $component->set('existing_tunnel_id', 'tun-9')
+        ->set('api_ssh_domain', 'ssh.example.com')
+        ->call('apiCloudflareConfig')
+        ->assertHasErrors(['existing_tunnel_id']);
+    Http::assertNotSent(fn (Request $request) => $request->method() === 'PUT');
 });
 
 test('an existing tunnel gets the ssh hostname added without losing its other routes', function () {

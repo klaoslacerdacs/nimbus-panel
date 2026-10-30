@@ -48,8 +48,7 @@
                 @if ($isCloudflareTunnelsEnabled)
                     @if (filled($server->settings->cloudflare_tunnel_id))
                         <p class="mb-4 text-sm leading-6 text-neutral-600 dark:text-fg-dim">
-                            Coolify manages this tunnel through the Cloudflare API (tunnel
-                            <code>{{ \App\Services\CloudflareTunnelService::tunnelName($server) }}</code>).
+                            Coolify manages the SSH route of this tunnel through the Cloudflare API.
                         </p>
                     @endif
                     <x-callout type="warning" title="Disabling the tunnel can interrupt server access">
@@ -62,7 +61,7 @@
                                 submitAction="toggleCloudflareTunnels" :actions="array_merge(
                                     ['Cloudflare Tunnel will be disabled for this server.'],
                                     filled($server->settings->cloudflare_tunnel_id)
-                                        ? ['The Cloudflare tunnel and the DNS record that Coolify created will be deleted.']
+                                        ? ['The SSH route and the DNS record that Coolify created are removed; a tunnel that Coolify created is deleted.']
                                         : [],
                                     $server->ip_previous
                                         ? ['The server IP address will be restored to its previous value.']
@@ -130,20 +129,28 @@
                             <form wire:submit="apiCloudflareConfig">
                                 <div class="grid gap-4 lg:grid-cols-2">
                                     <x-forms.listbox id="cloudflare_integration_token_id" label="Cloudflare token"
-                                        required placeholder="Select a token"
+                                        required :live="true" placeholder="Select a token"
                                         :options="$tunnelTokens->map(fn ($token) => ['value' => $token->id, 'label' => $token->name])->all()" />
                                     <x-forms.input id="api_ssh_domain" label="SSH hostname" required
                                         placeholder="ssh.example.com"
                                         helper="A hostname in a zone of the selected token. Cloudflare routes it to SSH port {{ $server->port }} of this server." />
-                                    @if ($cloudflare_integration_token_id)
-                                        <div class="lg:col-span-2">
-                                            <x-forms.listbox id="existing_tunnel_id" label="Tunnel" :live="true" :options="[
+                                    <div class="lg:col-span-2" wire:loading.remove wire:target="cloudflare_integration_token_id">
+                                        @if ($cloudflare_integration_token_id)
+                                            <x-forms.listbox id="existing_tunnel_id" label="Tunnel" :options="[
                                                 ['value' => '', 'label' => 'Create a new tunnel ('.\App\Services\CloudflareTunnelService::tunnelName($server).')'],
-                                                ...collect($existingTunnels)->map(fn ($tunnel) => ['value' => $tunnel['id'], 'label' => $tunnel['name'].($tunnel['account_name'] ? ' · '.$tunnel['account_name'] : '')])->all(),
+                                                ...collect($existingTunnels)->map(fn ($tunnel) => [
+                                                    'value' => $tunnel['id'],
+                                                    'label' => $tunnel['name'].($tunnel['account_name'] ? ' · '.$tunnel['account_name'] : ''),
+                                                    'disabled' => $tunnel['active_elsewhere'],
+                                                    'description' => $tunnel['active_elsewhere'] ? 'Running on another machine' : null,
+                                                ])->all(),
                                             ]"
-                                                helper="Use a tunnel you already have in the account: the SSH hostname is added to its routes and nothing else changes. Locally configured tunnels cannot be managed here." />
-                                        </div>
-                                    @endif
+                                                helper="This server becomes a connector of the chosen tunnel: the SSH hostname is added to its routes and the other routes stay. A tunnel whose connectors run on another machine cannot be joined, and tunnels configured by a local file cannot be managed here." />
+                                        @endif
+                                    </div>
+                                    <div class="lg:col-span-2 text-xs text-neutral-500 dark:text-fg-dim" wire:loading wire:target="cloudflare_integration_token_id">
+                                        Listing the tunnels of the account...
+                                    </div>
                                 </div>
                                 <div class="mt-4 flex justify-end">
                                     <x-forms.button type="submit" isHighlighted>Set up tunnel</x-forms.button>

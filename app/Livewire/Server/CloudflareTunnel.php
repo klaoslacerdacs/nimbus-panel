@@ -36,10 +36,11 @@ class CloudflareTunnel extends Component
     #[Validate(['required', 'boolean'])]
     public bool $isCloudflareTunnelsEnabled;
 
-    /** Nimbus: an existing tunnel of the account to add the SSH hostname to, instead of creating one. */
-    public ?string $existing_tunnel_id = null;
+    /** Nimbus: an existing tunnel of the account to add the SSH hostname to; empty creates a new one. */
+    public string $existing_tunnel_id = '';
 
-    /** @var list<array{id: string, name: string, account_id: string, account_name: string|null}> */
+    /** @var list<array{id: string, name: string, account_id: string, account_name: string|null, active_elsewhere: bool}> */
+    #[Locked]
     public array $existingTunnels = [];
 
     public ?int $cloudflare_integration_token_id = null;
@@ -84,10 +85,19 @@ class CloudflareTunnel extends Component
      */
     private function loadExistingTunnels(): void
     {
-        $this->existing_tunnel_id = null;
+        $this->existing_tunnel_id = '';
+        $this->existingTunnels = [];
+        $this->resetErrorBag('existing_tunnel_id');
         // Only users who may set up the tunnel make Cloudflare calls with the team token.
         $token = auth()->user()?->can('update', $this->server) ? $this->tunnelTokens()->firstWhere('id', $this->cloudflare_integration_token_id) : null;
-        $this->existingTunnels = $token === null ? [] : rescue(fn (): array => app(CloudflareTunnelService::class)->listTunnels($token), [], report: false);
+        if ($token === null) {
+            return;
+        }
+        try {
+            $this->existingTunnels = app(CloudflareTunnelService::class)->listTunnels($token, (string) $this->server->ip);
+        } catch (\Throwable $e) {
+            $this->addError('existing_tunnel_id', 'The tunnels of the account could not be listed: '.$e->getMessage());
+        }
     }
 
     public function refresh()
@@ -202,11 +212,14 @@ class CloudflareTunnel extends Component
     {
         $this->authorize('update', $this->server);
         $this->api_ssh_domain = $this->normalizeSshDomain($this->api_ssh_domain);
-        $this->existing_tunnel_id = $this->existing_tunnel_id === '' ? null : $this->existing_tunnel_id;
         $this->validate([
             'cloudflare_integration_token_id' => ['required', 'integer'],
             'api_ssh_domain' => ['required', 'string', new ValidHostname],
-            'existing_tunnel_id' => ['nullable', 'string', Rule::in(array_column($this->existingTunnels, 'id'))],
+            'existing_tunnel_id' => ['nullable', 'string', Rule::in(array_column($this->existingTunnels, 'id')), function (string $attribute, mixed $value, \Closure $fail): void {
+                if (collect($this->existingTunnels)->firstWhere('id', $value)['active_elsewhere'] ?? false) {
+                    $fail('That tunnel runs on another machine; its routes would be sent to this server too.');
+                }
+            }],
         ], [], ['cloudflare_integration_token_id' => 'Cloudflare token', 'api_ssh_domain' => 'SSH hostname', 'existing_tunnel_id' => 'tunnel']);
 
         $token = $this->tunnelTokens()->firstWhere('id', $this->cloudflare_integration_token_id);
@@ -217,7 +230,7 @@ class CloudflareTunnel extends Component
         }
 
         $this->dnsConflict = null;
-        $this->startApiSetup($tunnels, $token, $this->api_ssh_domain, null, $this->existing_tunnel_id);
+        $this->startApiSetup($tunnels, $token, $this->api_ssh_domain, null, $this->existing_tunnel_id ?: null);
     }
 
     public function replaceDnsAndConfigure(CloudflareTunnelService $tunnels): void
