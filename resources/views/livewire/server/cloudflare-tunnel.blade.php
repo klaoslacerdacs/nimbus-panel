@@ -194,7 +194,13 @@
                                     <x-forms.input id="fixSshHostname" label="SSH hostname" required placeholder="ssh-server.example.com"
                                         helper="A new hostname on a domain of your Cloudflare account. It will route to ssh://localhost:22." />
                                 @endif
-                                @if ($cloudflareConnection)
+                                @if ($cloudflareConnection?->needsReconnect())
+                                    <div class="flex flex-col justify-end gap-1">
+                                        <a href="{{ route('cloudflare.connect', ['return' => route('server.cloudflare-tunnel', ['server_uuid' => $server->uuid], absolute: false)]) }}"
+                                            class="button button-highlighted text-sm">Reconnect Cloudflare</a>
+                                        <span class="text-xs text-neutral-500 dark:text-fg-dim">The login of {{ $cloudflareConnection->account_name }} expired.</span>
+                                    </div>
+                                @elseif ($cloudflareConnection)
                                     <x-forms.input id="cloudflareApiToken" type="password" label="Cloudflare API token (optional)"
                                         placeholder="Using {{ $cloudflareConnection->account_name }}"
                                         helper="Your team's connected Cloudflare account is used. Paste a token only if this tunnel is in another account." />

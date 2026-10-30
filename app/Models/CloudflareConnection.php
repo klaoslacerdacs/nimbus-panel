@@ -49,14 +49,22 @@ class CloudflareConnection extends BaseModel
     }
 
     /**
+     * The login expired and the client cannot refresh it: the user has to log in to Cloudflare again.
+     */
+    public function needsReconnect(): bool
+    {
+        return $this->expires_at !== null && $this->expires_at->isBefore(now()->addMinute()) && blank($this->refresh_token);
+    }
+
+    /**
      * Cloudflare API client authenticated as the connected account, refreshing the token when it is about to expire.
      */
     public function api(): PendingRequest
     {
+        if ($this->needsReconnect()) {
+            throw new RuntimeException('The Cloudflare login expired. Reconnect Cloudflare in Security → Cloudflare.');
+        }
         if ($this->expires_at !== null && $this->expires_at->isBefore(now()->addMinute())) {
-            if (blank($this->refresh_token)) {
-                throw new RuntimeException('The Cloudflare login expired. Reconnect Cloudflare in Security → Cloudflare.');
-            }
             app(CloudflareOAuth::class)->refresh($this);
         }
 
