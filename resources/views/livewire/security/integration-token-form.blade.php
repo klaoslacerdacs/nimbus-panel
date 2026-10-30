@@ -100,8 +100,13 @@
                 </ul>
                 <p>Limit zone resources to the zones Coolify should manage.</p>
                 <div class="mt-2 flex flex-wrap gap-2">
-                    @if ($cloudflareConnection)
-                        <x-forms.button type="button" wire:click="createFromCloudflare" wire:target="createFromCloudflare" isHighlighted>
+                    @if ($cloudflareConnection?->needsReconnect())
+                        <a href="{{ route('cloudflare.connect', ['return' => route('security.integration-tokens', absolute: false)]) }}"
+                            class="button button-highlighted">
+                            Reconnect Cloudflare
+                        </a>
+                    @elseif ($cloudflareConnection)
+                        <x-forms.button wire:click="createFromCloudflare" isHighlighted>
                             Create from {{ $cloudflareConnection->account_name }}
                         </x-forms.button>
                     @elseif ($cloudflareOAuthConfigured)
@@ -117,7 +122,9 @@
                         <x-external-link />
                     </a>
                 </div>
-                @if ($cloudflareConnection)
+                @if ($cloudflareConnection?->needsReconnect())
+                    <p class="mt-2">The Cloudflare login of {{ $cloudflareConnection->account_name }} expired. Log in again to create the token from it.</p>
+                @elseif ($cloudflareConnection)
                     <p class="mt-2">The token is created in the connected account with exactly these permissions, scoped to all its zones.</p>
                 @elseif ($cloudflareOAuthConfigured)
                     <p class="mt-2">After the login the token is created and filled in for you; no copy and paste.</p>

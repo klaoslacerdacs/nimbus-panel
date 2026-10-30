@@ -11,6 +11,7 @@ use App\Services\IntegrationTokenValidator;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use Livewire\Component;
 
 class IntegrationTokenForm extends Component
@@ -68,7 +69,8 @@ class IntegrationTokenForm extends Component
         $rules = [
             'provider' => ['required', 'in:'.implode(',', array_keys(IntegrationToken::PROVIDER_NAMES))],
             'name' => ['required', 'string', 'max:255'],
-            'token' => ['required', 'string'],
+            // Nimbus: with a connected Cloudflare account the token is created from it when left empty.
+            'token' => [$this->provider === 'cloudflare' && $this->cloudflareConnection() ? 'nullable' : 'required', 'string'],
             'capabilities' => ['required', 'array', 'min:1', function (string $attribute, mixed $value, \Closure $fail): void {
                 if (is_array($value) && in_array('tunnel', $value, true) && ! in_array('dns', $value, true)) {
                     $fail('Cloudflare Tunnel also needs the DNS capability.');
@@ -116,27 +118,40 @@ class IntegrationTokenForm extends Component
 
         $connection = $this->cloudflareConnection();
         if ($this->provider !== 'cloudflare' || $connection === null) {
-            $this->dispatch('error', 'Connect Cloudflare first.');
-
             return;
         }
 
         $this->validate(collect($this->rules())->except(['token'])->all());
 
         try {
-            $this->token = $tokens->create($connection, "Nimbus Panel: {$this->name}", $this->capabilities);
+            $created = $tokens->create($connection, Str::limit("Nimbus Panel: {$this->name}", 100, ''), $this->capabilities);
         } catch (\Throwable $e) {
             $this->dispatch('error', 'Could not create the Cloudflare token.', $e->getMessage());
 
             return;
         }
 
-        $this->addToken($validator, $cloudflare);
+        $this->token = $created['value'];
+        if (! $this->addToken($validator, $cloudflare)) {
+            // Never leave an unsaved live credential at Cloudflare or in the browser.
+            $tokens->delete($connection, $created['id']);
+            $this->reset('token');
+        }
     }
 
-    public function addToken(IntegrationTokenValidator $validator, CloudflareDnsProvider $cloudflare): void
+    /**
+     * @return bool Whether the token was saved.
+     */
+    public function addToken(IntegrationTokenValidator $validator, CloudflareDnsProvider $cloudflare): bool
     {
         $this->authorize('create', IntegrationToken::class);
+
+        if ($this->provider === 'cloudflare' && blank($this->token) && $this->cloudflareConnection() !== null) {
+            $this->createFromCloudflare(app(CloudflareAccountTokens::class), $validator, $cloudflare);
+
+            // addToken() resets the name only after a save.
+            return $this->name === '';
+        }
 
         $validated = $this->validate();
         $metadata = array_filter(data_get($validated, 'metadata', []), fn ($value) => filled($value));
@@ -151,7 +166,7 @@ class IntegrationTokenForm extends Component
             if (! $validator->validate($validated['provider'], $validated['token'], $validated['capabilities'], $metadata)) {
                 $this->dispatch('error', $validator->errorMessage($validated['provider']));
 
-                return;
+                return false;
             }
 
             $integrationToken = DB::transaction(function () use ($validated, $metadata, $cloudflare): IntegrationToken {
@@ -181,11 +196,15 @@ class IntegrationTokenForm extends Component
             }
 
             $this->dispatch('success', 'Integration token added successfully.');
+
+            return true;
         } catch (ConnectionException) {
             $this->dispatch('error', $validator->connectionErrorMessage($validated['provider']));
         } catch (\Throwable $e) {
             handleError($e, $this);
         }
+
+        return false;
     }
 
     /** The Cloudflare account connected by the session team (new tokens belong to it). */

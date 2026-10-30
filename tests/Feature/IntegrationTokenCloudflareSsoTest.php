@@ -50,7 +50,8 @@ it('creates the Cloudflare token from the connected account and saves it', funct
         ->set('capabilities', ['dns', 'tunnel'])
         ->call('createFromCloudflare')
         ->assertHasNoErrors()
-        ->assertDispatched('integrationTokenAdded');
+        ->assertDispatched('integrationTokenAdded')
+        ->assertSet('token', '');
 
     $token = IntegrationToken::query()->sole();
     expect($token->token)->toBe('cfat_created-secret')
@@ -75,22 +76,73 @@ it('creates the Cloudflare token from the connected account and saves it', funct
     Http::assertNotSent(fn ($request) => str_contains($request->url(), '/user/tokens/verify'));
 });
 
-it('does not create a Cloudflare token without the DNS checks passing', function (): void {
+it('saves the token created from Cloudflare when the form is submitted with an empty token', function (): void {
+    CloudflareConnection::factory()->create(['team_id' => $this->team->id, 'account_id' => 'acc123']);
+    Http::fake([
+        'api.cloudflare.com/client/v4/accounts/acc123/tokens/permission_groups' => Http::response(['result' => [
+            ['id' => 'pg-dns', 'name' => 'DNS Edit'], ['id' => 'pg-zone', 'name' => 'Zone Read'],
+        ]]),
+        'api.cloudflare.com/client/v4/accounts/acc123/tokens' => Http::response(['result' => ['id' => 'tok-2', 'value' => 'cfat_from-submit']]),
+        ...fakeCloudflareTokenChecks(),
+    ]);
+
+    Livewire::test(IntegrationTokenForm::class)
+        ->set('name', 'DNS only')
+        ->call('addToken')
+        ->assertHasNoErrors()
+        ->assertDispatched('integrationTokenAdded');
+
+    expect(IntegrationToken::query()->sole()->token)->toBe('cfat_from-submit');
+});
+
+it('deletes the created Cloudflare token and clears the form when it cannot be saved', function (): void {
     CloudflareConnection::factory()->create(['team_id' => $this->team->id, 'account_id' => 'acc123']);
     Http::fake([
         'api.cloudflare.com/client/v4/accounts/acc123/tokens/permission_groups' => Http::response(['result' => [
             ['id' => 'pg-dns', 'name' => 'DNS Write'], ['id' => 'pg-zone', 'name' => 'Zone Read'],
         ]]),
-        'api.cloudflare.com/client/v4/accounts/acc123/tokens' => Http::response(['result' => ['value' => 'cfat_x']]),
+        'api.cloudflare.com/client/v4/accounts/acc123/tokens/tok-x' => Http::response(['result' => ['id' => 'tok-x']]),
+        'api.cloudflare.com/client/v4/accounts/acc123/tokens' => Http::response(['result' => ['id' => 'tok-x', 'value' => 'cfat_x']]),
         'api.cloudflare.com/client/v4/zones?*' => Http::response(['errors' => [['message' => 'forbidden']]], 403),
     ]);
 
     Livewire::test(IntegrationTokenForm::class)
         ->set('name', 'Production')
         ->call('createFromCloudflare')
-        ->assertDispatched('error');
+        ->assertDispatched('error')
+        ->assertSet('token', '');
 
     expect(IntegrationToken::query()->count())->toBe(0);
+    Http::assertSent(fn ($request) => $request->method() === 'DELETE' && $request->url() === 'https://api.cloudflare.com/client/v4/accounts/acc123/tokens/tok-x');
+});
+
+it('does not let a member create a token from Cloudflare', function (): void {
+    CloudflareConnection::factory()->create(['team_id' => $this->team->id, 'account_id' => 'acc123']);
+    Http::fake();
+    $component = Livewire::test(IntegrationTokenForm::class)->set('name', 'Production');
+
+    $this->team->members()->updateExistingPivot($this->admin->id, ['role' => 'member']);
+    $this->admin->load('teams');
+
+    $component->call('createFromCloudflare')->assertForbidden();
+    Http::assertNothingSent();
+    expect(IntegrationToken::query()->count())->toBe(0);
+});
+
+it('does not offer the Cloudflare account of another team', function (): void {
+    CloudflareConnection::factory()->create(['team_id' => Team::factory()->create()->id, 'account_name' => 'Other Corp']);
+
+    Livewire::test(IntegrationTokenForm::class)
+        ->assertDontSee('Create from')
+        ->assertSee('Login with Cloudflare');
+});
+
+it('asks to reconnect when the Cloudflare login expired and cannot be refreshed', function (): void {
+    CloudflareConnection::factory()->create(['team_id' => $this->team->id, 'account_name' => 'Nimbus Network', 'expires_at' => now()->subDay(), 'refresh_token' => null]);
+
+    Livewire::test(IntegrationTokenForm::class)
+        ->assertSee('Reconnect Cloudflare')
+        ->assertDontSee('Create from');
 });
 
 it('explains the missing OAuth scope when Cloudflare refuses to create the token', function (): void {

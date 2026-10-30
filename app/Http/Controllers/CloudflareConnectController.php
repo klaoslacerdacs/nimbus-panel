@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\CloudflareConnection;
+use App\Services\CloudflareAccountTokens;
 use App\Services\CloudflareOAuth;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -47,7 +48,10 @@ class CloudflareConnectController extends Controller
         abort_unless($request->user()->isAdminOfTeam($pending['team_id']), 403);
 
         if (! is_string($request->query('code'))) {
-            return $this->back('Cloudflare did not authorize the connection'.($request->query('error') ? ': '.$request->query('error') : '.'), $pending['return_to'] ?? null);
+            $error = (string) $request->query('error');
+            $hint = str_contains($error, 'scope') ? ' The requested scopes must exist on the OAuth client: add '.CloudflareAccountTokens::SCOPE.' to it in Cloudflare, or set the client scopes in Settings → Cloudflare.' : '';
+
+            return $this->back('Cloudflare did not authorize the connection'.($error !== '' ? ': '.$error : '.').$hint, $pending['return_to'] ?? null);
         }
 
         try {
