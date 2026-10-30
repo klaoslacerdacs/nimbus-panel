@@ -14,43 +14,43 @@
                     because they would replace this panel with the original Coolify image.
                 </div>
             @else
-            <x-application.settings-section title="Updates"
-                helper="Install the latest Coolify version manually when an update is available.">
-                <x-slot:actions>
-                    <livewire:upgrade :full-button="true" key="settings-upgrade" />
-                    <x-forms.button type="button" wire:click="checkManually">
-                        <x-reicon name="refresh" class="size-3.5" />
-                        Check now
-                    </x-forms.button>
-                </x-slot:actions>
-                <div class="grid gap-4 lg:grid-cols-2">
-                    <x-forms.input required id="update_check_frequency" label="Check frequency"
-                        placeholder="0 * * * *"
-                        helper="A cron expression or preset such as hourly, daily, weekly, monthly, or yearly." />
+                <x-application.settings-section title="Updates"
+                    helper="Install the latest Coolify version manually when an update is available.">
+                    <x-slot:actions>
+                        <livewire:upgrade :full-button="true" key="settings-upgrade" />
+                        <x-forms.button type="button" wire:click="checkManually">
+                            <x-reicon name="refresh" class="size-3.5" />
+                            Check now
+                        </x-forms.button>
+                    </x-slot:actions>
+                    <div class="grid gap-4 lg:grid-cols-2">
+                        <x-forms.input required id="update_check_frequency" label="Check frequency"
+                            placeholder="0 * * * *"
+                            helper="A cron expression or preset such as hourly, daily, weekly, monthly, or yearly." />
 
-                    @if (!is_null(config('constants.coolify.autoupdate', null)))
-                        <x-forms.listbox disabled id="is_auto_update_enabled" label="Automatic updates"
-                            helper="Controlled by the AUTOUPDATE environment variable." :options="[
-                                ['value' => true, 'label' => 'Enabled'],
-                                ['value' => false, 'label' => 'Disabled'],
-                            ]" />
-                    @else
-                        <x-forms.listbox id="is_auto_update_enabled" label="Automatic updates"
-                            onChange="instantSave" :options="[
-                                ['value' => true, 'label' => 'Enabled'],
-                                ['value' => false, 'label' => 'Disabled'],
-                            ]" />
-                    @endif
+                        @if (!is_null(config('constants.coolify.autoupdate', null)))
+                            <x-forms.listbox disabled id="is_auto_update_enabled" label="Automatic updates"
+                                helper="Controlled by the AUTOUPDATE environment variable." :options="[
+                                    ['value' => true, 'label' => 'Enabled'],
+                                    ['value' => false, 'label' => 'Disabled'],
+                                ]" />
+                        @else
+                            <x-forms.listbox id="is_auto_update_enabled" label="Automatic updates"
+                                onChange="instantSave" :options="[
+                                    ['value' => true, 'label' => 'Enabled'],
+                                    ['value' => false, 'label' => 'Disabled'],
+                                ]" />
+                        @endif
 
-                    @if (is_null(config('constants.coolify.autoupdate', null)) && $is_auto_update_enabled)
-                        <x-forms.input required id="auto_update_frequency" label="Update frequency"
-                            placeholder="0 0 * * *"
-                            helper="Cron expression or preset for installing updates." />
-                    @else
-                        <x-forms.input label="Update frequency" disabled placeholder="Disabled" />
-                    @endif
-                </div>
-            </x-application.settings-section>
+                        @if (is_null(config('constants.coolify.autoupdate', null)) && $is_auto_update_enabled)
+                            <x-forms.input required id="auto_update_frequency" label="Update frequency"
+                                placeholder="0 0 * * *"
+                                helper="Cron expression or preset for installing updates." />
+                        @else
+                            <x-forms.input label="Update frequency" disabled placeholder="Disabled" />
+                        @endif
+                    </div>
+                </x-application.settings-section>
             @endif
 
             <x-application.settings-section title="Image registry">

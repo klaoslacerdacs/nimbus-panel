@@ -9,21 +9,25 @@
         class="server-settings-workspace application-settings-workspace mt-4 grid w-full max-w-none min-w-0 gap-8 lg:mt-0 xl:grid-cols-[210px_minmax(0,1fr)] xl:gap-8">
         <x-server.sidebar :server="$server" activeMenu="metrics" />
 
+        @php($usesOciMonitoring = $server->usesOciMonitoring())
+        @php($hasMetricsSource = $server->isMetricsEnabled() || $usesOciMonitoring)
         <div class="application-settings-form flex w-full flex-col gap-6"
-            @if ($server->isMetricsEnabled() || $server->usesOciMonitoring()) x-init="$wire.loadData()" @endif>
-            @if ($server->isMetricsEnabled() || $server->usesOciMonitoring())
+            @if ($hasMetricsSource) x-init="$wire.loadData()" @endif>
+            @if ($hasMetricsSource)
                 @if ($this->pollSeconds())
                     <div wire:key="metrics-poll-{{ $this->pollSeconds() }}" wire:poll.{{ $this->pollSeconds() }}s="pollData" class="hidden"></div>
                 @endif
                 <form wire:submit.prevent="saveMetricsSettings" class="contents">
-                    <x-unsaved-bar action="saveMetricsSettings"
-                        targets="sentinelMetricsRefreshRateSeconds,sentinelMetricsHistoryDays,sentinelPushIntervalSeconds" />
+                    @unless ($usesOciMonitoring)
+                        <x-unsaved-bar action="saveMetricsSettings"
+                            targets="sentinelMetricsRefreshRateSeconds,sentinelMetricsHistoryDays,sentinelPushIntervalSeconds" />
+                    @endunless
 
                     <x-application.settings-section id="server-metrics-overview-section" title="Metrics"
-                        helper="{{ $server->usesOciMonitoring() ? 'Inspect recent CPU and memory usage reported by OCI Monitoring (1-minute resolution, Oracle Cloud Agent required for memory).' : 'Inspect recent CPU and memory usage reported by Sentinel.' }}">
+                        helper="{{ $usesOciMonitoring ? 'Inspect recent CPU and memory usage reported by OCI Monitoring (1-minute resolution, Oracle Cloud Agent required for memory).' : 'Inspect recent CPU and memory usage reported by Sentinel.' }}">
                         <x-slot:actions>
                             <div class="flex items-center gap-2">
-                                @unless ($server->usesOciMonitoring())
+                                @unless ($usesOciMonitoring)
                                     <x-live-toggle :active="$live" storageKey="server-metrics-live" />
                                     <x-forms.button canGate="update" :canResource="$server" wire:click="toggleMetrics">
                                         Disable metrics
@@ -32,7 +36,7 @@
                             </div>
                         </x-slot:actions>
 
-                        @unless ($server->usesOciMonitoring())
+                        @unless ($usesOciMonitoring)
                         <div class="grid gap-4 lg:grid-cols-3">
                             <x-forms.input canGate="update" :canResource="$server" type="number" min="1"
                                 id="sentinelMetricsRefreshRateSeconds" label="Collection rate" required
@@ -57,7 +61,7 @@
                                 ['value' => 43200, 'label' => 'Last 30 days'],
                             ]" />
                         </div>
-                        @unless ($server->usesOciMonitoring())
+                        @unless ($usesOciMonitoring)
                             <p class="mt-3 text-xs leading-5 text-neutral-500 dark:text-fg-dim">
                                 Ranges up to one hour refresh live every five seconds. Longer ranges load once; turn on live refresh to update them every minute.
                             </p>
