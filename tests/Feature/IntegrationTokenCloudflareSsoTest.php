@@ -154,7 +154,7 @@ it('explains the missing OAuth scope when Cloudflare refuses to create the token
     Livewire::test(IntegrationTokenForm::class)
         ->set('name', 'Production')
         ->call('createFromCloudflare')
-        ->assertDispatched('error', fn (string $name, array $params) => str_contains(implode(' ', $params), 'account_api_tokens:create'));
+        ->assertDispatched('error', fn (string $name, array $params) => str_contains(implode(' ', $params), 'account-api-tokens.write'));
 
     expect(IntegrationToken::query()->count())->toBe(0);
 });

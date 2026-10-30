@@ -46,7 +46,7 @@
 
                     <div class="mt-4">
                         <x-forms.input id="scopes" label="Scopes (optional)" :placeholder="$defaultScopes"
-                            helper="Leave blank to use the default shown. Change only if your client was created with other scopes. account_api_tokens:create lets teams create Integration tokens from the login." />
+                            helper="Leave blank to use the default shown. Change only if your client was created with other scopes. account-api-tokens.write lets teams create Integration tokens from the login." />
                     </div>
 
                     <div class="mt-4">
@@ -71,7 +71,7 @@
                     <li><strong>Grant types:</strong> <code>authorization_code</code> and <code>refresh_token</code></li>
                     <li><strong>Token endpoint auth method:</strong> <code>client_secret_basic</code></li>
                     <li><strong>Redirect URL:</strong> the callback URL above.</li>
-                    <li><strong>Scopes:</strong> Cloudflare Tunnel Write, DNS Read/Write, Zone Read, Account Settings Read and Account API Tokens Create (<code>account_api_tokens:create</code>, lets teams create Integration tokens from the login).</li>
+                    <li><strong>Scopes:</strong> Cloudflare Tunnel Write, DNS Read/Write, Zone Read, Account Settings Read and Account API Token Provisioning (<code>account-api-tokens.write</code>, lets teams create Integration tokens from the login).</li>
                     <li><strong>Visibility:</strong> private — only members of your Cloudflare account can authorize it.</li>
                     <li>Copy the client ID and secret here. The secret is shown only once.</li>
                 </ol>

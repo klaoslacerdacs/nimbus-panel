@@ -9,11 +9,12 @@ use RuntimeException;
 
 /**
  * Creates Account API tokens through the team's Cloudflare OAuth connection, so the user never copies a token
- * by hand. The OAuth client needs the `account_api_tokens:create` scope (Cloudflare, 2026-10).
+ * by hand. The OAuth client needs the "Account API Token Provisioning" permission (Cloudflare, 2026-10): dashboard
+ * clients use the dot form `account-api-tokens.write`; the colon form `account_api_tokens:create` is only the first-party CLI client.
  */
 class CloudflareAccountTokens
 {
-    public const string SCOPE = 'account_api_tokens:create';
+    public const string SCOPE = 'account-api-tokens.write';
 
     /**
      * Permission groups per capability. Cloudflare says "Write" in the API and "Edit" in the dashboard, and the

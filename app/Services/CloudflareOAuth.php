@@ -23,7 +23,7 @@ class CloudflareOAuth
      * What tunnels + DNS need, plus creating Account API tokens from the connection (Integration tokens);
      * Settings → Cloudflare overrides it only when a client was created with other scopes.
      */
-    public const string DEFAULT_SCOPES = 'account-settings.read zone.read dns.read dns.write argotunnel.write account_api_tokens:create';
+    public const string DEFAULT_SCOPES = 'account-settings.read zone.read dns.read dns.write argotunnel.write account-api-tokens.write';
 
     public const string REVOKE_URL = 'https://dash.cloudflare.com/oauth2/revoke';
 
