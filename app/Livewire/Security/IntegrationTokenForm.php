@@ -2,7 +2,10 @@
 
 namespace App\Livewire\Security;
 
+use App\Models\CloudflareConnection;
 use App\Models\IntegrationToken;
+use App\Services\CloudflareAccountTokens;
+use App\Services\CloudflareOAuth;
 use App\Services\Dns\CloudflareDnsProvider;
 use App\Services\IntegrationTokenValidator;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
@@ -104,6 +107,33 @@ class IntegrationTokenForm extends Component
         ];
     }
 
+    /**
+     * Nimbus: creates the Cloudflare API token from the team's OAuth connection and saves it, so no token is pasted.
+     */
+    public function createFromCloudflare(CloudflareAccountTokens $tokens, IntegrationTokenValidator $validator, CloudflareDnsProvider $cloudflare): void
+    {
+        $this->authorize('create', IntegrationToken::class);
+
+        $connection = $this->cloudflareConnection();
+        if ($this->provider !== 'cloudflare' || $connection === null) {
+            $this->dispatch('error', 'Connect Cloudflare first.');
+
+            return;
+        }
+
+        $this->validate(collect($this->rules())->except(['token'])->all());
+
+        try {
+            $this->token = $tokens->create($connection, "Nimbus Panel: {$this->name}", $this->capabilities);
+        } catch (\Throwable $e) {
+            $this->dispatch('error', 'Could not create the Cloudflare token.', $e->getMessage());
+
+            return;
+        }
+
+        $this->addToken($validator, $cloudflare);
+    }
+
     public function addToken(IntegrationTokenValidator $validator, CloudflareDnsProvider $cloudflare): void
     {
         $this->authorize('create', IntegrationToken::class);
@@ -158,8 +188,17 @@ class IntegrationTokenForm extends Component
         }
     }
 
+    /** The Cloudflare account connected by the session team (new tokens belong to it). */
+    private function cloudflareConnection(): ?CloudflareConnection
+    {
+        return once(fn () => CloudflareConnection::query()->where('team_id', currentTeam()->id)->first());
+    }
+
     public function render()
     {
-        return view('livewire.security.integration-token-form');
+        return view('livewire.security.integration-token-form', [
+            'cloudflareConnection' => $this->cloudflareConnection(),
+            'cloudflareOAuthConfigured' => app(CloudflareOAuth::class)->isConfigured(),
+        ]);
     }
 }

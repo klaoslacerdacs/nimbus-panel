@@ -9,10 +9,13 @@ class CloudflareTokenValidator
     public function validate(string $token, array $capabilities): bool
     {
         $client = Http::withToken($token)->acceptJson();
-        $verification = $client->get('https://api.cloudflare.com/client/v4/user/tokens/verify');
+        // Account API tokens (cfat_) are not user tokens: the capability checks below are their verification.
+        if (! str_starts_with($token, 'cfat_')) {
+            $verification = $client->get('https://api.cloudflare.com/client/v4/user/tokens/verify');
 
-        if (! $verification->successful() || $verification->json('result.status') !== 'active') {
-            return false;
+            if (! $verification->successful() || $verification->json('result.status') !== 'active') {
+                return false;
+            }
         }
 
         if (! in_array('dns', $capabilities, true)) {

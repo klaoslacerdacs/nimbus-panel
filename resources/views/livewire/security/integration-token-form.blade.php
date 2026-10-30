@@ -24,9 +24,15 @@
             <div class="grid gap-4 lg:grid-cols-2">
                 <x-forms.input required id="name" label="Token name"
                     placeholder="{{ $provider === 'cloudflare' ? 'Production DNS' : 'Production secrets' }}" />
-                <x-forms.input required type="password" id="token"
-                    label="{{ $provider === 'vault' ? 'Vault token' : 'API token' }}"
-                    placeholder="Paste the provider token" />
+                @if ($provider === 'cloudflare' && $cloudflareConnection)
+                    <x-forms.input type="password" id="token" label="API token (optional)"
+                        placeholder="Leave empty to create it from {{ $cloudflareConnection->account_name }}"
+                        helper="Paste a token only for another Cloudflare account." />
+                @else
+                    <x-forms.input required type="password" id="token"
+                        label="{{ $provider === 'vault' ? 'Vault token' : 'API token' }}"
+                        placeholder="Paste the provider token" />
+                @endif
             </div>
         @endif
 
@@ -93,12 +99,29 @@
                     @endif
                 </ul>
                 <p>Limit zone resources to the zones Coolify should manage.</p>
-                <a href="{{ \App\Models\IntegrationToken::cloudflareTokenTemplateUrl($capabilities) }}"
-                    target="_blank" rel="noopener noreferrer"
-                    class="button mt-2">
-                    Create token at Cloudflare
-                    <x-external-link />
-                </a>
+                <div class="mt-2 flex flex-wrap gap-2">
+                    @if ($cloudflareConnection)
+                        <x-forms.button type="button" wire:click="createFromCloudflare" wire:target="createFromCloudflare" isHighlighted>
+                            Create from {{ $cloudflareConnection->account_name }}
+                        </x-forms.button>
+                    @elseif ($cloudflareOAuthConfigured)
+                        <a href="{{ route('cloudflare.connect', ['return' => route('security.integration-tokens', absolute: false)]) }}"
+                            class="button button-highlighted">
+                            Login with Cloudflare
+                        </a>
+                    @endif
+                    <a href="{{ \App\Models\IntegrationToken::cloudflareTokenTemplateUrl($capabilities) }}"
+                        target="_blank" rel="noopener noreferrer"
+                        class="button">
+                        Create token at Cloudflare
+                        <x-external-link />
+                    </a>
+                </div>
+                @if ($cloudflareConnection)
+                    <p class="mt-2">The token is created in the connected account with exactly these permissions, scoped to all its zones.</p>
+                @elseif ($cloudflareOAuthConfigured)
+                    <p class="mt-2">After the login the token is created and filled in for you; no copy and paste.</p>
+                @endif
             </div>
         @elseif ($provider === 'doppler')
             <div class="rounded-lg border border-neutral-200 bg-neutral-50 p-3 text-[11px] leading-5 text-neutral-600 dark:border-white/[0.08] dark:bg-white/[0.025] dark:text-fg-dim">

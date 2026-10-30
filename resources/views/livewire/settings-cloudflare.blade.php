@@ -21,7 +21,7 @@
 
                     <div class="mt-4">
                         <x-forms.input id="scopes" label="Scopes (optional)" :placeholder="$defaultScopes"
-                            helper="Leave blank to use the default shown. Change only if your client was created with other scopes." />
+                            helper="Leave blank to use the default shown. Change only if your client was created with other scopes. account_api_tokens:create lets teams create Integration tokens from the login." />
                     </div>
 
                     <div class="mt-4">
