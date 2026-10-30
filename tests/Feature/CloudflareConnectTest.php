@@ -212,3 +212,9 @@ it('asks to reconnect when the token expired and Cloudflare gave no refresh toke
     expect(fn () => $connection->api())->toThrow(RuntimeException::class, 'Reconnect Cloudflare');
     Http::assertNothingSent();
 });
+
+it('explains the missing client scope when Cloudflare lands on the oauth error page', function (): void {
+    $this->get('/oauth/error?error=invalid_scope&error_description=unknown+scope')
+        ->assertRedirect(route('security.cloudflare'))
+        ->assertSessionHas('error', fn (string $message): bool => str_contains($message, 'invalid_scope') && str_contains($message, 'account_api_tokens:create'));
+});

@@ -172,6 +172,8 @@ Route::post('/auth/link', [Controller::class, 'acceptLink'])->middleware('thrott
 Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('/auth/cloudflare/redirect', [CloudflareConnectController::class, 'redirect'])->name('cloudflare.connect');
     Route::get('/auth/cloudflare/callback', [CloudflareConnectController::class, 'callback'])->name('cloudflare.callback');
+    // Cloudflare sends the browser here when the client does not offer a requested scope.
+    Route::get('/oauth/error', [CloudflareConnectController::class, 'error'])->name('cloudflare.error');
 });
 Route::get('/auth/{provider}/redirect', [OauthController::class, 'redirect'])->name('auth.redirect');
 Route::get('/auth/{provider}/callback', [OauthController::class, 'callback'])->name('auth.callback');
