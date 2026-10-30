@@ -47,6 +47,10 @@ class CloudflareTunnel extends Component
 
     public string $api_ssh_domain = '';
 
+    /** The SSH hostname the form filled in by itself; a hostname the user typed is never replaced. */
+    #[Locked]
+    public string $suggested_ssh_domain = '';
+
     /**
      * An existing DNS record on the hostname that blocks the tunnel CNAME, waiting for the user to confirm its replacement.
      *
@@ -72,12 +76,34 @@ class CloudflareTunnel extends Component
         if ($this->cloudflare_integration_token_id === null && $tunnelTokens->count() === 1) {
             $this->cloudflare_integration_token_id = $tunnelTokens->first()->id;
             $this->loadExistingTunnels();
+            $this->suggestSshDomain();
         }
     }
 
     public function updatedCloudflareIntegrationTokenId(): void
     {
         $this->loadExistingTunnels();
+        $this->suggestSshDomain();
+    }
+
+    public function updatedExistingTunnelId(): void
+    {
+        $this->suggestSshDomain();
+    }
+
+    /**
+     * Nimbus: fills the SSH hostname with the ssh:// route the chosen tunnel already has, unless the user typed one.
+     */
+    private function suggestSshDomain(): void
+    {
+        if ($this->api_ssh_domain !== '' && $this->api_ssh_domain !== $this->suggested_ssh_domain) {
+            return;
+        }
+        $token = auth()->user()?->can('update', $this->server) ? $this->tunnelTokens()->firstWhere('id', $this->cloudflare_integration_token_id) : null;
+        $tunnel = collect($this->existingTunnels)->firstWhere('id', $this->existing_tunnel_id);
+        $suggestion = $token && $tunnel ? rescue(fn () => app(CloudflareTunnelService::class)->sshHostname($token, $tunnel['account_id'], $tunnel['id']), report: false) : null;
+
+        $this->api_ssh_domain = $this->suggested_ssh_domain = (string) $suggestion;
     }
 
     /**
@@ -270,13 +296,13 @@ class CloudflareTunnel extends Component
      */
     private function tunnelTokens(): Collection
     {
-        return IntegrationToken::query()
+        return once(fn () => IntegrationToken::query()
             ->where('team_id', $this->server->team_id)
             ->where('provider', 'cloudflare')
             ->orderBy('name')
             ->get()
             ->filter(fn (IntegrationToken $token): bool => $token->hasCapability('tunnel'))
-            ->values();
+            ->values());
     }
 
     /**

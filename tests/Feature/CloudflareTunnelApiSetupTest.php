@@ -588,3 +588,44 @@ test('a tunnel that the token cannot see is refused', function () {
 
     Http::assertNotSent(fn (Request $request) => $request->method() === 'PUT');
 });
+
+test('the ssh hostname is filled in from the chosen tunnel, never over what the user typed', function () {
+    fakeCloudflareTunnelApi([
+        'GET '.CF_TUNNEL_API => Http::response(['success' => true, 'result' => [['id' => 'tun-9', 'name' => 'dashboard-tunnel'], ['id' => 'tun-2', 'name' => 'web-only'], ['id' => 'tun-5', 'name' => 'broken']]]),
+        'GET '.CF_TUNNEL_API.'/tun-9/configurations' => Http::response(['success' => true, 'result' => ['config' => ['ingress' => [
+            ['hostname' => 'app.example.com', 'service' => 'http://localhost:3000'],
+            ['hostname' => 'ssh.example.com', 'service' => 'ssh://localhost:22'],
+            ['service' => 'http_status:404'],
+        ]]]]),
+        'GET '.CF_TUNNEL_API.'/tun-2/configurations' => Http::response(['success' => true, 'result' => ['config' => ['ingress' => [['service' => 'http_status:404']]]]]),
+        'GET '.CF_TUNNEL_API.'/tun-5/configurations' => Http::response(['success' => false, 'errors' => [['message' => 'Authentication error']]], 403),
+    ]);
+
+    Livewire::test(CloudflareTunnel::class, ['server_uuid' => $this->server->uuid])
+        ->set('cloudflare_integration_token_id', $this->token->id)
+        ->assertSet('api_ssh_domain', '')
+        ->set('existing_tunnel_id', 'tun-9')
+        ->assertSet('api_ssh_domain', 'ssh.example.com')
+        ->set('existing_tunnel_id', 'tun-2')
+        ->assertSet('api_ssh_domain', '')
+        ->set('existing_tunnel_id', 'tun-5')
+        ->assertSet('api_ssh_domain', '')
+        ->assertHasNoErrors()
+        ->set('api_ssh_domain', 'mine.example.com')
+        ->set('existing_tunnel_id', 'tun-9')
+        ->assertSet('api_ssh_domain', 'mine.example.com');
+});
+
+test('a member picking a tunnel never reads its configuration', function () {
+    $member = User::factory()->create();
+    $this->team->members()->attach($member->id, ['role' => 'member']);
+    $this->actingAs($member);
+    Http::fake();
+
+    Livewire::test(CloudflareTunnel::class, ['server_uuid' => $this->server->uuid])
+        ->set('cloudflare_integration_token_id', $this->token->id)
+        ->set('existing_tunnel_id', 'tun-9')
+        ->assertSet('api_ssh_domain', '');
+
+    Http::assertNothingSent();
+});
