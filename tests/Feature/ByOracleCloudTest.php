@@ -85,6 +85,8 @@ it('createServer creates Server and OciStack records', function (): void {
         'team_id' => $this->team->id,
         'status' => 'pending',
     ]);
+    // Without a type, ValidateAndInstallServerJob never starts the proxy.
+    expect(Server::where('name', 'test-server')->firstOrFail()->proxyType())->toBe('TRAEFIK');
 });
 
 it('createServer links oci_stack to server via server_id', function (): void {

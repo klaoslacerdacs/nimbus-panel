@@ -91,7 +91,7 @@
                             </x-callout>
                         @endif
                     @endforeach
-                    <div class="overflow-x-auto rounded border border-neutral-200 dark:border-coolgray-200">
+                    <div class="min-w-0 max-w-full overflow-x-auto rounded border border-neutral-200 dark:border-coolgray-200">
                         <table class="w-full text-xs">
                             <thead class="text-left text-neutral-500 dark:text-fg-dim">
                                 <tr>
@@ -109,7 +109,7 @@
                                         <td class="px-3 py-2 font-mono">{{ $entry['published'] !== [] ? implode(', ', $entry['published']) : 'none (proxy only)' }}</td>
                                         <td class="px-3 py-2">
                                             @forelse ($entry['routes'] as $route)
-                                                <div class="font-mono">{{ $route['url'] }} → {{ $route['port'] ?? 'port not set' }}</div>
+                                                <div class="font-mono break-all">{{ $route['url'] }} → {{ $route['port'] ?? 'port not set' }}</div>
                                             @empty
                                                 <span class="text-neutral-500 dark:text-fg-dim">no domain</span>
                                             @endforelse

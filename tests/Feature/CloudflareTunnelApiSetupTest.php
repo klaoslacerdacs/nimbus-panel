@@ -5,11 +5,16 @@ use App\Livewire\Security\IntegrationTokenEditor;
 use App\Livewire\Security\IntegrationTokenForm;
 use App\Livewire\Server\CloudflareTunnel;
 use App\Models\DnsProviderZone;
+use App\Models\Environment;
 use App\Models\InstanceSettings;
 use App\Models\IntegrationToken;
 use App\Models\ManagedDnsRecord;
 use App\Models\PrivateKey;
+use App\Models\Project;
 use App\Models\Server;
+use App\Models\Service;
+use App\Models\ServiceApplication;
+use App\Models\StandaloneDocker;
 use App\Models\Team;
 use App\Models\User;
 use App\Services\CloudflareTokenValidator;
@@ -21,6 +26,7 @@ use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Once;
 use Illuminate\Support\Sleep;
+use Illuminate\Support\Str;
 use Livewire\Livewire;
 use Spatie\Activitylog\Models\Activity;
 
@@ -605,7 +611,7 @@ test('the ssh hostname is filled in from the chosen tunnel or as ssh-server.zone
     DnsProviderZone::factory()->for($this->token)->create(['provider_zone_id' => 'zone-3', 'name' => 'dev.example.com', 'account_id' => 'acc-1']);
     $this->server->update(['name' => 'Proxmox Node 01']);
 
-    // No panel address in a zone of the token: a new tunnel gets no default.
+    // No panel address, other tunnel server, or published domain in a zone of the token: a new tunnel gets no default.
     Livewire::test(CloudflareTunnel::class, ['server_uuid' => $this->server->uuid])
         ->set('cloudflare_integration_token_id', $this->token->id)
         ->assertSet('api_ssh_domain', '')
@@ -645,4 +651,31 @@ test('a member picking a tunnel never reads its configuration', function () {
         ->assertSet('api_ssh_domain', '');
 
     Http::assertNothingSent();
+});
+
+test('the ssh hostname default takes its zone from a domain published on the server', function () {
+    DnsProviderZone::factory()->for($this->token)->create(['provider_zone_id' => 'zone-2', 'name' => 'other.test', 'account_id' => 'acc-1']);
+    $this->server->update(['name' => 'Proxmox Node 01']);
+    $service = Service::factory()->create([
+        'server_id' => $this->server->id,
+        'environment_id' => Environment::factory()->create(['project_id' => Project::factory()->create(['team_id' => $this->team->id])->id])->id,
+        'destination_id' => $this->server->standaloneDockers()->firstOrFail()->id, 'destination_type' => StandaloneDocker::class,
+    ]);
+    ServiceApplication::create(['uuid' => (string) Str::uuid(), 'service_id' => $service->id, 'name' => 'web', 'image' => 'nginx', 'fqdn' => 'https://pdf.other.test']);
+    fakeCloudflareTunnelApi(['GET '.CF_TUNNEL_API => Http::response(['success' => true, 'result' => []])]);
+
+    Livewire::test(CloudflareTunnel::class, ['server_uuid' => $this->server->uuid])
+        ->set('cloudflare_integration_token_id', $this->token->id)
+        ->assertSet('api_ssh_domain', 'ssh-proxmox-node-01.other.test');
+});
+
+test('the ssh hostname default takes its zone from the ssh hostname of another server of the team', function () {
+    DnsProviderZone::factory()->for($this->token)->create(['provider_zone_id' => 'zone-2', 'name' => 'other.test', 'account_id' => 'acc-1']);
+    $this->server->update(['name' => 'Proxmox Node 01']);
+    Server::factory()->create(['team_id' => $this->team->id, 'ip' => 'ssh-other.other.test']);
+    fakeCloudflareTunnelApi(['GET '.CF_TUNNEL_API => Http::response(['success' => true, 'result' => []])]);
+
+    Livewire::test(CloudflareTunnel::class, ['server_uuid' => $this->server->uuid])
+        ->set('cloudflare_integration_token_id', $this->token->id)
+        ->assertSet('api_ssh_domain', 'ssh-proxmox-node-01.other.test');
 });
