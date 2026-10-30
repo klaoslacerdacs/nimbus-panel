@@ -1319,6 +1319,28 @@ $siteAddress {
         return data_get($this->proxy, 'type');
     }
 
+    /**
+     * Nimbus: every server runs Traefik unless someone chose otherwise. Servers created by cloud flows that forgot
+     * the type were skipped by StartProxy, so their domains never answered. Build servers have no proxy.
+     */
+    public static function assignDefaultProxyType(): int
+    {
+        $assigned = 0;
+        static::query()->whereNull('proxy->type')->with('settings')->chunkById(100, function ($servers) use (&$assigned): void {
+            foreach ($servers as $server) {
+                if ($server->isBuildServer()) {
+                    continue;
+                }
+                $server->proxy->set('type', ProxyTypes::TRAEFIK->value);
+                $server->proxy->set('status', 'exited');
+                $server->save();
+                $assigned++;
+            }
+        });
+
+        return $assigned;
+    }
+
     public function hasPendingProxyConfiguration(): bool
     {
         if ($this->proxy->get('status') !== 'running') {

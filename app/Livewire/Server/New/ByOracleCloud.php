@@ -2,6 +2,7 @@
 
 namespace App\Livewire\Server\New;
 
+use App\Enums\ProxyTypes;
 use App\Jobs\OciStackProvisionJob;
 use App\Models\OciConnection;
 use App\Models\OciStack;
@@ -517,6 +518,10 @@ class ByOracleCloud extends Component
                     'private_key_id' => $this->private_key_id,
                     'is_build_server' => false,
                 ]);
+                // Like every other provider flow: ValidateAndInstallServerJob starts the proxy only when a type is set.
+                $server->proxy->set('type', ProxyTypes::TRAEFIK->value);
+                $server->proxy->set('status', 'exited');
+                $server->save();
 
                 $ociStack = OciStack::create([
                     'server_id' => $server->id,

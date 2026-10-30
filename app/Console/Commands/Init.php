@@ -212,6 +212,7 @@ class Init extends Command
     {
         try {
             Server::where('proxy->type', 'TRAEFIK_V2')->update(['proxy->type' => 'TRAEFIK']);
+            Server::assignDefaultProxyType();
         } catch (\Throwable $e) {
             echo "Error in updating traefik labels: {$e->getMessage()}\n";
         }

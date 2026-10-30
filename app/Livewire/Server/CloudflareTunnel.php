@@ -8,6 +8,7 @@ use App\Exceptions\DnsRecordConflictException;
 use App\Models\CloudflareConnection;
 use App\Models\IntegrationToken;
 use App\Models\Server;
+use App\Models\ServiceApplication;
 use App\Rules\ValidHostname;
 use App\Services\CloudflareTunnelService;
 use App\Traits\ListensToTeamChannel;
@@ -111,6 +112,9 @@ class CloudflareTunnel extends Component
     }
 
     /**
+     * ssh-<server>.<zone>, with the first zone of the token that already holds: a route of the chosen tunnel, this
+     * panel's address, the SSH hostname of another server of the team, or a domain published on this server.
+     *
      * @param  list<string>  $tunnelHostnames
      */
     private function defaultSshDomain(IntegrationToken $token, array $tunnelHostnames): ?string
@@ -118,7 +122,13 @@ class CloudflareTunnel extends Component
         // A DNS label is at most 63 chars: "ssh-" plus 59 of the slug.
         $label = Str::of($this->server->name)->slug()->limit(59, '')->rtrim('-');
         $zones = $token->dnsZones()->pluck('name')->sortByDesc(fn (string $zone): int => strlen($zone));
-        $zone = collect([...$tunnelHostnames, parse_url(instanceSettings()->fqdn ?: config('app.url'), PHP_URL_HOST)])->filter()
+        $teamSshHosts = Server::query()->where('team_id', $this->server->team_id)->whereKeyNot($this->server->id)->pluck('ip')
+            ->reject(fn (?string $ip): bool => $ip === null || filter_var($ip, FILTER_VALIDATE_IP) !== false);
+        $publishedHosts = $this->server->applications()->pluck('fqdn')
+            ->merge(ServiceApplication::query()->whereIn('service_id', $this->server->services()->select('id'))->pluck('fqdn'))
+            ->flatMap(fn (?string $fqdn): array => explode(',', (string) $fqdn))
+            ->map(fn (string $url): ?string => parse_url(trim($url), PHP_URL_HOST) ?: null);
+        $zone = collect([...$tunnelHostnames, parse_url(instanceSettings()->fqdn ?: config('app.url'), PHP_URL_HOST), ...$teamSshHosts, ...$publishedHosts])->filter()
             ->map(fn (string $host): ?string => $zones->first(fn (string $zone): bool => $host === $zone || str_ends_with($host, ".{$zone}")))
             ->filter()->first();
 
