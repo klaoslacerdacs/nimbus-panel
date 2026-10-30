@@ -73,19 +73,21 @@ class CloudflareTunnelChangedNotification
             \Log::debug('Cloudflare Tunnels configuration updated - IP address unchanged.', ['current_ip' => $this->server->ip]);
         }
         // Nimbus: prove SSH works through the tunnel before relying on it; otherwise go back to direct SSH.
-        SshMultiplexingHelper::removeMuxFile($this->server->fresh());
-        $check = $this->server->fresh()->validateConnection();
+        $server = $this->server->fresh();
+        SshMultiplexingHelper::removeMuxFile($server);
+        $check = $server->validateConnection();
         if (! $check['uptime']) {
-            $this->server->settings->update(['is_cloudflare_tunnel' => false]);
-            $this->server->update([
+            $error = (string) $check['error'];
+            $message = str_contains($error, 'no such host')
+                ? "The tunnel container is running, but {$ssh_domain} does not resolve from this Coolify server yet (DNS resolvers cache a missing name for up to 30 minutes), so Coolify kept using the direct address. Try again in a few minutes."
+                : "The tunnel container is running, but SSH through {$ssh_domain} failed, so Coolify kept using the direct address. Publish {$ssh_domain} in the tunnel as ssh://localhost:22 and run the setup again.";
+            $server->settings->update(['is_cloudflare_tunnel' => false]);
+            $server->update([
                 'ip' => $previousIp,
-                'ip_previous' => $this->server->fresh()->ip_previous,
-                'validation_logs' => (str_contains((string) $check['error'], 'no such host')
-                    ? "The tunnel container is running, but {$ssh_domain} does not resolve from this Coolify server yet (DNS resolvers cache a missing name for up to 30 minutes), so Coolify kept using the direct address. Try again in a few minutes."
-                    : "The tunnel container is running, but SSH through {$ssh_domain} failed, so Coolify kept using the direct address. Publish {$ssh_domain} in the tunnel as ssh://localhost:22 and run the setup again.").' Error: '.str((string) $check['error'])->limit(300),
+                'validation_logs' => $message.' Error: '.str($error)->limit(300),
             ]);
-            SshMultiplexingHelper::removeMuxFile($this->server->fresh());
-            $this->server->fresh()->validateConnection();
+            SshMultiplexingHelper::removeMuxFile($server);
+            $server->validateConnection();
             \Log::warning('Cloudflare Tunnel SSH check failed; reverted to direct SSH.', ['server_id' => $server_id]);
         }
 
