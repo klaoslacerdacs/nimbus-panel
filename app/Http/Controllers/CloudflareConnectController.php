@@ -7,6 +7,7 @@ use App\Services\CloudflareAccountTokens;
 use App\Services\CloudflareOAuth;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
@@ -15,7 +16,11 @@ use Illuminate\Support\Facades\Log;
  */
 class CloudflareConnectController extends Controller
 {
-    private const string SESSION_KEY = 'cloudflare_oauth';
+    /**
+     * The pending authorization lives in the cache, keyed by the OAuth state and bound to the user: a Livewire
+     * request that finishes while the browser is at Cloudflare would otherwise save a stale session over it.
+     */
+    private const string CACHE_PREFIX = 'cloudflare-oauth:';
 
     public function redirect(Request $request, CloudflareOAuth $oauth): RedirectResponse
     {
@@ -27,21 +32,26 @@ class CloudflareConnectController extends Controller
         }
 
         $authorization = $oauth->authorizationRequest();
-        $request->session()->put(self::SESSION_KEY, [
-            'state' => $authorization['state'],
+        $returnTo = $this->safeReturnPath($request->query('return'));
+        Cache::put(self::CACHE_PREFIX.$authorization['state'], [
             'verifier' => $authorization['verifier'],
             'team_id' => $teamId,
-            'return_to' => $this->safeReturnPath($request->query('return')),
-        ]);
+            'user_id' => $request->user()->id,
+            'return_to' => $returnTo,
+        ], now()->addMinutes(10));
+        // Only for /oauth/error, which Cloudflare calls without the state.
+        Cache::put(self::CACHE_PREFIX.'return:'.$request->user()->id, $returnTo, now()->addMinutes(10));
 
         return redirect()->away($authorization['url']);
     }
 
     public function callback(Request $request, CloudflareOAuth $oauth): RedirectResponse
     {
-        $pending = $request->session()->pull(self::SESSION_KEY);
+        Cache::forget(self::CACHE_PREFIX.'return:'.$request->user()->id);
+        $state = $request->query('state');
+        $pending = is_string($state) && strlen($state) === 40 ? Cache::pull(self::CACHE_PREFIX.$state) : null;
 
-        if (! is_array($pending) || ! is_string($request->query('state')) || ! hash_equals($pending['state'], $request->query('state'))) {
+        if (! is_array($pending) || $pending['user_id'] !== $request->user()->id) {
             return $this->back('The Cloudflare authorization expired or did not start here. Try connecting again.');
         }
         // The team was fixed when the flow started; the session team may have changed in another tab since.
@@ -97,7 +107,9 @@ class CloudflareConnectController extends Controller
     {
         $detail = collect([$request->query('error'), $request->query('error_description')])->filter(fn ($v) => is_string($v) && $v !== '')->implode(': ');
 
-        return $this->back('Cloudflare rejected the authorization'.($detail !== '' ? " ({$detail})" : '').'. The OAuth client must offer every requested scope: add '.CloudflareAccountTokens::SCOPE.' to it in the Cloudflare dashboard, or set the client scopes in Settings → Cloudflare.');
+        $returnTo = Cache::pull(self::CACHE_PREFIX.'return:'.$request->user()->id);
+
+        return $this->back('Cloudflare rejected the authorization'.($detail !== '' ? " ({$detail})" : '').'. The OAuth client must offer every requested scope: add '.CloudflareAccountTokens::SCOPE.' to it in the Cloudflare dashboard, or set the client scopes in Settings → Cloudflare.', is_string($returnTo) ? $returnTo : null);
     }
 
     /**
