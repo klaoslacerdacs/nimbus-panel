@@ -468,3 +468,64 @@ describe('cloudflare token template url', function () {
             ->toContain(['key' => 'argotunnel', 'type' => 'edit']);
     });
 });
+
+test('selecting a token lists the tunnels of its account to choose from', function () {
+    fakeCloudflareTunnelApi(['GET '.CF_TUNNEL_API => Http::response(['success' => true, 'result' => [
+        ['id' => 'tun-9', 'name' => 'dashboard-tunnel'], ['id' => 'tun-2', 'name' => 'another'],
+    ]])]);
+
+    Livewire::test(CloudflareTunnel::class, ['server_uuid' => $this->server->uuid])
+        ->set('cloudflare_integration_token_id', $this->token->id)
+        ->assertSet('existingTunnels', fn (array $tunnels): bool => array_column($tunnels, 'name') === ['another', 'dashboard-tunnel']
+            && array_column($tunnels, 'account_id') === ['acc-1', 'acc-1'])
+        ->assertSee('dashboard-tunnel')
+        ->assertSee('Create a new tunnel');
+});
+
+test('an existing tunnel gets the ssh hostname added without losing its other routes', function () {
+    fakeCloudflareTunnelApi(newCloudflareTunnelRoutes([
+        'GET '.CF_TUNNEL_API => Http::response(['success' => true, 'result' => [['id' => 'tun-9', 'name' => 'dashboard-tunnel']]]),
+        'GET '.CF_TUNNEL_API.'/tun-9/token' => Http::response(['success' => true, 'result' => 'tunnel-9-secret']),
+        'GET '.CF_TUNNEL_API.'/tun-9/configurations' => Http::response(['success' => true, 'result' => ['config' => ['ingress' => [
+            ['hostname' => 'ssh.example.com', 'service' => 'ssh://localhost:22'],
+            ['hostname' => 'app.example.com', 'service' => 'http://localhost:3000'],
+            ['service' => 'http_status:404'],
+        ]]]]),
+        'PUT '.CF_TUNNEL_API.'/tun-9/configurations' => Http::response(['success' => true, 'result' => []]),
+    ]));
+    fakeCloudflaredActivity('tunnel-9-secret');
+
+    Livewire::test(CloudflareTunnel::class, ['server_uuid' => $this->server->uuid])
+        ->set('cloudflare_integration_token_id', $this->token->id)
+        ->set('existing_tunnel_id', 'tun-9')
+        ->set('api_ssh_domain', 'ssh.example.com')
+        ->call('apiCloudflareConfig')
+        ->assertHasNoErrors()
+        ->assertDispatched('activityMonitor');
+
+    Http::assertNotSent(fn (Request $request) => $request->method() === 'POST' && str_ends_with($request->url(), CF_TUNNEL_API));
+    Http::assertSent(fn (Request $request) => $request->method() === 'PUT'
+        && str_ends_with($request->url(), '/tun-9/configurations')
+        && $request['config']['ingress'] === [
+            ['hostname' => 'ssh.example.com', 'service' => 'ssh://localhost:2222'],
+            ['hostname' => 'app.example.com', 'service' => 'http://localhost:3000'],
+            ['service' => 'http_status:404'],
+        ]);
+    Http::assertSent(fn (Request $request) => $request->method() === 'POST'
+        && str_ends_with($request->url(), CF_TUNNEL_DNS) && $request['content'] === 'tun-9.cfargotunnel.com');
+
+    expect($this->server->settings->fresh()->cloudflare_tunnel_id)->toBe('tun-9');
+});
+
+test('a tunnel that the token cannot see is refused', function () {
+    fakeCloudflareTunnelApi(['GET '.CF_TUNNEL_API => Http::response(['success' => true, 'result' => []])]);
+
+    Livewire::test(CloudflareTunnel::class, ['server_uuid' => $this->server->uuid])
+        ->set('cloudflare_integration_token_id', $this->token->id)
+        ->set('existing_tunnel_id', 'tun-unknown')
+        ->set('api_ssh_domain', 'ssh.example.com')
+        ->call('apiCloudflareConfig')
+        ->assertHasErrors(['existing_tunnel_id']);
+
+    Http::assertNotSent(fn (Request $request) => $request->method() === 'PUT');
+});

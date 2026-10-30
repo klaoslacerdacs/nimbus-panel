@@ -5,7 +5,11 @@
         <x-application.settings-section title="Cloudflare"
             description="Connect your team's Cloudflare account once to create tunnels and DNS records without pasting API tokens.">
             <x-slot:actions>
-                <x-status-badge :label="$connection ? 'Connected' : 'Not connected'" :type="$connection ? 'success' : 'neutral'" />
+                @if ($connection?->needsReconnect())
+                    <x-status-badge label="Login expired" type="warning" />
+                @else
+                    <x-status-badge :label="$connection ? 'Connected' : 'Not connected'" :type="$connection ? 'success' : 'neutral'" />
+                @endif
             </x-slot:actions>
 
             @if ($flashError)
@@ -18,10 +22,13 @@
                 <div class="flex flex-col gap-1 text-sm">
                     <span><span class="text-neutral-500 dark:text-fg-dim">Account:</span> <strong>{{ $connection->account_name }}</strong> <span class="font-mono text-xs text-neutral-500 dark:text-fg-dim">{{ $connection->account_id }}</span></span>
                     <span class="text-neutral-500 dark:text-fg-dim">Connected {{ $connection->created_at->diffForHumans() }}</span>
+                    @if ($connection->needsReconnect())
+                        <span class="text-warning">The Cloudflare login expired {{ $connection->expires_at->diffForHumans() }} and cannot be refreshed. Log in again to keep creating tokens and tunnels.</span>
+                    @endif
                 </div>
                 @if ($canManage)
                     <div class="mt-4 flex justify-end gap-2">
-                        <a href="{{ route('cloudflare.connect') }}" class="button button-secondary text-sm">Reconnect</a>
+                        <a href="{{ route('cloudflare.connect') }}" class="button text-sm {{ $connection->needsReconnect() ? 'button-highlighted' : 'button-secondary' }}">Reconnect</a>
                         <x-modal-confirmation title="Disconnect Cloudflare?" isErrorButton buttonTitle="Disconnect"
                             submitAction="disconnect('{{ $connection->uuid }}')" :actions="['The OAuth grant is revoked. Existing tunnels keep running.']"
                             :confirmWithText="false" :confirmWithPassword="false" step2ButtonText="Disconnect" />

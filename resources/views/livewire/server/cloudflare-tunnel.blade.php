@@ -108,6 +108,9 @@
                                 <a href="{{ route('security.integration-tokens') }}" class="font-medium underline"
                                     {{ wireNavigate() }}>Integration tokens</a>.
                                 The token needs Account - Cloudflare Tunnel - Edit, Zone - DNS - Edit, and Zone - Zone - Read.
+                                @if ($cloudflareConnection)
+                                    It can be created in one click from the connected Cloudflare account {{ $cloudflareConnection->account_name }}.
+                                @endif
                             </x-callout>
                             @can('create', App\Models\IntegrationToken::class)
                                 <div class="mt-4">
@@ -132,6 +135,15 @@
                                     <x-forms.input id="api_ssh_domain" label="SSH hostname" required
                                         placeholder="ssh.example.com"
                                         helper="A hostname in a zone of the selected token. Cloudflare routes it to SSH port {{ $server->port }} of this server." />
+                                    @if ($cloudflare_integration_token_id)
+                                        <div class="lg:col-span-2">
+                                            <x-forms.listbox id="existing_tunnel_id" label="Tunnel" :live="true" :options="[
+                                                ['value' => '', 'label' => 'Create a new tunnel ('.\App\Services\CloudflareTunnelService::tunnelName($server).')'],
+                                                ...collect($existingTunnels)->map(fn ($tunnel) => ['value' => $tunnel['id'], 'label' => $tunnel['name'].($tunnel['account_name'] ? ' · '.$tunnel['account_name'] : '')])->all(),
+                                            ]"
+                                                helper="Use a tunnel you already have in the account: the SSH hostname is added to its routes and nothing else changes. Locally configured tunnels cannot be managed here." />
+                                        </div>
+                                    @endif
                                 </div>
                                 <div class="mt-4 flex justify-end">
                                     <x-forms.button type="submit" isHighlighted>Set up tunnel</x-forms.button>
@@ -176,59 +188,6 @@
                     @endcannot
                 @endif
             </x-application.settings-section>
-
-            @if (!$isCloudflareTunnelsEnabled && $server->isFunctional())
-                @can('update', $server)
-                    <x-application.settings-section id="server-cloudflare-fix-section" title="Fix SSH through the tunnel automatically"
-                        description="Already ran the automated setup but SSH through the tunnel does not work? Coolify publishes the SSH hostname on your tunnel, creates its DNS record and only switches after SSH through it works.">
-                        <form wire:submit="fixSshThroughTunnel" class="flex flex-col gap-3">
-                            <div class="grid gap-3 md:grid-cols-2">
-                                @if ($cloudflareZones !== [])
-                                    <div class="grid grid-cols-2 gap-2">
-                                        <x-forms.input id="fixSshLabel" label="SSH hostname" required placeholder="ssh-server"
-                                            helper="Routes to ssh://localhost:22 on this server." />
-                                        <x-forms.listbox id="fixSshZone" label="Domain" searchable portal placeholder="Choose a domain"
-                                            :options="collect($cloudflareZones)->map(fn ($zone) => ['value' => $zone, 'label' => $zone])->all()" />
-                                    </div>
-                                @else
-                                    <x-forms.input id="fixSshHostname" label="SSH hostname" required placeholder="ssh-server.example.com"
-                                        helper="A new hostname on a domain of your Cloudflare account. It will route to ssh://localhost:22." />
-                                @endif
-                                @if ($cloudflareConnection?->needsReconnect())
-                                    <div class="flex flex-col justify-end gap-1">
-                                        <a href="{{ route('cloudflare.connect', ['return' => route('server.cloudflare-tunnel', ['server_uuid' => $server->uuid], absolute: false)]) }}"
-                                            class="button button-highlighted text-sm">Reconnect Cloudflare</a>
-                                        <span class="text-xs text-neutral-500 dark:text-fg-dim">The login of {{ $cloudflareConnection->account_name }} expired.</span>
-                                    </div>
-                                @elseif ($cloudflareConnection)
-                                    <x-forms.input id="cloudflareApiToken" type="password" label="Cloudflare API token (optional)"
-                                        placeholder="Using {{ $cloudflareConnection->account_name }}"
-                                        helper="Your team's connected Cloudflare account is used. Paste a token only if this tunnel is in another account." />
-                                @elseif ($cloudflareOAuthConfigured)
-                                    <div class="flex flex-col justify-end gap-1">
-                                        <a href="{{ route('cloudflare.connect', ['return' => route('server.cloudflare-tunnel', ['server_uuid' => $server->uuid], absolute: false)]) }}"
-                                            class="button button-highlighted text-sm">Login with Cloudflare</a>
-                                        <span class="text-xs text-neutral-500 dark:text-fg-dim">Authorize once for your team; no API token needed.</span>
-                                    </div>
-                                @else
-                                    <x-forms.input id="cloudflareApiToken" type="password" label="Cloudflare API token" required
-                                        helper="Permissions: Account → Cloudflare Tunnel → Edit, and Zone → DNS → Edit. Used once, never stored. Or connect your account in Security → Cloudflare." />
-                                @endif
-                            </div>
-                            @if (session('success'))
-                                <p class="text-sm text-success">{{ session('success') }}</p>
-                            @elseif (session('error'))
-                                <p class="text-sm text-error">{{ session('error') }}</p>
-                            @endif
-                            @if ($cloudflareConnection || ! $cloudflareOAuthConfigured)
-                                <div class="flex justify-end">
-                                    <x-forms.button type="submit" class="button-highlighted" wire:loading.attr="disabled">Fix automatically</x-forms.button>
-                                </div>
-                            @endif
-                        </form>
-                    </x-application.settings-section>
-                @endcan
-            @endif
 
             @if (!$isCloudflareTunnelsEnabled && $server->isFunctional())
                 @script

@@ -53,7 +53,7 @@ class CloudflareTunnelService
      * @throws LockTimeoutException when another DNS change for the hostname does not finish in time
      * @throws RuntimeException when a Cloudflare call fails
      */
-    public function setUp(Server $server, IntegrationToken $token, string $hostname, ?array $confirmedConflict = null): Activity
+    public function setUp(Server $server, IntegrationToken $token, string $hostname, ?array $confirmedConflict = null, ?string $existingTunnelId = null): Activity
     {
         $server->assertNotTransferredAway();
         $zone = $this->zoneFor($server, $token, $hostname);
@@ -62,14 +62,21 @@ class CloudflareTunnelService
             throw new RuntimeException("Cloudflare returned no account for the zone {$zone->name}.");
         }
 
-        [$tunnelId, $tunnelToken, $created] = $this->findOrCreateTunnel($token, $accountId, self::tunnelName($server));
+        $sshRule = ['hostname' => $hostname, 'service' => "ssh://localhost:{$server->port}"];
+        if ($existingTunnelId !== null) {
+            // Nimbus: a tunnel the user already has keeps its other routes; only the SSH hostname is added.
+            [$tunnelId, $created] = [$existingTunnelId, false];
+            $tunnelToken = $this->tunnelToken($token, $accountId, $tunnelId);
+            $current = $this->request($token, 'get', "/accounts/{$accountId}/cfd_tunnel/{$tunnelId}/configurations")->json('result.config.ingress');
+            $ingress = self::ingressWith(is_array($current) ? $current : [], $sshRule);
+        } else {
+            [$tunnelId, $tunnelToken, $created] = $this->findOrCreateTunnel($token, $accountId, self::tunnelName($server));
+            $ingress = [$sshRule, ['service' => 'http_status:404']];
+        }
 
         try {
             $this->request($token, 'put', "/accounts/{$accountId}/cfd_tunnel/{$tunnelId}/configurations", [
-                'config' => ['ingress' => [
-                    ['hostname' => $hostname, 'service' => "ssh://localhost:{$server->port}"],
-                    ['service' => 'http_status:404'],
-                ]],
+                'config' => ['ingress' => $ingress],
             ]);
 
             $target = "{$tunnelId}.cfargotunnel.com";
@@ -96,6 +103,47 @@ class CloudflareTunnelService
         ]);
 
         return ConfigureCloudflared::run($server, $tunnelToken, $hostname);
+    }
+
+    /**
+     * Tunnels of the accounts the token can see, for the "use an existing tunnel" choice.
+     *
+     * @return list<array{id: string, name: string, account_id: string, account_name: string|null}>
+     */
+    public function listTunnels(IntegrationToken $token): array
+    {
+        $accounts = fn () => $token->dnsZones()->whereNotNull('account_id')->get()->unique('account_id');
+        $zones = $accounts();
+        if ($zones->isEmpty()) {
+            $this->dns->syncZones($token);
+            $zones = $accounts();
+        }
+
+        return $zones->flatMap(fn (DnsProviderZone $zone) => collect($this->request($token, 'get', "/accounts/{$zone->account_id}/cfd_tunnel", ['is_deleted' => 'false'])->json('result', []))
+            ->filter(fn ($tunnel): bool => is_array($tunnel) && is_string($tunnel['id'] ?? null))
+            ->map(fn (array $tunnel): array => [
+                'id' => $tunnel['id'],
+                'name' => (string) ($tunnel['name'] ?? $tunnel['id']),
+                'account_id' => (string) $zone->account_id,
+                'account_name' => $zone->account_name,
+            ]))->sortBy('name')->values()->all();
+    }
+
+    /**
+     * The ingress of an existing tunnel with the SSH rule first: a previous rule for the same hostname is replaced
+     * and the catch-all rule stays last (Cloudflare requires one).
+     *
+     * @param  list<array<string, mixed>>  $current
+     * @param  array{hostname: string, service: string}  $sshRule
+     * @return list<array<string, mixed>>
+     */
+    public static function ingressWith(array $current, array $sshRule): array
+    {
+        $rules = collect($current)->filter(fn ($rule): bool => is_array($rule));
+        $catchAll = $rules->last(fn (array $rule): bool => blank($rule['hostname'] ?? null)) ?? ['service' => 'http_status:404'];
+        $others = $rules->filter(fn (array $rule): bool => filled($rule['hostname'] ?? null) && $rule['hostname'] !== $sshRule['hostname']);
+
+        return [$sshRule, ...$others->values()->all(), $catchAll];
     }
 
     /**
@@ -201,7 +249,7 @@ class CloudflareTunnelService
 
         if (is_string($existing['id'] ?? null)) {
             $tunnelId = $existing['id'];
-            $tunnelToken = $this->request($token, 'get', "/accounts/{$accountId}/cfd_tunnel/{$tunnelId}/token")->json('result');
+            $tunnelToken = $this->tunnelToken($token, $accountId, $tunnelId);
             $created = false;
         } else {
             $response = $this->request($token, 'post', "/accounts/{$accountId}/cfd_tunnel", [
@@ -218,6 +266,16 @@ class CloudflareTunnelService
         }
 
         return [$tunnelId, $tunnelToken, $created];
+    }
+
+    private function tunnelToken(IntegrationToken $token, string $accountId, string $tunnelId): string
+    {
+        $tunnelToken = $this->request($token, 'get', "/accounts/{$accountId}/cfd_tunnel/{$tunnelId}/token")->json('result');
+        if (! is_string($tunnelToken) || $tunnelToken === '') {
+            throw new RuntimeException('Cloudflare returned no tunnel token.');
+        }
+
+        return $tunnelToken;
     }
 
     /**
