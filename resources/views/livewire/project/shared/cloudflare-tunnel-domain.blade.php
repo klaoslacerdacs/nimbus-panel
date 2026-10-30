@@ -35,10 +35,15 @@
                     @endif
                     https: Cloudflare → tunnel → Traefik on 443 (certificate not verified). http: tunnel → Traefik on 80; turn off "Redirect HTTP to HTTPS". The DNS record is a CNAME to the tunnel; no A record is created.
                 </p>
+            @elseif ($this->cloudflareTunnelConnection()?->needsReconnect())
+                <div class="flex flex-wrap items-center gap-3">
+                    <p class="text-sm text-warning">The Cloudflare login of {{ $this->cloudflareTunnelConnection()->account_name }} expired and cannot be refreshed.</p>
+                    <a href="{{ route('cloudflare.connect', ['return' => $cloudflareTunnelReturnPath, 'team' => $this->cloudflareTunnelServer()?->team_id]) }}" class="button button-highlighted text-sm">Reconnect Cloudflare</a>
+                </div>
             @elseif ($this->cloudflareTunnelConnection())
                 <p class="text-sm text-warning">The connected Cloudflare account has no active domains, or Cloudflare could not be reached.</p>
             @else
-                <div><a href="{{ route('cloudflare.connect', ['return' => $cloudflareTunnelReturnPath]) }}" class="button button-highlighted text-sm">Login with Cloudflare</a></div>
+                <div><a href="{{ route('cloudflare.connect', ['return' => $cloudflareTunnelReturnPath, 'team' => $this->cloudflareTunnelServer()?->team_id]) }}" class="button button-highlighted text-sm">Login with Cloudflare</a></div>
             @endif
         </form>
     </div>

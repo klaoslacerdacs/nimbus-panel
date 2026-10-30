@@ -219,12 +219,22 @@ it('refreshes only once when two requests find the token expiring', function ():
     expect($staleCopy->access_token)->toBe('at-new');
 });
 
-it('keeps the stored tokens when the refresh is rejected', function (): void {
-    Http::fake(['dash.cloudflare.com/oauth2/token' => Http::response(['error' => 'invalid_grant'], 400)]);
+it('forgets a refresh token Cloudflare rejects as invalid_grant, so every page offers Reconnect', function (): void {
+    Http::fake(['dash.cloudflare.com/oauth2/token' => Http::response(['error' => 'invalid_grant', 'error_description' => 'The token was revoked'], 400)]);
     $connection = CloudflareConnection::factory()->create(['team_id' => $this->team->id, 'expires_at' => now()->subMinute()]);
 
-    expect(fn () => $connection->api())->toThrow(RuntimeException::class, 'invalid_grant');
-    expect($connection->fresh()->refresh_token)->toBe('cf-refresh-token');
+    expect(fn () => $connection->api())->toThrow(RuntimeException::class, 'invalid_grant: The token was revoked');
+    expect($connection->fresh()->refresh_token)->toBeNull()
+        ->and($connection->fresh()->needsReconnect())->toBeTrue();
+});
+
+it('keeps the stored tokens when the refresh fails for another reason', function (): void {
+    Http::fake(['dash.cloudflare.com/oauth2/token' => Http::response(['error' => 'server_error'], 500)]);
+    $connection = CloudflareConnection::factory()->create(['team_id' => $this->team->id, 'expires_at' => now()->subMinute()]);
+
+    expect(fn () => $connection->api())->toThrow(RuntimeException::class, 'server_error');
+    expect($connection->fresh()->refresh_token)->toBe('cf-refresh-token')
+        ->and($connection->fresh()->needsReconnect())->toBeFalse();
 });
 
 it('uses the default scopes when none are configured', function (): void {
@@ -262,4 +272,36 @@ it('shows the expired login on the security page and offers to reconnect', funct
         ->assertSee('Login expired')
         ->assertSee('cannot be refreshed')
         ->assertSee('Reconnect');
+});
+
+it('warns when Cloudflare issues no refresh token, because the login then expires within the hour', function (): void {
+    Http::fake([
+        'dash.cloudflare.com/oauth2/token' => Http::response(['access_token' => 'at-1', 'expires_in' => 3600]),
+        'api.cloudflare.com/client/v4/accounts*' => Http::response(['result' => [['id' => 'acc-1', 'name' => 'Nimbus']]]),
+    ]);
+    $query = startCloudflareFlow();
+
+    $this->get(route('cloudflare.callback', ['code' => 'the-code', 'state' => $query['state']]))
+        ->assertSessionHas('success', fn (string $message): bool => str_contains($message, 'connected') && str_contains($message, 'refresh_token grant type'));
+});
+
+it('connects the team named by the page that started the login, not the session team', function (): void {
+    Http::fake([
+        'dash.cloudflare.com/oauth2/token' => Http::response(['access_token' => 'at-1', 'refresh_token' => 'rt-1', 'expires_in' => 3600]),
+        'api.cloudflare.com/client/v4/accounts*' => Http::response(['result' => [['id' => 'acc-1', 'name' => 'Nimbus']]]),
+    ]);
+    $otherTeam = Team::factory()->create();
+    $otherTeam->members()->attach($this->admin->id, ['role' => 'admin']);
+
+    $location = $this->get(route('cloudflare.connect', ['team' => $otherTeam->id]))->assertRedirect()->headers->get('Location');
+    parse_str(parse_url($location, PHP_URL_QUERY), $query);
+    $this->get(route('cloudflare.callback', ['code' => 'the-code', 'state' => $query['state']]))->assertRedirect();
+
+    expect(CloudflareConnection::query()->sole()->team_id)->toBe($otherTeam->id);
+});
+
+it('refuses to start the login for a team the user does not administer', function (): void {
+    $foreignTeam = Team::factory()->create();
+
+    $this->get(route('cloudflare.connect', ['team' => $foreignTeam->id]))->assertForbidden();
 });

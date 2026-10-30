@@ -94,7 +94,15 @@ class CloudflareOAuth
                 return;
             }
 
-            $tokens = $this->tokenRequest(['grant_type' => 'refresh_token', 'refresh_token' => $connection->refresh_token]);
+            try {
+                $tokens = $this->tokenRequest(['grant_type' => 'refresh_token', 'refresh_token' => $connection->refresh_token]);
+            } catch (RuntimeException $e) {
+                // Revoked, rotated, or reused: the refresh token is dead for good, so every page offers Reconnect.
+                if (str_contains($e->getMessage(), 'invalid_grant')) {
+                    $connection->update(['refresh_token' => null]);
+                }
+                throw $e;
+            }
             $connection->update([
                 'access_token' => $tokens['access_token'],
                 'refresh_token' => $tokens['refresh_token'] ?? $connection->refresh_token,
@@ -127,7 +135,9 @@ class CloudflareOAuth
 
         $body = $response->json() ?? [];
         if (! $response->successful() || empty($body['access_token'])) {
-            throw new RuntimeException('Cloudflare did not issue a token: '.($body['error_description'] ?? $body['error'] ?? 'HTTP '.$response->status()));
+            $error = collect([$body['error'] ?? null, $body['error_description'] ?? null])->filter()->implode(': ');
+
+            throw new RuntimeException('Cloudflare did not issue a token: '.($error !== '' ? $error : 'HTTP '.$response->status()));
         }
 
         return [
